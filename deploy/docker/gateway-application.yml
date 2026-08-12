@@ -1,0 +1,40 @@
+# 容器内网关配置。挂载到 /var/lib/jt-platform/config/application.yml，
+# Spring Boot 会自动从工作目录下的 config/ 加载它。
+#
+# 之所以用配置文件而不是环境变量：投递请求头是一个 Map，键名 X-JT-Ingest-Key
+# 含连字符，无法通过环境变量名准确表达。文件里的 ${} 仍然从环境变量取值。
+
+jt:
+  media:
+    # 该地址会写进下发给终端的 9101/9201 指令，必须是终端真正能连上的地址。
+    # 容器内网 IP 对终端不可路由，因此显式指定为宿主机地址。
+    reachable-address:
+      source: static
+      value: "${MEDIA_REACHABLE_ADDRESS:127.0.0.1}"
+    capacity:
+      max-streams: ${MAX_STREAMS:20}
+      max-outbound-bits-per-second: ${MAX_OUTBOUND_BPS:50000000}
+
+  delivery:
+    channels: [api]
+    api:
+      endpoint: http://console:8300/ingest/jt-events
+      connect-timeout: 3s
+      send-timeout: 10s
+      headers:
+        # 必须与 jt-console 的 JT_CONSOLE_INGEST_KEY 一致，否则投递被拒（401）
+        X-JT-Ingest-Key: "${JT_INGEST_KEY:local-demo-ingest-key-change-me}"
+      overflow-directory: /var/lib/jt-platform/data/delivery-overflow/api
+
+  # 本地体验配置：任何终端都能注册、开流不校验。
+  # 生产环境必须改为 local-list / remote-api 与 jwt，见 deploy/application.yml。
+  auth:
+    device:
+      mode: allow-all
+    stream:
+      mode: disabled
+
+logging:
+  level:
+    root: INFO
+    io.github.jtplatform: INFO

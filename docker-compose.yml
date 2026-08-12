@@ -1,0 +1,96 @@
+# 一键启动完整平台：协议网关 + 业务后端 + 控制台前端
+#
+#   docker compose up -d --build
+#   浏览器打开 http://localhost
+#
+# 首次构建需要下载 Maven 与 npm 依赖，耗时较长；之后的构建会命中缓存。
+#
+# ⚠ 这份编排面向本地体验与功能验证，不是生产基线：
+#   - 设备鉴权为 allow-all，任何终端都能注册
+#   - 开流鉴权关闭
+#   - 走明文 HTTP（浏览器把 localhost 视为安全上下文，视频才能解码；
+#     换成 IP 或域名访问时 WebCodecs 会不可用，必须配 HTTPS）
+#   生产部署请使用 deploy/ 下的脚本，它带证书校验、蓝绿发布与失败回滚。
+
+name: jt-vehicle-platform
+
+services:
+  # 业务后端。网关依赖它接收协议消息投递，因此先启动。
+  console:
+    build:
+      context: ./jt-console
+    image: jt-vehicle-platform/console:local
+    restart: unless-stopped
+    environment:
+      # 两个服务必须持有同一个投递密钥，否则网关推送会被拒绝（401）
+      JT_CONSOLE_INGEST_KEY: ${JT_INGEST_KEY:-local-demo-ingest-key-change-me}
+      JT_GATEWAY_BASE_URL: http://gateway:8100
+      # 媒体裸流经 nginx 的 /media-ws 转发，前端不直连媒体端口
+      JT_CONSOLE_MEDIA_PUBLIC_WEBSOCKET_BASE_URL: ${MEDIA_WS_URL:-ws://localhost/media-ws}
+      JT_CONSOLE_ALLOWED_ORIGINS: ${CONSOLE_ORIGINS:-http://localhost,http://127.0.0.1}
+      # 本地模式：管理员密码在启动时随机生成并打印到日志
+      #   docker compose logs console | grep -i password
+      JT_CONSOLE_DEPLOYMENT_MODE: "false"
+    volumes:
+      - console-data:/var/lib/jt-console/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8300/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # 协议网关：JT/T 808 信令与 JT/T 1078 媒体接入
+  gateway:
+    build:
+      context: ./jt-platform
+    image: jt-vehicle-platform/gateway:local
+    restart: unless-stopped
+    depends_on:
+      console:
+        condition: service_healthy
+    environment:
+      # 网关的详细配置在挂载的 config/application.yml 里，这里只提供它引用的变量。
+      # MEDIA_REACHABLE_ADDRESS 会写进下发给终端的 9101/9201 指令，必须是终端真正
+      # 能连上的地址：默认 127.0.0.1 只适用于「模拟器与容器在同一台机器」的本地体验，
+      # 接入真实车机时改成宿主机的局域网或公网 IP。
+      MEDIA_REACHABLE_ADDRESS: ${MEDIA_REACHABLE_ADDRESS:-127.0.0.1}
+      JT_INGEST_KEY: ${JT_INGEST_KEY:-local-demo-ingest-key-change-me}
+      MAX_STREAMS: ${MAX_STREAMS:-20}
+      MAX_OUTBOUND_BPS: ${MAX_OUTBOUND_BPS:-50000000}
+    ports:
+      # JT/T 808 终端信令
+      - "7100:7100/tcp"
+      - "7101:7101/udp"
+      # JT/T 1078 媒体接入：主码流 / 子码流 / 回放 / 对讲，终端直连
+      - "7811:7811/tcp"
+      - "7812:7812/tcp"
+      - "7813:7813/tcp"
+      - "7814:7814/tcp"
+    volumes:
+      - gateway-data:/var/lib/jt-platform
+      # Spring Boot 自动加载工作目录下的 config/application.yml
+      - ./deploy/docker/gateway-application.yml:/var/lib/jt-platform/config/application.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8109/actuator/health | grep -q UP"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+  # 前端与统一入口
+  web:
+    build:
+      context: .
+      dockerfile: jt-console-ui/Dockerfile
+    image: jt-vehicle-platform/web:local
+    restart: unless-stopped
+    depends_on:
+      - console
+      - gateway
+    ports:
+      - "${WEB_PORT:-80}:80"
+
+volumes:
+  console-data:
+  gateway-data:

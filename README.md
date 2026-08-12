@@ -5,19 +5,48 @@
 [![Spring Boot](https://img.shields.io/badge/Spring%20Boot-4.1-brightgreen.svg)](https://spring.io/projects/spring-boot)
 [![Vue](https://img.shields.io/badge/Vue-3-42b883.svg)](https://vuejs.org/)
 
-一个可本地运行的车联网平台，由 JT/T 808/1078 协议网关、业务控制台、Web 前端和
-Windows 摄像头推流模拟器组成。网关负责终端信令、媒体接入和协议事件投递；控制台使用 SQLite 保存
-车辆档案、轨迹、最新状态、告警、电子围栏和按日运营汇总，并提供经过鉴权的运营分析、实时监控和开流入口。
+[English](README.en.md)
 
-当前基线为 JDK 25、Spring Boot 4.1 和 Maven 多模块工程。默认配置可以在没有 Redis、消息队列和外部
-业务系统的环境中启动完整的单进程服务。
+**开箱即用的部标车联网平台**。终端按 JT/T 808 接入，视频按 JT/T 1078 推流，
+浏览器里直接看实时地图、实时视频和历史轨迹——**不依赖 Redis、消息队列或任何外部业务系统**。
 
-| 路径 | 职责 | 默认端口 |
+> 一条命令跑起全栈：
+> ```bash
+> docker compose up -d --build     # 然后打开 http://localhost
+> ```
+
+<!--
+  截图占位：建议在这里放 2-3 张实际界面图，这是 README 转化率最高的位置。
+  推荐顺序：实时监控地图（带车辆打点）→ 实时视频播放 → 轨迹回放。
+  放好后把下面这段注释删掉。
+
+  ![实时监控](docs/images/monitor.png)
+  ![实时视频](docs/images/video.png)
+  ![轨迹回放](docs/images/track.png)
+-->
+
+## 它解决什么问题
+
+做部标车辆监控，通常要自己啃 JT/T 808 的分包与转义、1078 的裸流重组、终端 ID 与手机号的映射、
+浏览器端的 H.264 解码……这些坑本项目都已经趟过并且有对应的代码和文档。
+
+拿到手就是一套能跑的完整链路：
+
+```
+车载终端 ──JT/T 808/1078──▶ 协议网关 ──HTTP 投递──▶ 业务后端 ──REST/WS──▶ 控制台前端
+                              │                      (SQLite)                 │
+                              └────────── 裸流 WebSocket ──────────────────────┘
+```
+
+| 模块 | 职责 | 默认端口 |
 |---|---|---|
-| `jt-platform` | JT/T 808 信令、JT/T 1078 媒体、开流与事件投递 | `7100`、`7101`、`7810-7815`、`8100`、`8109` |
-| `jt-console` | 单管理员认证、车辆/轨迹/状态、运营统计、告警/围栏、实时广播与开流代理 | `8300` |
-| `jt-console-ui` | 登录、运营看板、告警处置、电子围栏、车辆详情、实时监控、轨迹和视频播放界面 | `9527`（开发）或 `443`（部署） |
-| `jt-platform/jt-terminal-simulator` | 使用电脑摄像头和麦克风模拟 808 终端及 1078 推流 | 桌面客户端 |
+| `jt-platform` | JT/T 808 信令、JT/T 1078 媒体、开流调度与事件投递 | `7100`、`7101`、`7810-7815`、`8100`、`8109` |
+| `jt-console` | 认证、车辆/轨迹/状态、运营统计、告警/围栏、实时广播与开流代理 | `8300` |
+| `jt-console-ui` | 运营看板、实时监控、告警处置、电子围栏、轨迹回放与视频播放 | `9527`（开发）/ `443`（部署） |
+| `packages/jt-player` | 零运行时依赖的浏览器裸流播放器 SDK（含 Vue3、React 适配） | — |
+| `jt-terminal-simulator` | 用电脑摄像头模拟 808 终端与 1078 推流，无真车也能验证 | 桌面客户端 |
+
+技术基线：JDK 25 · Spring Boot 4.1 · Netty · Vue 3 · SQLite。
 
 ## 核心能力
 
@@ -32,7 +61,40 @@ Windows 摄像头推流模拟器组成。网关负责终端信令、媒体接入
 - 车辆运营详情聚合档案、最新状态、当日/近七日指标和最近告警，并提供监控、轨迹和视频快捷入口。
 - 同一个可执行 JAR 支持 `standalone` 单进程和 `api`、`signal`、`media` 分进程部署。
 
-## 五分钟快速开始
+## 快速开始（Docker，推荐）
+
+只需要装了 Docker，不用准备 JDK、Maven 和 Node：
+
+```bash
+git clone https://github.com/liuxiaoyan199701-coder/jt-vehicle-platform.git
+cd jt-vehicle-platform
+docker compose up -d --build
+```
+
+首次构建要下载 Maven 与 npm 依赖，耗时较长；之后会命中缓存。启动完成后：
+
+```bash
+# 取管理员账号（本地模式下每次启动随机生成，不使用默认口令）
+docker compose logs console | grep "jt-console] 用户名\|jt-console] 密码"
+```
+
+浏览器打开 **http://localhost** 登录即可。
+
+终端接入地址是宿主机的 `7100/TCP`（或 `7101/UDP`），视频推流端口 `7811-7814`。
+没有真实车机时，用 [终端推流模拟器](docs/terminal-simulator.md) 就能跑通整条链路。
+
+> **必须用 `localhost` 访问**：视频播放依赖浏览器的 WebCodecs，而它只在安全上下文中可用。
+> `http://localhost` 属于安全上下文，换成 IP 或域名访问就必须配 HTTPS，否则视频无法解码。
+>
+> 接入**真实车机**时还要设置宿主机可达地址，否则终端收到开流指令也连不上：
+> ```bash
+> MEDIA_REACHABLE_ADDRESS=192.168.1.10 docker compose up -d
+> ```
+>
+> 这套编排面向本地体验：设备鉴权为 `allow-all`、开流鉴权关闭、走明文 HTTP。
+> 生产部署请用 `deploy/` 下的脚本，它带证书校验、蓝绿发布与失败自动回滚。
+
+## 从源码启动
 
 ### 1. 准备环境
 
