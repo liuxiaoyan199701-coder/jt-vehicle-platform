@@ -404,3 +404,5 @@ jt:
   —— 终端手机号、终端 ID 与业务设备 ID 的区别，BCD 前导零丢失，白名单比对的到底是哪个字段
 - [JT/T 1078 视频在浏览器里播不出来：一个和编码无关的坑](docs/articles/02-webcodecs-secure-context.md)
   —— WebCodecs 的安全上下文要求，以及上了 HTTPS 之后混合内容策略带来的连锁问题
+- [协议网关往业务系统投递消息：幂等、顺序与背压该怎么处理](docs/articles/03-delivery-idempotency-backpressure.md)
+  —— 为什么判重不能依赖异常分类，队列满时该丢什么，以及接收端响应慢为何会导致位置点被丢弃
