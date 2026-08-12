@@ -362,11 +362,15 @@ jt:
 | 上游项目 | 许可证 | 在本项目中的位置 |
 |---|---|---|
 | [yezhihao/jt808-server](https://github.com/yezhihao/jt808-server) | Apache-2.0 | JT/T 808、JT/T 1078、苏标协议模型与编解码，保留原 `org.yzh.**` 包名；同时以 `protostar`、`netmc` 两个依赖形式引入 |
-| [jt1078-stream-server](https://gitee.com/lxygit0731/jt1078-stream-server) | MIT | `jt-platform/jt-media` 的媒体接入与分发、`packages/jt-player` 播放器 |
+| [jt1078-stream-server](https://gitee.com/lxygit0731/jt1078-stream-server) | MIT | `jt-platform/jt-media` 的媒体接入与分发、`packages/jt-player` 播放器（由本项目作者的早期项目重写而来） |
 | [SoybeanAdmin](https://github.com/soybeanjs/soybean-admin) v2.2.0 | MIT © 2021 Soybean | `jt-console-ui` 的布局、主题、路由与请求层 |
 
 以及 Spring Boot、Netty、RocketMQ、Vue、NaiveUI、UnoCSS、ECharts 等基础设施。
 完整的第三方清单、许可证类型与归属边界见 [NOTICE](NOTICE)。
+
+> 其中 `jt1078-stream-server` 是本项目作者更早的媒体流服务实现，本项目在它的基础上
+> 重写了媒体接入与分发部分，并补齐了协议网关、业务后端与控制台，形成完整平台。
+> 只需要裸流服务、不需要整套平台的话，可以直接用那个更轻量的项目。
 
 地图能力由[高德开放平台](https://lbs.amap.com)的 JavaScript API 提供，属于商业服务而非开源组件，
 需自行申请 key，用法见 [jt-console-ui/README.md](jt-console-ui/README.md)。
@@ -391,3 +395,12 @@ jt:
 代码，该许可证不允许降级发布；MIT 代码可以合法并入。各子目录保留其原有许可证文件
 （[jt-console-ui/LICENSE](jt-console-ui/LICENSE)、[packages/jt-player/LICENSE](packages/jt-player/LICENSE)、
 [jt-platform/LICENSE-MIT](jt-platform/LICENSE-MIT)），具体来源与边界见 [NOTICE](NOTICE)。
+
+## 踩坑笔记
+
+对接过程中遇到的真实问题与排查过程，也是本项目的设计依据：
+
+- [设备明明连上了，平台上却找不到这台车](docs/articles/01-device-id-pitfall.md)
+  —— 终端手机号、终端 ID 与业务设备 ID 的区别，BCD 前导零丢失，白名单比对的到底是哪个字段
+- [JT/T 1078 视频在浏览器里播不出来：一个和编码无关的坑](docs/articles/02-webcodecs-secure-context.md)
+  —— WebCodecs 的安全上下文要求，以及上了 HTTPS 之后混合内容策略带来的连锁问题

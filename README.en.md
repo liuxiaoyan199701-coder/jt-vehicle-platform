@@ -119,7 +119,7 @@ This project stands on:
 | Upstream | License | Where it is used |
 |---|---|---|
 | [yezhihao/jt808-server](https://github.com/yezhihao/jt808-server) | Apache-2.0 | protocol model and codecs, original `org.yzh.**` packages retained |
-| [jt1078-stream-server](https://gitee.com/lxygit0731/jt1078-stream-server) | MIT | media ingest/distribution in `jt-platform/jt-media`, and `packages/jt-player` |
+| [jt1078-stream-server](https://gitee.com/lxygit0731/jt1078-stream-server) | MIT | media ingest/distribution in `jt-platform/jt-media`, and `packages/jt-player` — rewritten from this project's own earlier work by the same author |
 | [SoybeanAdmin](https://github.com/soybeanjs/soybean-admin) v2.2.0 | MIT © 2021 Soybean | layout, theming, routing and request layer of `jt-console-ui` |
 
 See [NOTICE](NOTICE) for the complete third-party inventory and license boundaries.
