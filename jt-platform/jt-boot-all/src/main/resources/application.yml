@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: jt-platform
+  profiles:
+    default: standalone
+
+server:
+  port: 8100
+
+management:
+  server:
+    port: 8109
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+jt:
+  runtime:
+    role: all
+  cluster:
+    api-base-url: http://127.0.0.1:8100
+    connect-timeout: 3s
+    request-timeout: 5s
+    state-poll-interval: 100ms
+  instance:
+    number: 1
+  media:
+    instance-id: media-1
+    reachable-address:
+      source: auto
+      value: ""
+      env-name: JT_REACHABLE_ADDRESS
+    capacity:
+      max-streams: 1000
+      max-outbound-bits-per-second: 1000000000
+    heartbeat-interval: 5s
+    heartbeat-ttl: 15s
+    pending-timeout: 30s
+    idle-timeout: 60s
+    talkback:
+      mode: exclusive
+      mix-interval: 20ms
+      max-frame-bytes: 4096
+      max-queued-frames-per-participant: 10
+      max-pending-device-writes: 10
+    recording:
+      realtime-enabled: false
+      playback-enabled: false
+      manual-enabled: false
+      alarm-enabled: false
+      continuous-enabled: true
+      root: recordings
+      segment-duration: 30s
+      search-merge-tolerance: 1s
+      retention-days: 7
+      max-bytes: 107374182400
+      retention-check-interval: 5m
+  signal:
+    instance-id: signal-1
+    public-tcp-port: 7100
+    public-udp-port: 7101
+    storage:
+      multimedia-path: data/signal/multimedia
+      multimedia-access-base-url: ${JT_MULTIMEDIA_ACCESS_BASE_URL:}
+      alarm-attachment-path: data/signal/alarm-attachments
+  registry:
+    type: memory
+  delivery:
+    channels: []
+  auth:
+    device:
+      mode: allow-all
+      local-list: []
+      remote:
+        connect-timeout: 2s
+        request-timeout: 3s
+        cache-ttl: 5m
+        cache-maximum-size: 100000
+    stream:
+      mode: disabled

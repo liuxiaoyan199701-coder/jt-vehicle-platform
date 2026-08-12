@@ -1,0 +1,416 @@
+import { request } from '../request';
+
+/** 车辆档案 */
+export interface Vehicle {
+  deviceId: string;
+  plateNo: string;
+  plateColor?: string | null;
+  brand?: string | null;
+  channelCount: number;
+  remark?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * 设备实时状态。
+ *
+ * lat/lng 是设备上报的 WGS-84 原值；地图渲染一律用 gcjLat/gcjLng，
+ * 直接拿 lat/lng 打到高德上会偏出几百米。
+ */
+export interface LiveStatus {
+  deviceId: string;
+  plateNo: string | null;
+  online: boolean;
+  lastSeenAt: string | null;
+  deviceTime: string | null;
+  lat: number | null;
+  lng: number | null;
+  gcjLat: number | null;
+  gcjLng: number | null;
+  speedKph: number | null;
+  direction: number | null;
+  altitude: number | null;
+  mileage: number | null;
+  accOn: boolean | null;
+  positioned: boolean | null;
+  alarmJson: string | null;
+  statusJson: string | null;
+  activeAlarmCount?: number;
+}
+
+export interface TrackPoint {
+  deviceTime: string;
+  receivedAt: string;
+  lat: number;
+  lng: number;
+  gcjLat: number;
+  gcjLng: number;
+  speedKph: number | null;
+  direction: number | null;
+  altitude: number | null;
+  mileage: number | null;
+}
+
+export interface TrackResult {
+  deviceId: string;
+  points: TrackPoint[];
+  count: number;
+  truncated: boolean;
+  distanceKm: number;
+  maxSpeedKph: number;
+  avgSpeedKph: number;
+  startTime?: string;
+  endTime?: string;
+}
+
+export interface MonitorStats {
+  total: number;
+  online: number;
+  offline: number;
+  subscribers: number;
+}
+
+/** 网关返回的开流票据，wsUrl 已带一次性 token */
+export interface StreamTicket {
+  streamId: string;
+  instanceId: string;
+  wsUrl: string;
+  token: string;
+  state: string;
+}
+
+export type AlarmStatus = 'OPEN' | 'ACKNOWLEDGED' | 'CLOSED';
+export type AlarmLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+export type AlarmSource = 'PROTOCOL' | 'GEOFENCE';
+
+export interface AlarmEvent {
+  id: number;
+  deviceId: string;
+  plateNo: string | null;
+  type: string;
+  title: string;
+  source: AlarmSource;
+  level: AlarmLevel;
+  status: AlarmStatus;
+  occurredAt: string;
+  lastOccurredAt: string;
+  gcjLat: number | null;
+  gcjLng: number | null;
+  geofenceId: number | null;
+  geofenceName: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  acknowledgeNote: string | null;
+  closedAt: string | null;
+  closedBy: string | null;
+  closeNote: string | null;
+}
+
+export interface AlarmQuery {
+  status?: AlarmStatus;
+  level?: AlarmLevel;
+  source?: AlarmSource;
+  deviceId?: string;
+  type?: string;
+  keyword?: string;
+  start?: string;
+  end?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface AlarmPage {
+  items: AlarmEvent[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface Geofence {
+  id: number;
+  name: string;
+  centerGcjLat: number;
+  centerGcjLng: number;
+  radiusMeters: number;
+  color: string;
+  enabled: boolean;
+  alertOnEnter: boolean;
+  alertOnExit: boolean;
+  speedLimitKph: number | null;
+  vehicleIds: string[];
+  assignedVehicleCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type GeofenceMutation = Pick<
+  Geofence,
+  | 'name'
+  | 'centerGcjLat'
+  | 'centerGcjLng'
+  | 'radiusMeters'
+  | 'color'
+  | 'enabled'
+  | 'alertOnEnter'
+  | 'alertOnExit'
+  | 'speedLimitKph'
+  | 'vehicleIds'
+>;
+
+export interface FleetSummary {
+  fleetVehicles: number;
+  online: number;
+  offline: number;
+  moving: number;
+  idle: number;
+  unknownOnline: number;
+  openAlarms: number;
+  criticalOpenAlarms: number;
+  todayDistanceKm: number;
+}
+
+export interface FleetDailyTrend {
+  date: string;
+  distanceKm: number;
+  activeVehicles: number;
+  newAlarms: number;
+}
+
+export interface AlarmLevelCount {
+  level: AlarmLevel;
+  count: number;
+}
+
+export interface DashboardOverview {
+  summary: FleetSummary;
+  dailyTrend: FleetDailyTrend[];
+  alarmLevels: AlarmLevelCount[];
+  recentAlarms: AlarmEvent[];
+}
+
+export interface VehicleDailyOperations {
+  date: string;
+  distanceKm: number;
+  pointCount: number;
+  movingPoints: number;
+  maxSpeedKph: number;
+  alarmCount: number;
+}
+
+export interface VehiclePeriodOperations {
+  distanceKm: number;
+  activeDays: number;
+  maxSpeedKph: number;
+  alarmCount: number;
+}
+
+export interface VehicleOperationsProfile {
+  vehicle: Vehicle;
+  status: LiveStatus | null;
+  today: VehicleDailyOperations;
+  last7Days: VehiclePeriodOperations;
+  openAlarmCount: number;
+  recentAlarms: AlarmEvent[];
+}
+
+export interface Fleet {
+  id: number;
+  code: string;
+  name: string;
+  manager: string | null;
+  contactPhone: string | null;
+  remark: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type FleetReference = Pick<Fleet, 'id' | 'code' | 'name'>;
+
+/** 后端 FleetSummary 读模型；与运营首页的 FleetSummary 类型分开命名。 */
+export interface FleetListItem {
+  fleet: Fleet;
+  totalVehicles: number;
+  online: number;
+  moving: number;
+  idle: number;
+  offline: number;
+  openAlarms: number;
+  todayDistanceKm: number;
+}
+
+export interface FleetMember {
+  vehicle: Vehicle;
+  fleet: FleetReference;
+  online: boolean;
+  speedKph: number | null;
+  lastSeenAt: string | null;
+  openAlarmCount: number;
+  todayDistanceKm: number;
+}
+
+export interface FleetDetails {
+  fleet: Fleet;
+  summary: FleetListItem;
+  members: FleetMember[];
+}
+
+export type FleetMutation = Pick<Fleet, 'code' | 'name' | 'manager' | 'contactPhone' | 'remark'>;
+
+function encodePathSegment(value: string | number) {
+  return encodeURIComponent(String(value));
+}
+
+// ---------------- 车辆档案 ----------------
+
+export function fetchVehicles() {
+  return request<Vehicle[]>({ url: '/vehicles' });
+}
+
+export function createVehicle(vehicle: Vehicle) {
+  return request<Vehicle>({ url: '/vehicles', method: 'post', data: vehicle });
+}
+
+export function updateVehicle(deviceId: string, vehicle: Vehicle) {
+  return request<Vehicle>({ url: `/vehicles/${encodePathSegment(deviceId)}`, method: 'put', data: vehicle });
+}
+
+export function deleteVehicle(deviceId: string) {
+  return request<void>({ url: `/vehicles/${encodePathSegment(deviceId)}`, method: 'delete' });
+}
+
+export function fetchVehicleProfile(deviceId: string) {
+  return request<VehicleOperationsProfile>({ url: `/vehicles/${encodePathSegment(deviceId)}/profile` });
+}
+
+// ---------------- 车队管理 ----------------
+
+export function fetchFleets(keyword?: string) {
+  return request<FleetListItem[]>({
+    url: '/fleets',
+    params: keyword?.trim() ? { keyword: keyword.trim() } : undefined
+  });
+}
+
+export function fetchFleet(id: number) {
+  return request<FleetDetails>({ url: `/fleets/${encodePathSegment(id)}` });
+}
+
+export function createFleet(fleet: FleetMutation) {
+  return request<FleetDetails>({ url: '/fleets', method: 'post', data: fleet });
+}
+
+export function updateFleet(id: number, fleet: FleetMutation) {
+  return request<FleetDetails>({ url: `/fleets/${encodePathSegment(id)}`, method: 'put', data: fleet });
+}
+
+export function replaceFleetVehicles(id: number, deviceIds: string[]) {
+  return request<FleetDetails>({
+    url: `/fleets/${encodePathSegment(id)}/vehicles`,
+    method: 'put',
+    data: { deviceIds }
+  });
+}
+
+export function deleteFleet(id: number) {
+  return request<void>({ url: `/fleets/${encodePathSegment(id)}`, method: 'delete' });
+}
+
+// ---------------- 实时监控 ----------------
+
+export function fetchLiveStatus() {
+  return request<LiveStatus[]>({ url: '/monitor/live' });
+}
+
+export function fetchMonitorStats() {
+  return request<MonitorStats>({ url: '/monitor/stats' });
+}
+
+// ---------------- 轨迹 ----------------
+
+/**
+ * @param start 无时区本地时间，如 2026-08-11T00:00:00（与设备上报的 deviceTime 同格式）
+ */
+export function fetchTrack(deviceId: string, start: string, end: string) {
+  return request<TrackResult>({ url: '/tracks', params: { deviceId, start, end } });
+}
+
+// ---------------- 视频开流 ----------------
+
+export function openStream(deviceId: string, channel: number, streamKind: 'main' | 'sub' = 'main') {
+  return request<StreamTicket>({
+    url: '/stream/open',
+    method: 'post',
+    data: { deviceId, channel, streamKind }
+  });
+}
+
+// ---------------- 运营首页 ----------------
+
+export function fetchDashboardOverview() {
+  return request<DashboardOverview>({ url: '/dashboard/overview' });
+}
+
+// ---------------- 告警处置 ----------------
+
+export function fetchAlarms(params: AlarmQuery = {}) {
+  return request<AlarmPage>({ url: '/alarms', params });
+}
+
+export function fetchAlarm(id: number) {
+  return request<AlarmEvent>({ url: `/alarms/${encodePathSegment(id)}` });
+}
+
+export function acknowledgeAlarm(id: number, note: string) {
+  return request<AlarmEvent>({
+    url: `/alarms/${encodePathSegment(id)}/acknowledge`,
+    method: 'post',
+    data: { note }
+  });
+}
+
+export function closeAlarm(id: number, note: string) {
+  return request<AlarmEvent>({
+    url: `/alarms/${encodePathSegment(id)}/close`,
+    method: 'post',
+    data: { note }
+  });
+}
+
+// ---------------- 电子围栏 ----------------
+
+export function fetchGeofences() {
+  return request<Geofence[]>({ url: '/geofences' });
+}
+
+export function fetchGeofence(id: number) {
+  return request<Geofence>({ url: `/geofences/${encodePathSegment(id)}` });
+}
+
+export function createGeofence(geofence: GeofenceMutation) {
+  return request<Geofence>({ url: '/geofences', method: 'post', data: geofence });
+}
+
+export function updateGeofence(id: number, geofence: GeofenceMutation) {
+  return request<Geofence>({ url: `/geofences/${encodePathSegment(id)}`, method: 'put', data: geofence });
+}
+
+export function replaceGeofenceVehicles(id: number, deviceIds: string[]) {
+  return request<Geofence>({
+    url: `/geofences/${encodePathSegment(id)}/vehicles`,
+    method: 'put',
+    data: { deviceIds }
+  });
+}
+
+export function setGeofenceEnabled(id: number, enabled: boolean) {
+  return request<Geofence>({
+    url: `/geofences/${encodePathSegment(id)}/enabled`,
+    method: 'put',
+    data: { enabled }
+  });
+}
+
+export function deleteGeofence(id: number) {
+  return request<void>({ url: `/geofences/${encodePathSegment(id)}`, method: 'delete' });
+}

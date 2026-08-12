@@ -1,0 +1,97 @@
+JT Vehicle Platform
+Copyright 2026 The JT Vehicle Platform Contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+It includes source code derived from, and binary dependencies distributed by,
+the third parties listed below. The upstream source history and copyright
+notices remain authoritative.
+
+================================================================================
+1. Source code derived from upstream projects
+================================================================================
+
+--------------------------------------------------------------------------------
+yezhihao/jt808-server — Apache License, Version 2.0
+https://github.com/yezhihao/jt808-server
+https://gitee.com/yezhihao/jt808-server
+--------------------------------------------------------------------------------
+The JT/T 808, JT/T 1078 and T/JSATL12 protocol model, codecs and parts of the
+signalling endpoints are derived from this project. The code retains its
+original package namespace `org.yzh.**` and most files keep the upstream
+author header. Affected locations:
+
+  jt-platform/jt-common/src/main/java/org/yzh/commons/**
+  jt-platform/jt-protocol/src/main/java/org/yzh/protocol/**
+  jt-platform/jt-signal/src/main/java/org/yzh/web/**
+  (and the corresponding src/test trees)
+
+Copyright remains with yezhihao and the upstream contributors.
+
+--------------------------------------------------------------------------------
+jt1078service / jt1078-stream-server — MIT License
+https://gitee.com/lxygit0731/jt1078-stream-server
+--------------------------------------------------------------------------------
+The JT/T 1078 media ingest, stream distribution, talkback and recording
+behaviour in `jt-platform/jt-media` was rewritten from this project into the
+`io.github.jtplatform.media.**` namespace. The browser player SDK in
+`packages/jt-player` was likewise refactored from its raw-stream player
+implementation.
+
+Copyright remains with the original jt1078service contributors.
+See jt-platform/LICENSE-MIT and packages/jt-player/LICENSE.
+
+--------------------------------------------------------------------------------
+soybeanjs/soybean-admin v2.2.0 — MIT License, Copyright (c) 2021 Soybean
+https://github.com/soybeanjs/soybean-admin
+--------------------------------------------------------------------------------
+The administration console in `jt-console-ui` is a fork of SoybeanAdmin
+v2.2.0. The layout system, theme engine, routing conventions, request layer
+and the internal `@sa/*` workspace packages all originate from that project;
+this repository adds the fleet monitoring, vehicle, geofence, alarm and track
+playback screens on top of it.
+
+The upstream MIT license text is retained verbatim at jt-console-ui/LICENSE.
+
+================================================================================
+2. Binary dependencies requiring attribution
+================================================================================
+
+Apache License, Version 2.0:
+  io.github.yezhihao:protostar:4.0.6      annotation-driven protocol codec
+  io.github.yezhihao:netmc:4.0.6          Netty-based message container
+  org.springframework.boot:*:4.1.0        Spring Boot and Spring Security
+  io.netty:netty-handler, netty-all       network transport
+  org.apache.rocketmq:rocketmq-client:5.5.0
+  org.xerial:sqlite-jdbc:3.49.1.0
+  com.github.ben-manes.caffeine:caffeine
+  io.micrometer:micrometer-core
+  com.fasterxml.jackson.*, tools.jackson.*
+  apache/echarts (frontend)
+
+MIT License:
+  vue, vue-router, pinia, vue-i18n, @vueuse/core
+  naive-ui, unocss, vite, dayjs, axios, nanoid, localforage
+  org.projectlombok:lombok
+  org.slf4j:slf4j-api
+
+Eclipse Public License 2.0:
+  org.junit.jupiter:*, org.junit.platform:*   (test scope only)
+
+GNU General Public License v2 with the Classpath Exception:
+  org.openjfx:javafx-*:25.0.2
+
+  Used only by `jt-platform/jt-terminal-simulator`, a standalone desktop
+  testing tool that is neither required by nor bundled into the gateway,
+  console or frontend artifacts. The Classpath Exception permits linking
+  independent modules without extending the GPL to them. Anyone
+  redistributing that module in binary form should review the OpenJFX terms.
+
+================================================================================
+3. Third-party services (not open source)
+================================================================================
+
+AMap (Gaode) JavaScript API 2.0 — https://lbs.amap.com
+  Loaded at runtime from https://webapi.amap.com by
+  jt-console-ui/src/hooks/use-amap.ts. No AMap code is bundled in this
+  repository. Use of the API is governed by AMap's commercial terms of
+  service and requires your own API key.

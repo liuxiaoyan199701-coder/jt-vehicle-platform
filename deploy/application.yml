@@ -1,0 +1,77 @@
+# External jt-platform configuration for a single-host deployment.
+# All host-specific values are supplied by /etc/jt-platform/runtime.env.
+server:
+  address: 127.0.0.1
+  port: 8100
+
+management:
+  server:
+    address: 127.0.0.1
+    port: 8109
+
+jt:
+  runtime:
+    role: all
+
+  media:
+    instance-id: media-1
+    server:
+      # Ingest ports 7811-7814 must accept device traffic. UFW keeps the
+      # management and browser ports on the same Netty bind private.
+      bind-address: 0.0.0.0
+    reachable-address:
+      source: static
+      value: "${JT_MEDIA_REACHABLE_ADDRESS}"
+    capacity:
+      max-streams: ${JT_MEDIA_MAX_STREAMS}
+      max-outbound-bits-per-second: ${JT_MEDIA_MAX_OUTBOUND_BPS}
+    recording:
+      realtime-enabled: false
+      playback-enabled: false
+      root: /var/lib/jt-platform/recordings
+      export-root: /var/lib/jt-platform/recording-exports
+      segment-duration: 30s
+      retention-days: 7
+      max-bytes: 21474836480
+      retention-check-interval: 5m
+
+  signal:
+    instance-id: signal-1
+    public-tcp-port: 7100
+    public-udp-port: 7101
+    storage:
+      multimedia-path: /var/lib/jt-platform/data/signal/multimedia
+      alarm-attachment-path: /var/lib/jt-platform/data/signal/alarm-attachments
+
+  registry:
+    type: memory
+
+  delivery:
+    channels: [api]
+    api:
+      endpoint: http://127.0.0.1:8300/ingest/jt-events
+      connect-timeout: 3s
+      send-timeout: 10s
+      headers:
+        X-JT-Ingest-Key: "${JT_PLATFORM_INGEST_KEY}"
+      overflow-directory: /var/lib/jt-platform/data/delivery-overflow/api
+
+  auth:
+    device:
+      mode: "${JT_DEVICE_AUTH_MODE}"
+      local-list: "${JT_DEVICE_LOCAL_LIST}"
+    stream:
+      mode: "${JT_STREAM_AUTH_MODE}"
+
+logging:
+  level:
+    root: INFO
+    io.github.jtplatform: INFO
+  file:
+    name: /var/lib/jt-platform/logs/jt-platform.log
+  logback:
+    rollingpolicy:
+      max-file-size: 50MB
+      max-history: 7
+      total-size-cap: 500MB
+

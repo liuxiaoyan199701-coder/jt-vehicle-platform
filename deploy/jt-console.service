@@ -1,0 +1,51 @@
+[Unit]
+Description=JT Console (车联网平台业务后端)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=jt-console
+Group=jt-console
+WorkingDirectory=/var/lib/jt-console
+
+# 网关已占 1G 堆上限，机器共 3.5G，这里给 512M 足够：
+# 业务后端只做 JSON 解析和 SQLite 写入，没有媒体缓冲那种大块内存需求。
+Environment=JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+EnvironmentFile=/etc/jt-console/jt-console.env
+EnvironmentFile=/etc/jt-console/runtime.env
+
+ExecStart=/usr/local/libexec/jt-java \
+  -Xms128m \
+  -Xmx512m \
+  -XX:MaxDirectMemorySize=128m \
+  -XX:MaxMetaspaceSize=192m \
+  -XX:+UseSerialGC \
+  -XX:+ExitOnOutOfMemoryError \
+  -Djava.net.preferIPv4Stack=true \
+  -jar /opt/jt-console/current/app.jar \
+  --spring.config.additional-location=file:/etc/jt-console/jt-console-application.yml
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+SuccessExitStatus=143
+
+LimitNOFILE=65536
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/jt-console
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+PrivateDevices=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,501 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>部标 808/1078 网关 · 架构图</title>
+<style>
+  :root {
+    --bg: #f2f5f8;
+    --surface: #ffffff;
+    --surface2: #f6f8fa;
+    --ink: #1b242e;
+    --muted: #5a6b7b;
+    --line: #d6dde4;
+    --sig: #2e63c9;
+    --med: #c4691b;
+    --sig-tint: color-mix(in srgb, #2e63c9 6%, #ffffff);
+    --med-tint: color-mix(in srgb, #c4691b 7%, #ffffff);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12171d;
+      --surface: #1a222a;
+      --surface2: #212b35;
+      --ink: #e3eaf1;
+      --muted: #90a2b3;
+      --line: #2c3946;
+      --sig: #6fa0f2;
+      --med: #e9944c;
+      --sig-tint: color-mix(in srgb, #6fa0f2 10%, #1a222a);
+      --med-tint: color-mix(in srgb, #e9944c 10%, #1a222a);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12171d;
+    --surface: #1a222a;
+    --surface2: #212b35;
+    --ink: #e3eaf1;
+    --muted: #90a2b3;
+    --line: #2c3946;
+    --sig: #6fa0f2;
+    --med: #e9944c;
+    --sig-tint: color-mix(in srgb, #6fa0f2 10%, #1a222a);
+    --med-tint: color-mix(in srgb, #e9944c 10%, #1a222a);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+      "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    line-height: 1.65;
+  }
+  .mono {
+    font-family: ui-monospace, "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 48px 24px 72px; }
+
+  /* ---- header ---- */
+  header { margin-bottom: 36px; }
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(26px, 4vw, 36px);
+    line-height: 1.25;
+    margin: 0 0 6px;
+    font-weight: 700;
+    letter-spacing: .01em;
+    text-wrap: balance;
+  }
+  .subtitle { color: var(--muted); margin: 0 0 20px; max-width: 46em; }
+  .dual-rule {
+    display: flex; height: 4px; width: 220px; border-radius: 2px; overflow: hidden;
+  }
+  .dual-rule i { flex: 1; }
+  .dual-rule i:first-child { background: var(--sig); }
+  .dual-rule i:last-child { background: var(--med); }
+
+  /* ---- legend ---- */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px 26px;
+    margin: 28px 0 30px; font-size: 13px; color: var(--muted);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .swatch { display: inline-block; width: 34px; height: 0; }
+  .sw-sig  { border-top: 2.5px solid var(--sig); }
+  .sw-med  { border-top: 4px solid var(--med); }
+  .sw-opt  { border-top: 2px dashed var(--muted); }
+  .sw-dot  { border-top: 2px dotted var(--muted); }
+
+  /* ---- figure cards ---- */
+  figure.card {
+    margin: 0 0 34px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 26px 26px 18px;
+  }
+  .fig-head { margin: 0 0 4px; font-size: 17px; font-weight: 700; }
+  .fig-head .no {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px; color: var(--muted); margin-right: 10px; letter-spacing: .08em;
+  }
+  .fig-scroll { overflow-x: auto; padding: 6px 0 2px; }
+  .fig-scroll svg { display: block; width: 100%; height: auto; min-width: 840px; }
+  figcaption { font-size: 13px; color: var(--muted); margin-top: 10px; max-width: 62em; }
+
+  /* ---- svg shared ---- */
+  svg text { font-family: inherit; }
+  .nd   { fill: var(--surface2); stroke: var(--line); }
+  .nd-sig { fill: var(--sig-tint); stroke: color-mix(in srgb, var(--sig) 38%, var(--line)); }
+  .nd-med { fill: var(--med-tint); stroke: color-mix(in srgb, var(--med) 38%, var(--line)); }
+  .nd-opt { fill: var(--surface2); stroke: var(--muted); stroke-dasharray: 5 4; }
+  .nt   { fill: var(--ink); font-size: 14px; font-weight: 600; }
+  .nt2  { fill: var(--ink); font-size: 13px; font-weight: 600; }
+  .ns   { fill: var(--muted); font-size: 10.5px; }
+  .lb   { fill: var(--ink); font-size: 11.5px; }
+  .lbm  { fill: var(--muted); font-size: 10.5px; }
+  .lb-sig { fill: var(--sig); font-size: 11.5px; font-weight: 600; }
+  .lb-med { fill: var(--med); font-size: 11.5px; font-weight: 600; }
+  .e-sig { stroke: var(--sig); stroke-width: 2; fill: none; }
+  .e-sig-r { stroke: var(--sig); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+  .e-med { stroke: var(--med); stroke-width: 3; fill: none; }
+  .e-med-r { stroke: var(--med); stroke-width: 1.4; stroke-dasharray: 5 4; fill: none; }
+  .e-opt { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 6 5; fill: none; }
+  .e-dot { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 2 4; fill: none; }
+  .life  { stroke: var(--line); stroke-width: 1.2; stroke-dasharray: 4 5; }
+  .band-sig { fill: color-mix(in srgb, var(--sig) 5%, transparent); }
+  .band-med { fill: color-mix(in srgb, var(--med) 5%, transparent); }
+  .mk-sig { fill: var(--sig); }
+  .mk-med { fill: var(--med); }
+  .mk-mut { fill: var(--muted); }
+
+  /* ---- port tables ---- */
+  h2 { font-size: 20px; margin: 44px 0 6px; }
+  .h2-sub { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
+  .ports { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 860px) { .ports { grid-template-columns: 1fr; } }
+  .port-card {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px 20px 12px;
+  }
+  .port-card h3 { margin: 0 0 2px; font-size: 14.5px; }
+  .port-card .pc-sub { color: var(--muted); font-size: 12px; margin: 0 0 10px; }
+  .port-card table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .port-card td { padding: 5px 0; border-top: 1px solid var(--line); vertical-align: top; }
+  .port-card td.p {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; padding-right: 14px; color: var(--ink); font-weight: 600;
+  }
+  .port-card td.d { color: var(--muted); }
+  .tag-sig, .tag-med {
+    display: inline-block; font-size: 11px; border-radius: 4px;
+    padding: 0 6px; margin-left: 6px; font-weight: 600;
+  }
+  .tag-sig { color: var(--sig); background: color-mix(in srgb, var(--sig) 12%, transparent); }
+  .tag-med { color: var(--med); background: color-mix(in srgb, var(--med) 12%, transparent); }
+
+  footer {
+    margin-top: 48px; padding-top: 18px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12.5px;
+  }
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">openspec / bootstrap-jt-platform / design.md</p>
+  <h1>部标 808/1078 协议接入网关 · 架构图</h1>
+  <p class="subtitle">
+    定位是协议接入网关,不是业务系统:对下承接 JT/T&nbsp;808/1078 终端,对上以
+    <strong>裸流 + WebCodecs</strong> 服务播放端,以 API 与 MQ 把 73 类协议消息投递给业务系统。
+    默认单进程、零外部依赖启动;Redis、RocketMQ、JWT 鉴权与业务系统对接均为可选增强。
+  </p>
+  <div class="dual-rule" aria-hidden="true"><i></i><i></i></div>
+</header>
+
+<div class="legend" role="list" aria-label="图例">
+  <span><i class="swatch sw-sig"></i>信令 / 控制流(信令面)</span>
+  <span><i class="swatch sw-med"></i>音视频码流(媒体面)</span>
+  <span><i class="swatch sw-opt"></i>可选能力,默认降级为零依赖实现</span>
+  <span><i class="swatch sw-dot"></i>共享状态读写(默认内存,可选 Redis)</span>
+</div>
+
+<!-- ================= 图 1 系统拓扑 ================= -->
+<figure class="card">
+  <p class="fig-head"><span class="no">FIG.01</span>系统拓扑与数据流</p>
+  <div class="fig-scroll">
+  <svg viewBox="0 0 980 715" role="img"
+       aria-label="系统拓扑:终端经负载均衡接入 jt-signal,1078 码流直连 jt-media;客户端先向 jt-api 开流再直连媒体节点拉流;消息经投递通道送达业务系统;共享状态默认内存可选 Redis">
+    <defs>
+      <marker id="a-sig" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-sig"/>
+      </marker>
+      <marker id="a-med" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-med"/>
+      </marker>
+      <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-mut"/>
+      </marker>
+    </defs>
+
+    <!-- edges (drawn first, boxes cover the middles) -->
+    <!-- ① SDK -> api REST -->
+    <line x1="740" y1="74" x2="622" y2="74" class="e-sig" marker-end="url(#a-sig)"/>
+    <text x="680" y="60" text-anchor="middle" class="lb-sig">① REST 开流 · :8100 · JWT</text>
+    <line x1="620" y1="106" x2="738" y2="106" class="e-sig-r" marker-end="url(#a-sig)"/>
+    <text x="680" y="126" text-anchor="middle" class="lbm">wsUrl + 一次性 token</text>
+
+    <!-- JWKS biz -> api -->
+    <line x1="240" y1="74" x2="398" y2="74" class="e-opt" marker-end="url(#a-mut)"/>
+    <text x="320" y="60" text-anchor="middle" class="lbm">JWKS 公钥(可选)</text>
+
+    <!-- api -> signal StreamCommandPort -->
+    <line x1="490" y1="136" x2="490" y2="318" class="e-sig" marker-end="url(#a-sig)"/>
+    <text x="502" y="212" class="lb">StreamCommandPort</text>
+    <text x="502" y="230" class="lbm">standalone 直调 / cluster HTTP</text>
+
+    <!-- signal <-> biz : delivery + device query -->
+    <polyline points="140,138 140,200 440,200 440,318" class="e-opt"
+              marker-start="url(#a-mut)" marker-end="url(#a-mut)"/>
+    <text x="290" y="178" text-anchor="middle" class="lb">↑ jt-delivery 投递:MQ / API(可选)</text>
+    <text x="290" y="196" text-anchor="middle" class="lbm">↓ 设备信息查询:remote-api 模式(可选)</text>
+
+    <!-- terminal <-> LB <-> signal -->
+    <line x1="202" y1="372" x2="398" y2="372" class="e-sig"
+          marker-start="url(#a-sig)" marker-end="url(#a-sig)"/>
+    <text x="300" y="334" text-anchor="middle" class="lb-sig">808 接入 · :7100/7101</text>
+    <text x="300" y="430" text-anchor="middle" class="lbm">9101 / 9102 / 9201 信令下发</text>
+
+    <!-- terminal -> media RTP -->
+    <polyline points="110,424 110,580 676,580" class="e-med" marker-end="url(#a-med)"/>
+    <text x="400" y="566" text-anchor="middle" class="lb-med">1078 RTP 码流直连推流 · :78N1–78N4 · 不经 LB</text>
+
+    <!-- SDK -> media WS -->
+    <line x1="840" y1="136" x2="840" y2="456" class="e-med" marker-end="url(#a-med)"/>
+    <text x="828" y="298" text-anchor="end" class="lb-med">② WS 拉流</text>
+    <text x="828" y="316" text-anchor="end" class="lbm">:78N5 · 携一次性 token</text>
+
+    <!-- shared-state dotted -->
+    <line x1="510" y1="424" x2="510" y2="648" class="e-dot"/>
+    <line x1="740" y1="600" x2="740" y2="648" class="e-dot"/>
+    <text x="752" y="632" class="lbm">实例注册 · 心跳</text>
+
+    <!-- nodes -->
+    <rect x="40" y="40" width="200" height="96" rx="9" class="nd-opt"/>
+    <text x="140" y="70" text-anchor="middle" class="nt">业务系统(可选)</text>
+    <text x="140" y="92" text-anchor="middle" class="ns">消费投递 · 提供设备信息</text>
+    <text x="140" y="108" text-anchor="middle" class="ns">为登录用户签发 JWT</text>
+
+    <rect x="400" y="40" width="220" height="96" rx="9" class="nd-sig"/>
+    <text x="510" y="70" text-anchor="middle" class="nt">jt-api</text>
+    <text x="510" y="92" text-anchor="middle" class="ns">REST 网关 · 调度与流复用</text>
+    <text x="510" y="108" text-anchor="middle" class="ns">JWT 验签 · token 签发</text>
+
+    <rect x="740" y="40" width="200" height="96" rx="9" class="nd"/>
+    <text x="840" y="70" text-anchor="middle" class="nt">Web / App</text>
+    <text x="840" y="92" text-anchor="middle" class="ns">@jt/player SDK</text>
+    <text x="840" y="108" text-anchor="middle" class="ns">一次 play() 封装两步订阅</text>
+
+    <rect x="40" y="320" width="160" height="104" rx="9" class="nd"/>
+    <text x="120" y="356" text-anchor="middle" class="nt">终端</text>
+    <text x="120" y="378" text-anchor="middle" class="ns">808 / 1078 车机</text>
+    <text x="120" y="394" text-anchor="middle" class="ns">同一路流只推一份</text>
+
+    <rect x="250" y="342" width="70" height="60" rx="9" class="nd"/>
+    <text x="285" y="378" text-anchor="middle" class="nt2">LB</text>
+
+    <rect x="400" y="320" width="220" height="104" rx="9" class="nd-sig"/>
+    <text x="510" y="350" text-anchor="middle" class="nt">jt-signal</text>
+    <text x="510" y="372" text-anchor="middle" class="ns">808 接入 · 设备鉴权与会话</text>
+    <text x="510" y="388" text-anchor="middle" class="ns">信令下发 · 73 类消息解析</text>
+    <text x="510" y="404" text-anchor="middle" class="ns">解析结果只投递,不入库</text>
+
+    <rect x="680" y="460" width="260" height="140" rx="9" class="nd-med"/>
+    <text x="810" y="490" text-anchor="middle" class="nt">jt-media</text>
+    <text x="810" y="514" text-anchor="middle" class="ns">1078 RTP 接入 · 解包重组 · 帧组装</text>
+    <text x="810" y="530" text-anchor="middle" class="ns">裸流一对多分发 · 双向对讲(独占/混音)</text>
+    <text x="810" y="546" text-anchor="middle" class="ns">Sink:WebSocketRaw / Record / FLV(预留)</text>
+    <text x="810" y="570" text-anchor="middle" class="ns">仅校验 token,不接业务系统</text>
+
+    <rect x="300" y="648" width="460" height="52" rx="9" class="nd-opt"/>
+    <text x="530" y="670" text-anchor="middle" class="nt2">共享状态 · 默认内存实现,可选 Redis</text>
+    <text x="530" y="688" text-anchor="middle" class="ns">流注册表 / 实例注册 / 设备路由 / 一次性 token</text>
+  </svg>
+  </div>
+  <figcaption>
+    两条硬约束直接画在图上:设备与浏览器都<strong>直连媒体节点真实 IP</strong>(琥珀色线,不经 LB),
+    经过 LB 的只有 808 信令与 REST 入口(蓝线)。jt-api 经流注册表完成调度与流复用;
+    录像元数据与多媒体文件元数据同样经 jt-delivery 投递。虚线能力全部可降级——
+    默认配置下不需要业务系统、Redis 与 MQ 即可跑通「接入 → 出画面 → 对讲」闭环(设计决策 D0/D3/D5/D12)。
+  </figcaption>
+</figure>
+
+<!-- ================= 图 2 两步式订阅时序 ================= -->
+<figure class="card">
+  <p class="fig-head"><span class="no">FIG.02</span>两步式订阅:先开流拿地址,再直连节点</p>
+  <div class="fig-scroll">
+  <svg viewBox="0 0 980 520" role="img"
+       aria-label="两步式订阅时序:客户端先向 jt-api 发起 REST 开流,完成 JWT 验签、注册表登记与 9101 下发,拿到节点地址与一次性 token;再直连媒体节点建立 WebSocket,经状态消息等待首包后接收裸流">
+    <defs>
+      <marker id="b-sig" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-sig"/>
+      </marker>
+      <marker id="b-med" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-med"/>
+      </marker>
+      <marker id="b-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-mut"/>
+      </marker>
+    </defs>
+
+    <!-- phase bands -->
+    <rect x="40" y="76" width="900" height="196" rx="8" class="band-sig"/>
+    <text x="928" y="96" text-anchor="end" class="lb-sig">第一步 · REST 开流</text>
+    <rect x="40" y="280" width="900" height="176" rx="8" class="band-med"/>
+    <text x="928" y="300" text-anchor="end" class="lb-med">第二步 · WS 拉流</text>
+
+    <!-- lifelines -->
+    <line x1="80"  y1="56" x2="80"  y2="500" class="life"/>
+    <line x1="250" y1="56" x2="250" y2="500" class="life"/>
+    <line x1="420" y1="56" x2="420" y2="500" class="life"/>
+    <line x1="580" y1="56" x2="580" y2="500" class="life"/>
+    <line x1="730" y1="56" x2="730" y2="500" class="life"/>
+    <line x1="890" y1="56" x2="890" y2="500" class="life"/>
+
+    <!-- headers -->
+    <g>
+      <rect x="25"  y="20" width="110" height="32" rx="7" class="nd"/>
+      <text x="80"  y="41" text-anchor="middle" class="nt2">Web / SDK</text>
+      <rect x="195" y="20" width="110" height="32" rx="7" class="nd-sig"/>
+      <text x="250" y="41" text-anchor="middle" class="nt2">jt-api</text>
+      <rect x="365" y="20" width="110" height="32" rx="7" class="nd"/>
+      <text x="420" y="41" text-anchor="middle" class="nt2">流注册表</text>
+      <rect x="525" y="20" width="110" height="32" rx="7" class="nd-sig"/>
+      <text x="580" y="41" text-anchor="middle" class="nt2">jt-signal</text>
+      <rect x="675" y="20" width="110" height="32" rx="7" class="nd"/>
+      <text x="730" y="41" text-anchor="middle" class="nt2">终端</text>
+      <rect x="835" y="20" width="110" height="32" rx="7" class="nd-med"/>
+      <text x="890" y="41" text-anchor="middle" class="nt2">jt-media</text>
+    </g>
+
+    <!-- step 1 -->
+    <line x1="80" y1="104" x2="248" y2="104" class="e-sig" marker-end="url(#b-sig)"/>
+    <text x="165" y="97" text-anchor="middle" class="lb">POST /stream/open(JWT)</text>
+
+    <line x1="250" y1="140" x2="418" y2="140" class="e-sig" marker-end="url(#b-sig)"/>
+    <text x="335" y="133" text-anchor="middle" class="lb">查 StreamKey · 原子登记 PENDING</text>
+    <text x="335" y="160" text-anchor="middle" class="lbm">命中 LIVE / PENDING → 不重复下发 9101,直接返回既有节点</text>
+
+    <line x1="250" y1="192" x2="578" y2="192" class="e-sig" marker-end="url(#b-sig)"/>
+    <text x="415" y="185" text-anchor="middle" class="lb">StreamCommandPort:openLive(目标节点 IP:端口)</text>
+
+    <line x1="580" y1="224" x2="728" y2="224" class="e-sig" marker-end="url(#b-sig)"/>
+    <text x="655" y="217" text-anchor="middle" class="lb">下发 9101(节点真实地址)</text>
+
+    <line x1="250" y1="256" x2="82" y2="256" class="e-sig-r" marker-end="url(#b-sig)"/>
+    <text x="165" y="249" text-anchor="middle" class="lb">wsUrl + token · state=waking</text>
+
+    <!-- step 2 -->
+    <line x1="80" y1="308" x2="888" y2="308" class="e-med" marker-end="url(#b-med)"/>
+    <text x="485" y="301" text-anchor="middle" class="lb">WS 直连 :78N5 · 携一次性 token</text>
+    <text x="930" y="330" text-anchor="end" class="lbm">校验 token:绑流 · 绑节点 · 短时效 · 一次性</text>
+
+    <line x1="890" y1="344" x2="82" y2="344" class="e-med-r" marker-end="url(#b-med)"/>
+    <text x="485" y="360" text-anchor="middle" class="lb">{ state: "waking" } — 等待设备响应</text>
+
+    <line x1="730" y1="384" x2="888" y2="384" class="e-med" marker-end="url(#b-med)"/>
+    <text x="809" y="377" text-anchor="middle" class="lb">RTP 首包 :78N1</text>
+
+    <line x1="890" y1="410" x2="422" y2="410" class="e-opt" marker-end="url(#b-mut)"/>
+    <text x="655" y="403" text-anchor="middle" class="lbm">首包上报:PENDING → LIVE · 校验流归属为本节点</text>
+
+    <line x1="890" y1="440" x2="82" y2="440" class="e-med" marker-end="url(#b-med)"/>
+    <text x="485" y="433" text-anchor="middle" class="lb">{ state: "live" } + 二进制裸流</text>
+
+    <text x="490" y="486" text-anchor="middle" class="lbm">后续订阅者开流即命中 LIVE:直接返回既有节点与新 token,设备始终只推一份;PENDING 超时置 DEAD,返回 DEVICE_NO_RESPONSE</text>
+  </svg>
+  </div>
+  <figcaption>
+    两步由 SDK 内部封装,调用方仍是一次 <span class="mono">play()</span>。
+    鉴权按职责分层:业务系统签发的 JWT 只在 jt-api 验签(不查数据权限、无外部调用),
+    媒体节点只认 jt-api 签发的一次性 token——因此媒体节点不接业务系统、不持有 JWT 公钥。
+    调度集中在 API 层,可按节点实时带宽动态选节点(设计决策 D10/D11/D12)。
+  </figcaption>
+</figure>
+
+<!-- ================= 图 3 模块分层 ================= -->
+<figure class="card">
+  <p class="fig-head"><span class="no">FIG.03</span>模块划分与依赖方向</p>
+  <div class="fig-scroll">
+  <svg viewBox="0 0 980 372" role="img"
+       aria-label="模块分层:jt-boot-all 在顶层组装;jt-signal、jt-media、jt-api 三者互不依赖;下层为 jt-delivery 投递层;最底层是 jt-common 接口与 jt-protocol 编解码">
+    <defs>
+      <marker id="c-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0L10 5L0 10z" class="mk-mut"/>
+      </marker>
+    </defs>
+
+    <!-- dependency direction -->
+    <line x1="46" y1="46" x2="46" y2="330" class="e-opt" marker-end="url(#c-mut)"/>
+    <text x="46" y="28" text-anchor="middle" class="lbm">依赖方向</text>
+
+    <!-- L1 -->
+    <rect x="80" y="30" width="860" height="54" rx="9" class="nd"/>
+    <text x="104" y="63" class="nt2">jt-boot-all</text>
+    <text x="916" y="63" text-anchor="end" class="ns">all-in-one 启动器 · standalone profile 单进程组装,cluster profile 分进程各自启动</text>
+
+    <!-- L2 -->
+    <rect x="80" y="108" width="255" height="70" rx="9" class="nd-sig"/>
+    <text x="207" y="136" text-anchor="middle" class="nt2">jt-signal</text>
+    <text x="207" y="158" text-anchor="middle" class="ns">808 接入 · 会话 · 信令 · 解析</text>
+
+    <rect x="390" y="108" width="255" height="70" rx="9" class="nd-med"/>
+    <text x="517" y="136" text-anchor="middle" class="nt2">jt-media</text>
+    <text x="517" y="158" text-anchor="middle" class="ns">1078 接入 · 分发 · 对讲 · 录像</text>
+
+    <rect x="700" y="108" width="240" height="70" rx="9" class="nd-sig"/>
+    <text x="820" y="136" text-anchor="middle" class="nt2">jt-api</text>
+    <text x="820" y="158" text-anchor="middle" class="ns">REST/WS 网关 · 调度 · token</text>
+
+    <text x="362" y="148" text-anchor="middle" class="lbm">✕</text>
+    <text x="672" y="148" text-anchor="middle" class="lbm">✕</text>
+
+    <!-- L3 -->
+    <rect x="80" y="202" width="565" height="54" rx="9" class="nd"/>
+    <text x="104" y="235" class="nt2">jt-delivery</text>
+    <text x="620" y="235" text-anchor="end" class="ns">统一消息信封 · MQ / API 双通道 · 可靠性分级 · 背压与重试</text>
+    <text x="662" y="235" class="lbm">仅 jt-signal / jt-media 使用,jt-api 不经投递层</text>
+
+    <!-- L4 -->
+    <rect x="80" y="280" width="420" height="62" rx="9" class="nd"/>
+    <text x="104" y="306" class="nt2">jt-common</text>
+    <text x="104" y="326" class="ns">领域模型 + StreamCommandPort / StreamRegistry / DeviceRouter 接口与内存实现</text>
+
+    <rect x="520" y="280" width="420" height="62" rx="9" class="nd"/>
+    <text x="544" y="306" class="nt2">jt-protocol</text>
+    <text x="544" y="326" class="ns">808 / 1078 编解码 · 73 个消息类 · 注解式编解码 · 不依赖 Spring</text>
+  </svg>
+  </div>
+  <figcaption>
+    上层依赖下层,同层的 jt-signal / jt-media / jt-api <strong>互不直接依赖</strong>(✕),
+    跨面调用一律经 jt-common 中的接口:profile 为 standalone 时注入进程内直调实现,
+    cluster 时注入内网 HTTP 实现——同一份业务代码,部署形态由配置切换(设计决策 D1)。
+  </figcaption>
+</figure>
+
+<!-- ================= 端口速查 ================= -->
+<h2>端口速查</h2>
+<p class="h2-sub">
+  按「实例分组连续段」编排(设计决策 D2):实例的全部端口落在一个连续十位段内,安全组一条区间规则即可。
+  N 为实例序号 1–9,<strong>只需同机唯一</strong>,跨机寻址以实例注册上报为准,不限制集群规模。
+</p>
+<div class="ports">
+  <div class="port-card">
+    <h3>对外统一入口<span class="tag-sig">经 LB / VIP</span></h3>
+    <p class="pc-sub">全局仅此三个端口经过负载均衡</p>
+    <table>
+      <tr><td class="p">7100</td><td class="d">TCP · JT/T 808 终端接入</td></tr>
+      <tr><td class="p">7101</td><td class="d">UDP · JT/T 808 终端接入</td></tr>
+      <tr><td class="p">8100</td><td class="d">HTTP · jt-api REST(Web/App)</td></tr>
+    </table>
+  </div>
+  <div class="port-card">
+    <h3>媒体实例 N<span class="tag-med">直连真实 IP</span></h3>
+    <p class="pc-sub">实例 1 = 7810–7816 · 设备与浏览器直连,不经 LB</p>
+    <table>
+      <tr><td class="p">78N0</td><td class="d">HTTP · 管理 / 健康检查(仅内网)</td></tr>
+      <tr><td class="p">78N1</td><td class="d">TCP · 1078 主码流接入</td></tr>
+      <tr><td class="p">78N2</td><td class="d">TCP · 1078 子码流接入</td></tr>
+      <tr><td class="p">78N3</td><td class="d">TCP · 1078 历史回放接入</td></tr>
+      <tr><td class="p">78N4</td><td class="d">TCP · 1078 语音对讲接入</td></tr>
+      <tr><td class="p">78N5</td><td class="d">WS · 裸流 WebSocket 订阅</td></tr>
+      <tr><td class="p">78N6</td><td class="d">HTTP · HTTP-FLV 旁路(预留)</td></tr>
+    </table>
+  </div>
+  <div class="port-card">
+    <h3>信令实例 N<span class="tag-sig">内网</span></h3>
+    <p class="pc-sub">实例 1 = 7110–7113 · 7100/7101 的 LB 后端</p>
+    <table>
+      <tr><td class="p">71N0</td><td class="d">HTTP · 管理 / 健康检查</td></tr>
+      <tr><td class="p">71N1</td><td class="d">TCP · 808 接入后端</td></tr>
+      <tr><td class="p">71N2</td><td class="d">UDP · 808 接入后端</td></tr>
+      <tr><td class="p">71N3</td><td class="d">HTTP · 实例间指令定向转发</td></tr>
+      <tr><td class="p">8109</td><td class="d">HTTP · API 实例管理端口</td></tr>
+    </table>
+  </div>
+</div>
+
+<footer>
+  依据 <span class="mono">openspec/changes/bootstrap-jt-platform/design.md</span>(决策 D0–D13)绘制 ·
+  信令自 yezhihao/jt808-server(Apache-2.0),媒体自 jt1078service(MIT) ·
+  默认配置零外部依赖启动,四项企业能力(设备鉴权 / 拉流鉴权 / 消息投递 / 流注册表)均可降级。
+</footer>
+</div>

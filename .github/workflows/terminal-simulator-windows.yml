@@ -1,0 +1,60 @@
+name: Terminal Simulator Windows
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          architecture: x64
+          cache: maven
+          cache-dependency-path: |
+            jt-platform/pom.xml
+            jt-platform/jt-protocol/pom.xml
+            jt-platform/jt-terminal-simulator/pom.xml
+      - name: Build and smoke-test portable simulator
+        shell: pwsh
+        working-directory: jt-platform/jt-terminal-simulator
+        run: ./package-windows.ps1 -JdkHome $env:JAVA_HOME
+      - name: Verify portable layout
+        shell: pwsh
+        run: |
+          $root = "jt-platform/jt-terminal-simulator/target/dist/JT Terminal Simulator"
+          $zip = "jt-platform/jt-terminal-simulator/target/dist/jt-terminal-simulator-windows-x64.zip"
+          if (-not (Test-Path "$root/JT Terminal Simulator.exe")) { throw "launcher missing" }
+          if (-not (Test-Path "$root/runtime/bin/java.dll")) { throw "runtime missing" }
+          if (Get-ChildItem $root -Recurse -Filter ffmpeg.exe) { throw "ffmpeg must remain external" }
+          if (-not (Test-Path $zip) -or (Get-Item $zip).Length -eq 0) { throw "ZIP missing" }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
+            if (-not ($entries | Where-Object { $_.EndsWith('JT Terminal Simulator.exe') })) {
+              throw "ZIP launcher missing"
+            }
+            if (-not ($entries | Where-Object { $_.EndsWith('runtime/bin/java.dll') })) {
+              throw "ZIP runtime missing"
+            }
+            if ($entries | Where-Object { $_.EndsWith('/ffmpeg.exe') -or $_ -eq 'ffmpeg.exe' }) {
+              throw "ffmpeg must remain external to ZIP"
+            }
+          } finally {
+            $archive.Dispose()
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jt-terminal-simulator-windows-x64
+          path: jt-platform/jt-terminal-simulator/target/dist/jt-terminal-simulator-windows-x64.zip
+          if-no-files-found: error

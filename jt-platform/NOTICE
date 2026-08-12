@@ -1,0 +1,12 @@
+JT Platform
+
+This distribution includes code derived from:
+
+* yezhihao/jt808-server (https://github.com/yezhihao/jt808-server),
+  licensed under the Apache License, Version 2.0. Copyright remains with
+  yezhihao and the upstream contributors.
+* jt1078service / jt1078-stream-server
+  (https://gitee.com/lxygit0731/jt1078-stream-server), licensed under the MIT
+  License. Copyright remains with the upstream contributors.
+
+The upstream source history and copyright notices remain authoritative.

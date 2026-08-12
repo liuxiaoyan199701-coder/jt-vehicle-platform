@@ -1,0 +1,6 @@
+jt:
+  signal:
+    enabled: false
+  media:
+    server:
+      enabled: true

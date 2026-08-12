@@ -1,0 +1,12 @@
+# External jt-console configuration for a single-host deployment.
+server:
+  address: 127.0.0.1
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: "127.0.0.1/32, ::1/128"
+
+jt:
+  console:
+    media:
+      public-websocket-base-url: "wss://${JT_PUBLIC_HOST}/media-ws"

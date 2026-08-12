@@ -1,0 +1,13 @@
+server:
+  port: 7113
+
+management:
+  server:
+    port: 7110
+
+jt:
+  signal:
+    enabled: true
+  media:
+    server:
+      enabled: false

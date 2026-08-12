@@ -1,0 +1,8 @@
+target/
+*.log
+logs/
+data/
+recordings/
+uploads/
+.idea/
+*.iml

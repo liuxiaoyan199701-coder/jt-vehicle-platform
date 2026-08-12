@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+: "${JDK_HOME:?JDK_HOME is required}"
+case "$JDK_HOME" in
+  /*) ;;
+  *) printf 'JDK_HOME must be an absolute path\n' >&2; exit 1 ;;
+esac
+if [ ! -x "${JDK_HOME}/bin/java" ]; then
+  printf 'configured JDK is not executable: %s\n' "$JDK_HOME" >&2
+  exit 1
+fi
+exec "${JDK_HOME}/bin/java" "$@"
+

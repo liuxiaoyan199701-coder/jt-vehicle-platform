@@ -1,0 +1,74 @@
+server:
+  port: 8300
+  shutdown: graceful
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: "127.0.0.1/32, ::1/128"
+
+spring:
+  application:
+    name: jt-console
+
+  datasource:
+    # WAL 让读写可以并发；busy_timeout 避免瞬时写锁冲突直接抛错。
+    url: jdbc:sqlite:${JT_CONSOLE_DB:data/jt-console.db}?journal_mode=WAL&busy_timeout=5000&synchronous=NORMAL
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      # SQLite 同一时刻只允许一个写事务，连接池开大只会加剧锁竞争。
+      maximum-pool-size: 4
+      pool-name: jt-console-pool
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+
+jt:
+  console:
+    # jt-platform 网关地址。开流请求由后端代理转发，前端不直连网关。
+    gateway:
+      base-url: ${JT_GATEWAY_BASE_URL:http://127.0.0.1:8100}
+      connect-timeout: 3s
+      request-timeout: 8s
+    # 超过该时长没有收到任何消息即判定离线
+    offline-timeout: 5m
+    # 幂等表保留时长，超过即清理
+    event-retention: 24h
+    security:
+      deployment-mode: ${JT_CONSOLE_DEPLOYMENT_MODE:false}
+      admin-username: ${JT_CONSOLE_ADMIN_USERNAME:admin}
+      # 部署模式必须从受限环境文件提供 BCrypt 哈希；本地留空时生成一次性密码。
+      admin-password-hash: ${JT_CONSOLE_ADMIN_PASSWORD_HASH:}
+      # 与管理员会话完全独立；本地留空时生成临时高熵投递密钥。
+      ingest-key: ${JT_CONSOLE_INGEST_KEY:}
+      access-token-ttl: ${JT_CONSOLE_ACCESS_TOKEN_TTL:15m}
+      refresh-token-ttl: ${JT_CONSOLE_REFRESH_TOKEN_TTL:7d}
+      allowed-origins: ${JT_CONSOLE_ALLOWED_ORIGINS:http://localhost:9527,http://127.0.0.1:9527}
+      rate-limit:
+        max-failures: ${JT_CONSOLE_AUTH_MAX_FAILURES:5}
+        window: ${JT_CONSOLE_AUTH_FAILURE_WINDOW:1m}
+        block-duration: ${JT_CONSOLE_AUTH_BLOCK_DURATION:5m}
+        max-entries: ${JT_CONSOLE_AUTH_MAX_ENTRIES:10000}
+    broadcast:
+      dispatch-queue-capacity: ${JT_CONSOLE_BROADCAST_QUEUE_CAPACITY:1024}
+      session-queue-capacity: ${JT_CONSOLE_SESSION_QUEUE_CAPACITY:64}
+      worker-threads: ${JT_CONSOLE_BROADCAST_WORKER_THREADS:2}
+      send-timeout: ${JT_CONSOLE_WS_SEND_TIMEOUT:5s}
+    operations:
+      # 运营自然日、七日趋势和位置日汇总不依赖服务器默认时区。
+      zone-id: ${JT_CONSOLE_OPERATIONS_ZONE_ID:Asia/Shanghai}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    io.github.jtconsole: INFO

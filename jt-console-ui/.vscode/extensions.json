@@ -1,0 +1,20 @@
+{
+  "recommendations": [
+    "afzalsayed96.icones",
+    "antfu.iconify",
+    "antfu.unocss",
+    "dbaeumer.vscode-eslint",
+    "editorconfig.editorconfig",
+    "lokalise.i18n-ally",
+    "mhutchie.git-graph",
+    "mikestead.dotenv",
+    "naumovs.color-highlight",
+    "oxc.oxc-vscode",
+    "pkief.material-icon-theme",
+    "sdras.vue-vscode-snippets",
+    "vue.volar",
+    "whtouche.vscode-js-console-utils",
+    "zhuangtongfa.material-theme",
+    "tu6ge.naive-ui-intelligence"
+  ]
+}

@@ -1,0 +1,76 @@
+package org.yzh.protocol.commons.transform.attribute;
+
+import io.github.yezhihao.protostar.annotation.Field;
+import lombok.Data;
+import lombok.ToString;
+import lombok.experimental.Accessors;
+
+import java.time.LocalDateTime;
+
+/**
+ * 盲点监测 0x67
+ */
+@ToString
+@Data
+@Accessors(chain = true)
+public class AlarmBSD extends Alarm {
+
+    public static final Integer key = 103;
+
+    @Field(length = 4, desc = "报警ID")
+    private long id;
+    @Field(length = 1, desc = "标志状态：0.不可用 1.开始标志 2.结束标志")
+    private int state;
+    @Field(length = 1, desc = "报警/事件类型：1.后方接近报警 2.左侧后方接近报警 3.右侧后方接近报警")
+    private int type;
+    @Field(length = 1, desc = "车速")
+    private int speed;
+    @Field(length = 2, desc = "高程")
+    private int altitude;
+    @Field(length = 4, desc = "纬度")
+    private int latitude;
+    @Field(length = 4, desc = "经度")
+    private int longitude;
+    @Field(length = 6, charset = "BCD", desc = "日期时间")
+    private LocalDateTime alarmTime;
+    @Field(length = 2, desc = "车辆状态")
+    private int statusBit;
+
+    @Field(length = 7, desc = "终端ID", version = {-1, 0})
+    @Field(length = 30, desc = "终端ID(粤标)", version = 1)
+    private String deviceId;
+    @Field(length = 6, charset = "BCD", desc = "时间(YYMMDDHHMMSS)")
+    private LocalDateTime dateTime;
+    @Field(length = 1, desc = "序号(同一时间点报警的序号，从0循环累加)")
+    private int sequenceNo;
+    @Field(length = 1, desc = "附件数量")
+    private int fileTotal;
+    @Field(length = 1, desc = "预留", version = {-1, 0})
+    @Field(length = 2, desc = "预留(粤标)", version = 1)
+    private int reserved;
+
+    @Override
+    public int getSource() {
+        return 1;
+    }
+
+    @Override
+    public int getCategory() {
+        return key;
+    }
+
+    @Override
+    public int getAlarmType() {
+        return Alarm.buildType(key, type);
+    }
+
+    @Override
+    public int getLevel() {
+        return 0;
+    }
+
+    @Override
+    public String getExtra() {
+        return null;
+    }
+}

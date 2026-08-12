@@ -1,0 +1,13 @@
+server:
+  port: 8100
+
+management:
+  server:
+    port: 8109
+
+jt:
+  signal:
+    enabled: false
+  media:
+    server:
+      enabled: false

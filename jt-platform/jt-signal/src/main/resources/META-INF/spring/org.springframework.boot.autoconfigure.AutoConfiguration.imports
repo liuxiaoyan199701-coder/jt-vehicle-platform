@@ -1,0 +1,2 @@
+io.github.jtplatform.signal.auth.DeviceAuthenticationAutoConfiguration
+io.github.jtplatform.signal.config.SignalAutoConfiguration

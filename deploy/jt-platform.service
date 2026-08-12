@@ -1,0 +1,61 @@
+[Unit]
+Description=JT Platform (JT/T 808 + JT/T 1078 gateway, standalone)
+Documentation=file:/opt/jt-platform/
+After=network-online.target
+After=jt-console.service
+Wants=network-online.target
+Requires=jt-console.service
+
+[Service]
+Type=simple
+User=jt-platform
+Group=jt-platform
+WorkingDirectory=/var/lib/jt-platform
+
+# JVM 内存封顶：物理内存 3.5G，堆 1G + 直接内存 512M + Metaspace 256M
+# + 线程栈/CodeCache 约 300M ≈ 2.1G 峰值，留足系统余量。
+# 不设 -Xmx 时 JVM 默认取物理内存 1/4，且 MaxDirectMemorySize 会跟随堆大小，
+# 两者叠加在小内存机器上容易触发 OOM Killer。
+Environment=JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+EnvironmentFile=/etc/jt-platform/jt-platform.env
+EnvironmentFile=/etc/jt-platform/runtime.env
+ExecStartPre=/usr/local/libexec/jt-wait-console-ready
+ExecStart=/usr/local/libexec/jt-java \
+  -Xms256m \
+  -Xmx1g \
+  -XX:MaxDirectMemorySize=512m \
+  -XX:MaxMetaspaceSize=256m \
+  -XX:+UseG1GC \
+  -XX:+ExitOnOutOfMemoryError \
+  -XX:+HeapDumpOnOutOfMemoryError \
+  -XX:HeapDumpPath=/var/lib/jt-platform/ \
+  -Djava.net.preferIPv4Stack=true \
+  -jar /opt/jt-platform/current/app.jar \
+  --spring.config.additional-location=file:/etc/jt-platform/application.yml
+
+Restart=on-failure
+RestartSec=5s
+
+# 媒体流排空需要时间，停止前给足窗口
+TimeoutStopSec=120s
+KillSignal=SIGTERM
+SuccessExitStatus=143
+
+LimitNOFILE=65536
+UMask=0027
+
+# 加固：进程只能写自己的数据目录
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/jt-platform
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+PrivateDevices=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target
