@@ -18,6 +18,23 @@ queue and no external business system required**.
 docker compose up -d --build     # then open http://localhost
 ```
 
+### Track playback
+
+Query historical tracks by vehicle and time range, draw the route on the map and
+replay it at 1x–16x, with distance, top speed, average speed and point count.
+Terminals report WGS-84 coordinates, which are converted to GCJ-02 on ingest, so
+the route lines up with the Chinese map tiles instead of being offset.
+
+![Track playback](docs/images/track-playback.png)
+
+### Fleet dashboard
+
+Registered vehicles, online/moving, idle/offline, unregistered-but-online,
+open alarms and daily distance, plus a seven-day trend, alarm severity breakdown
+and the latest alarm activity.
+
+![Fleet dashboard](docs/images/dashboard.png)
+
 ## What it is for
 
 JT/T 808 and JT/T 1078 are mandatory standards for commercial vehicle monitoring in
