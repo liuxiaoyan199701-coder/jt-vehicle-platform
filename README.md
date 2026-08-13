@@ -382,7 +382,7 @@ jt:
 - 设备鉴权不再是 `allow-all`（改为 `local-list` 或 `remote-api`），开流鉴权不再是 `disabled`
 - 管理端口（`7810`、`8109`）与 `/internal/**`、`/device/**` 不可从公网访问
 - 控制台管理员密码与投递密钥由 `deploy/init-credentials.sh` 生成，不使用任何默认口令
-- 前端的高德 key 写在 `.env.local` 而非受版本控制的 `.env.prod`
+- 前端的高德 key 写在 `.env.prod.local` / `.env.test.local` 而非受版本控制的 `.env.prod`（Vite 加载顺序决定只有 `.*.local` 能覆盖模式文件里的空值）
 
 `deploy/` 下的脚本提供了一套带 SHA256 校验、蓝绿发布与失败自动回滚的部署流程，
 参数全部来自 `deploy/deploy.env.example`，复制后填入自己的主机信息即可使用。

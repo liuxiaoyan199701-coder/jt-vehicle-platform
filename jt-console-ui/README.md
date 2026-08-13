@@ -35,7 +35,10 @@ pnpm typecheck
 仓库内的 `.env.prod` / `.env.test` 中 `VITE_AMAP_KEY` 与 `VITE_AMAP_SECURITY_CODE`
 **故意留空**，请勿把真实密钥写进这两个文件（它们受版本控制）。
 
-在本目录新建 `.env.local`（已被 `.gitignore` 排除）：
+在本目录新建 `.env.prod.local`（生产构建）或 `.env.test.local`（开发模式），
+两者都已被 `.gitignore` 排除。**注意不能用 `.env.local`**：Vite 的加载顺序是
+`.env` → `.env.local` → `.env.prod` → `.env.prod.local`，模式文件里的空值会
+覆盖 `.env.local`，只有 `.*.local` 才最后生效。
 
 ```dotenv
 VITE_AMAP_KEY=你申请的key
