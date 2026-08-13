@@ -206,7 +206,8 @@ export interface VehiclePeriodOperations {
 }
 
 export interface VehicleOperationsProfile {
-  vehicle: Vehicle;
+  /** 未建档设备为 null：状态、轨迹与告警仍按 deviceId 聚合返回 */
+  vehicle: Vehicle | null;
   status: LiveStatus | null;
   today: VehicleDailyOperations;
   last7Days: VehiclePeriodOperations;

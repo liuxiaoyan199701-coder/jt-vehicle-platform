@@ -30,10 +30,13 @@ const videoVisible = ref(false);
 
 const videoTarget = computed(() => {
   if (!profile.value) return null;
+  const vehicle = profile.value.vehicle;
+  const canonical = vehicle?.deviceId ?? profile.value.status?.deviceId ?? props.deviceId;
+  if (!canonical) return null;
   return {
-    deviceId: profile.value.vehicle.deviceId,
-    plateNo: profile.value.vehicle.plateNo,
-    channelCount: profile.value.vehicle.channelCount
+    deviceId: canonical,
+    plateNo: vehicle?.plateNo ?? canonical,
+    channelCount: vehicle?.channelCount ?? 4
   };
 });
 
@@ -64,10 +67,11 @@ function close() {
 }
 
 async function navigate(name: 'monitor' | 'track') {
-  const deviceId = profile.value?.vehicle.deviceId;
-  if (!deviceId) return;
+  const canonical =
+    profile.value?.vehicle?.deviceId ?? profile.value?.status?.deviceId ?? props.deviceId;
+  if (!canonical) return;
   close();
-  await router.push({ name, query: { device: deviceId } });
+  await router.push({ name, query: { device: canonical } });
 }
 
 /** 设备未建档时跳到车辆档案页新建 */
@@ -83,7 +87,10 @@ function alarmTitle(alarm: AlarmEvent) {
 
 <template>
   <NDrawer :show="visible" :width="appStore.isMobile ? '100%' : 560" placement="right" @update:show="close">
-    <NDrawerContent :title="profile?.vehicle.plateNo || '车辆运营详情'" closable>
+    <NDrawerContent
+      :title="profile?.vehicle?.plateNo || profile?.status?.deviceId || deviceId || '车辆运营详情'"
+      closable
+    >
       <div v-if="loading" class="h-240px flex-center">
         <NSpin size="large" />
       </div>
@@ -103,7 +110,11 @@ function alarmTitle(alarm: AlarmEvent) {
       </NResult>
 
       <div v-else-if="profile" class="flex flex-col gap-16px">
-        <NAlert v-if="!profile.status" type="info" :bordered="false">
+        <NAlert v-if="!profile.vehicle" type="warning" :bordered="false" class="flex items-center justify-between">
+          <span>该设备尚未建档，状态与轨迹仍可查看；建档后可关联车牌与车辆信息。</span>
+          <NButton size="tiny" type="primary" @click="toVehicleArchive">去建档</NButton>
+        </NAlert>
+        <NAlert v-else-if="!profile.status" type="info" :bordered="false">
           该车辆已建档，但尚无位置或状态上报。
         </NAlert>
         <div class="flex flex-wrap items-center gap-8px">
@@ -122,10 +133,17 @@ function alarmTitle(alarm: AlarmEvent) {
         </div>
 
         <NDescriptions label-placement="left" :column="2" bordered size="small" class="profile-descriptions">
-          <NDescriptionsItem label="车牌号">{{ profile.vehicle.plateNo }}</NDescriptionsItem>
-          <NDescriptionsItem label="终端号">{{ profile.vehicle.deviceId }}</NDescriptionsItem>
-          <NDescriptionsItem label="车牌颜色">{{ profile.vehicle.plateColor || '-' }}</NDescriptionsItem>
-          <NDescriptionsItem label="品牌型号">{{ profile.vehicle.brand || '-' }}</NDescriptionsItem>
+          <template v-if="profile.vehicle">
+            <NDescriptionsItem label="车牌号">{{ profile.vehicle.plateNo }}</NDescriptionsItem>
+            <NDescriptionsItem label="终端号">{{ profile.vehicle.deviceId }}</NDescriptionsItem>
+            <NDescriptionsItem label="车牌颜色">{{ profile.vehicle.plateColor || '-' }}</NDescriptionsItem>
+            <NDescriptionsItem label="品牌型号">{{ profile.vehicle.brand || '-' }}</NDescriptionsItem>
+          </template>
+          <template v-else>
+            <NDescriptionsItem label="终端号" :span="2">
+              {{ profile.status?.deviceId ?? deviceId ?? '-' }}
+            </NDescriptionsItem>
+          </template>
           <NDescriptionsItem label="最后上报" :span="2">
             {{ formatConsoleTime(profile.status?.lastSeenAt) }}
           </NDescriptionsItem>

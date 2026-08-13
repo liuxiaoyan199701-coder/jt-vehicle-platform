@@ -21,10 +21,7 @@ public class VehicleProfileController {
     @GetMapping("/{deviceId}/profile")
     public ApiResponse<VehicleProfile> profile(@PathVariable String deviceId) {
         if (deviceId == null || deviceId.isBlank()) throw new IllegalArgumentException("deviceId 不能为空");
-        String canonical = deviceId.trim();
-        return profiles.find(canonical).map(ApiResponse::ok)
-                // 设备在线但未建档是常见状态，消息要能指导下一步动作
-                .orElseGet(() -> ApiResponse.error("4004",
-                        "设备未建档（终端号 " + canonical + "），请先在车辆档案中新增该车辆。"));
+        // 未建档设备也返回详情（vehicle 字段为 null），由前端降级展示
+        return ApiResponse.ok(profiles.find(deviceId.trim()).orElseThrow());
     }
 }

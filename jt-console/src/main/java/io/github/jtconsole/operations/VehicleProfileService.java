@@ -34,8 +34,9 @@ public class VehicleProfileService {
 
     @Transactional(readOnly = true)
     public Optional<VehicleProfile> find(String deviceId) {
+        // 设备未建档也返回详情：状态、轨迹汇总、告警都按 deviceId 聚合，
+        // 与车辆档案表无关；vehicle 为 null 由前端做「未建档」降级展示
         Optional<Vehicle> vehicle = vehicles.findById(deviceId);
-        if (vehicle.isEmpty()) return Optional.empty();
         LocalDate today = dates.today();
         VehicleDailyStat todayStat = stats.find(deviceId, today.toString())
                 .orElse(VehicleDailyStat.empty(deviceId, today.toString()));
@@ -46,7 +47,7 @@ public class VehicleProfileService {
         double maxSpeed = sevenDays.stream().mapToDouble(VehicleDailyStat::maxSpeedKph).max().orElse(0);
         int alarmCount = sevenDays.stream().mapToInt(VehicleDailyStat::alarmCount).sum();
         return Optional.of(new VehicleProfile(
-                vehicle.get(), statuses.findLiveByDevice(deviceId).orElse(null),
+                vehicle.orElse(null), statuses.findLiveByDevice(deviceId).orElse(null),
                 new VehicleProfile.TodayMetrics(today.toString(), round(todayStat.distanceKm()),
                         todayStat.pointCount(), todayStat.movingPoints(),
                         round(todayStat.maxSpeedKph()), todayStat.alarmCount()),

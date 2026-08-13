@@ -42,7 +42,9 @@ jt:
       admin-password-hash: ${JT_CONSOLE_ADMIN_PASSWORD_HASH:}
       # 与管理员会话完全独立；本地留空时生成临时高熵投递密钥。
       ingest-key: ${JT_CONSOLE_INGEST_KEY:}
-      access-token-ttl: ${JT_CONSOLE_ACCESS_TOKEN_TTL:15m}
+      # 访问令牌 7 天：管理后台面向少量运维人员，配合刷新令牌（7 天）与登录限流，
+      # 长有效期可以避免频繁重新登录；token 泄露风险由后续的轮换/撤销机制收敛
+      access-token-ttl: ${JT_CONSOLE_ACCESS_TOKEN_TTL:7d}
       refresh-token-ttl: ${JT_CONSOLE_REFRESH_TOKEN_TTL:7d}
       allowed-origins: ${JT_CONSOLE_ALLOWED_ORIGINS:http://localhost:9527,http://127.0.0.1:9527}
       rate-limit:
