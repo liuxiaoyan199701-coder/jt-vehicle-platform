@@ -388,6 +388,13 @@ public final class SimulatorRuntime implements SimulatorOperations {
             log.error("signal", context + ": " + safeMessage(error), error);
             listener.onError(context, error);
         }
+
+        @Override
+        public void onDiagnostic(String message) {
+            if (currentSignal(generation)) {
+                log.info("signal", message);
+            }
+        }
     }
 
     private final class RuntimeMediaListener implements MediaListener {

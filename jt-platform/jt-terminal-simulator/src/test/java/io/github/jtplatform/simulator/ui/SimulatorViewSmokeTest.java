@@ -86,7 +86,7 @@ class SimulatorViewSmokeTest {
 
             TextField mobile = field(view, "#mobile-no");
             Button connect = button(view, "#connect-toggle");
-            mobile.setText("123");
+            mobile.setText("12a");
             connect.fire();
             assertEquals(0, operations.connectCalls);
             assertTrue(mobile.getPseudoClassStates().stream()

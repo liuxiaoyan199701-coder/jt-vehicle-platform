@@ -24,7 +24,7 @@ class SimulatorFormDataTest {
     void reportsEveryInvalidIdentityField() {
         SimulatorFormData defaults = SimulatorFormData.from(SimulatorConfig.defaults());
         SimulatorFormData invalid = copyIdentity(
-                defaults, Jt808Version.V2013, "123", "device", "256");
+                defaults, Jt808Version.V2013, "12a", "device", "256");
 
         ConfigValidation validation = invalid.validate();
 
@@ -35,15 +35,29 @@ class SimulatorFormDataTest {
     }
 
     @Test
-    void appliesTheSelectedJt808MobileNumberLength() {
+    void padsShortMobileNumberToTheSelectedJt808Length() {
         SimulatorFormData defaults = SimulatorFormData.from(SimulatorConfig.defaults());
-        SimulatorFormData invalid2019 = copyIdentity(
+        SimulatorFormData padded2019 = copyIdentity(
                 defaults, Jt808Version.V2019, "138000000000", "1", "1");
 
-        ConfigValidation validation = invalid2019.validate();
+        ConfigValidation validation = padded2019.validate();
+
+        assertTrue(validation.valid());
+        SimulatorConfig config = validation.config().orElseThrow();
+        assertEquals(20, config.mobileNo().length());
+        assertEquals("00000000138000000000", config.mobileNo());
+    }
+
+    @Test
+    void rejectsMobileNumberLongerThanTheSelectedJt808Length() {
+        SimulatorFormData defaults = SimulatorFormData.from(SimulatorConfig.defaults());
+        SimulatorFormData tooLong = copyIdentity(
+                defaults, Jt808Version.V2013, "13800000000012345678", "1", "1");
+
+        ConfigValidation validation = tooLong.validate();
 
         assertFalse(validation.valid());
-        assertTrue(validation.errors().get(ConfigField.MOBILE_NO).contains("20 位数字"));
+        assertTrue(validation.errors().get(ConfigField.MOBILE_NO).contains("最长 12 位"));
     }
 
     @Test

@@ -14,10 +14,11 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import org.junit.jupiter.api.Test;
 import org.yzh.protocol.t1078.T9101;
+import org.yzh.web.endpoint.CommandResponseTracker;
+import org.yzh.web.endpoint.MessageManager;
 import org.yzh.protocol.t1078.T9102;
 import org.yzh.protocol.t1078.T9201;
 import org.yzh.protocol.t1078.T9202;
-import org.yzh.web.endpoint.MessageManager;
 
 class SignalStreamCommandHandlerTest {
     private static final MediaTarget TARGET = new MediaTarget("media-2", "203.0.113.8", 7822, 0, 7825);
@@ -73,7 +74,7 @@ class SignalStreamCommandHandlerTest {
     @Test
     void offlineDeviceFailsExplicitly() {
         SignalStreamCommandHandler handler = new SignalStreamCommandHandler(
-                new MessageManager(new SessionManager()),
+                new MessageManager(new SessionManager(), new CommandResponseTracker()),
                 Clock.fixed(Instant.parse("2026-08-10T00:00:00Z"), ZoneOffset.UTC));
 
         assertThrows(StreamCommandException.class, () -> handler.openLive(

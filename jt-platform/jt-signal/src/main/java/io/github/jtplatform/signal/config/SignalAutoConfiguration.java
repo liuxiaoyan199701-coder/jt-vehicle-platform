@@ -35,6 +35,7 @@ import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 import org.yzh.protocol.codec.JTMessageAdapter;
 import org.yzh.protocol.codec.JTMessageEncoder;
+import org.yzh.web.endpoint.CommandResponseTracker;
 import org.yzh.web.endpoint.JTHandlerInterceptor;
 import org.yzh.web.endpoint.JTMessagePushAdapter;
 import org.yzh.web.endpoint.JTMultiPacketListener;
@@ -138,8 +139,10 @@ public class SignalAutoConfiguration implements EnvironmentAware {
     }
 
     @Bean
-    JTSessionListener signalSessionListener(DeviceRouter deviceRouter, SignalServerSettings settings) {
-        return new JTSessionListener(deviceRouter, settings.instanceId());
+    JTSessionListener signalSessionListener(
+            DeviceRouter deviceRouter, SignalServerSettings settings,
+            CommandResponseTracker rejectionTracker) {
+        return new JTSessionListener(deviceRouter, settings.instanceId(), rejectionTracker);
     }
 
     @Bean

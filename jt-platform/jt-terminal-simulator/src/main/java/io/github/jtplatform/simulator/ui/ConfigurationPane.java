@@ -79,6 +79,25 @@ final class ConfigurationPane extends VBox {
     private boolean locked;
     private boolean ffmpegBusy;
 
+    /**
+     * 手机号不足所选版本要求的位数时，左侧补零并刷新提示文案。
+     * 前导零是 BCD 定宽字段的合法填充位，无需用户手动补全。
+     */
+    private void padMobileNoToVersion(Jt808Version current) {
+        if (current == null) {
+            return;
+        }
+        int required = current.mobileNumberLength();
+        mobileNo.setPromptText(required + " 位数字，不足时自动前补 0");
+        String value = mobileNo.getText() == null ? "" : mobileNo.getText().trim();
+        if (value.isEmpty() || !value.chars().allMatch(Character::isDigit)) {
+            return;
+        }
+        if (value.length() < required) {
+            mobileNo.setText("0".repeat(required - value.length()) + value);
+        }
+    }
+
     ConfigurationPane(SimulatorConfig initialConfig) {
         getStyleClass().add("configuration-pane");
         setMinWidth(410);
@@ -100,6 +119,10 @@ final class ConfigurationPane extends VBox {
                 return null;
             }
         });
+        // 手机号是定宽 BCD 字段，切换版本时位数要求从 12 位变 20 位（或反向）；
+        // 输入框内的纯数字不足位数时自动前补零，并同步更新提示文案。
+        version.valueProperty().addListener((observable, previous, current) ->
+                padMobileNoToVersion(current));
         camera.setEditable(true);
         microphone.setEditable(true);
         camera.setPromptText("选择或输入摄像头名称");
@@ -266,6 +289,7 @@ final class ConfigurationPane extends VBox {
         signalPort.setText(data.signalPort());
         version.setValue(data.version());
         mobileNo.setText(data.mobileNo());
+        padMobileNoToVersion(data.version());
         deviceId.setText(data.deviceId());
         channel.setText(data.channel());
         provinceId.setText(data.provinceId());

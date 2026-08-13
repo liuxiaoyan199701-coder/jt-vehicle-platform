@@ -100,8 +100,7 @@ public record SimulatorFormData(
             errors.put(ConfigField.VERSION, "请选择 JT/T 808 版本");
         }
         int mobileLength = version == null ? 12 : version.mobileNumberLength();
-        String checkedMobile = digits(mobileNo, ConfigField.MOBILE_NO,
-                "手机号", mobileLength, mobileLength, errors);
+        String checkedMobile = mobileNoDigits(mobileNo, ConfigField.MOBILE_NO, mobileLength, errors);
         String checkedDeviceId = digits(deviceId, ConfigField.DEVICE_ID,
                 "设备 ID", 1, 12, errors);
         Integer checkedChannel = integer(channel, ConfigField.CHANNEL,
@@ -225,6 +224,27 @@ public record SimulatorFormData(
             errors.put(field, label + "长度必须为 " + minimum + "～" + maximum + " 个字符");
         }
         return value;
+    }
+
+    /**
+     * 终端手机号是定宽 BCD 字段（2013 版 12 位、2019 版 20 位）。用户切换协议版本后
+     * 沿用短号码时自动左侧补零——前导零是合法的填充位，不应要求用户手动补全。
+     * 只有超长或非数字才报错。
+     */
+    private static String mobileNoDigits(
+            String value,
+            ConfigField field,
+            int requiredLength,
+            EnumMap<ConfigField, String> errors) {
+        if (value.isEmpty() || !value.chars().allMatch(Character::isDigit)) {
+            errors.put(field, "手机号必须为 " + requiredLength + " 位数字");
+            return value;
+        }
+        if (value.length() > requiredLength) {
+            errors.put(field, "手机号最长 " + requiredLength + " 位");
+            return value;
+        }
+        return "0".repeat(requiredLength - value.length()) + value;
     }
 
     private static String digits(

@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
@@ -23,7 +24,11 @@ import org.yzh.protocol.t1078.T9102;
 import org.yzh.protocol.t808.T0001;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
+import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0801;
+import org.yzh.protocol.t808.T0805;
 import org.yzh.protocol.t808.T8100;
+import org.yzh.protocol.t808.T8801;
 
 public final class SignalClient implements AutoCloseable {
     private final SimulatorConfig config;
@@ -33,6 +38,7 @@ public final class SignalClient implements AutoCloseable {
     private final DoubleSupplier jitterSource;
     private final SerialNumber serialNumbers = new SerialNumber();
     private final Jt808MessageCodec codec = new Jt808MessageCodec();
+    private final PhotoCaptureHandler photoHandler;
     private final ExecutorService commandExecutor = Executors.newSingleThreadExecutor(
             Thread.ofVirtual().name("jt-simulator-signal-command-", 0).factory());
     private final AtomicBoolean connectionRequested = new AtomicBoolean();
@@ -62,6 +68,15 @@ public final class SignalClient implements AutoCloseable {
         this.listener = listener == null ? SignalListener.NOOP : listener;
         this.timing = Objects.requireNonNull(timing, "timing");
         this.jitterSource = Objects.requireNonNull(jitterSource, "jitterSource");
+        this.photoHandler = new PhotoCaptureHandler(config, this::logDiagnostic);
+    }
+
+    private void logDiagnostic(String message) {
+        try {
+            listener.onDiagnostic(message);
+        } catch (RuntimeException ignored) {
+            // 诊断回调失败不影响协议状态机
+        }
     }
 
     public void connect() {
@@ -273,6 +288,8 @@ public final class SignalClient implements AutoCloseable {
                 dispatchResponse(current, message, () -> await(commandHandler.open(open)));
             } else if (message instanceof T9102 control && message.getMessageId() == 0x9102) {
                 dispatchResponse(current, message, () -> await(commandHandler.control(control)));
+            } else if (message instanceof T8801 photo && message.getMessageId() == JT808.摄像头立即拍摄命令) {
+                handlePhotoCommand(current, photo);
             } else if (message.getMessageId() == JT808.平台通用应答
                     || message.getMessageId() == JT808.终端注册应答) {
                 // Platform responses are terminal events, not commands requiring another response.
@@ -280,6 +297,80 @@ public final class SignalClient implements AutoCloseable {
                 dispatchResponse(current, message, () -> T0001.NotSupport);
             }
         }
+    }
+
+    /**
+     * 处理 0x8801 摄像头立即拍摄命令。
+     *
+     * <p>应答不是通用的 T0001，而是 T0805（携带媒体 ID 列表），且照片要先经
+     * 0x0801 上传——因此不走 dispatchResponse 的通用应答通道，单独成流。
+     */
+    private void handlePhotoCommand(Connection current, T8801 command) {
+        commandExecutor.execute(() -> {
+            int result;
+            int[] ids = {};
+            try {
+                List<PhotoCaptureHandler.Photo> photos =
+                        photoHandler.capture(command.getCommand(), command.getResolution());
+                ids = new int[photos.size()];
+                for (int index = 0; index < photos.size(); index++) {
+                    uploadPhoto(current, photos.get(index), index, photos.size(), command.getChannelId());
+                    ids[index] = photos.get(index).mediaId();
+                }
+                result = 0;
+            } catch (Exception failure) {
+                reportError("photo capture 0x8801", failure);
+                result = 1;
+            }
+            try {
+                T0805 response = prepare(new T0805()
+                        .setResponseSerialNo(command.getSerialNo())
+                        .setResult(result)
+                        .setId(ids), serialNumbers.next());
+                current.writer.write(response);
+            } catch (IOException writeFailure) {
+                reportError("writing T0805 response", writeFailure);
+                current.close();
+            }
+        });
+    }
+
+    /**
+     * 通过 0x0801 上传一张照片。JPEG 通常远大于单包上限（消息体长度 10 位 = 1023 字节），
+     * 需要按分包发送：每个分包携带 packageTotal/packageNo 并置分包标志位，
+     * 网关侧的多包重组器会还原完整文件。
+     */
+    private void uploadPhoto(Connection current, PhotoCaptureHandler.Photo photo,
+                             int index, int total, int channelId) throws IOException {
+        byte[] jpeg = photo.jpeg();
+        // 1023 字节减去 0x0801 固定头（36）与分包头（4）后的安全余量
+        int chunkSize = 960;
+        int chunks = Math.max(1, (jpeg.length + chunkSize - 1) / chunkSize);
+        for (int chunk = 0; chunk < chunks; chunk++) {
+            int start = chunk * chunkSize;
+            int end = Math.min(jpeg.length, start + chunkSize);
+            T0801 upload = new T0801()
+                    .setId(photo.mediaId())
+                    .setType(0)          // 0.图像
+                    .setFormat(0)        // 0.JPEG
+                    .setEvent(0)         // 平台下发指令触发
+                    .setChannelId(channelId)
+                    .setLocation(zeroLocation())
+                    .setPacket(io.netty.buffer.Unpooled.wrappedBuffer(jpeg, start, end - start));
+            prepare(upload, serialNumbers.next());
+            if (chunks > 1) {
+                upload.setPackageTotal(chunks);
+                upload.setPackageNo(chunk + 1);
+                upload.setSubpackage(true);
+            }
+            current.writer.write(upload);
+        }
+    }
+
+    /** 0x0801 要求携带 28 字节位置信息；模拟器不追踪位置，填全零合法位置 */
+    private static T0200 zeroLocation() {
+        return new T0200()
+                .setDeviceTime(java.time.LocalDateTime.of(2000, 1, 1, 0, 0, 0));
     }
 
     private void dispatchResponse(Connection current, JTMessage request, ResponseAction action) {

@@ -39,7 +39,7 @@ class SignalEndpointCoverageTest {
     @Test
     void sessionLifecycleBindsAndUnbindsDeviceRoute() {
         InMemoryDeviceRouter router = new InMemoryDeviceRouter();
-        JTSessionListener listener = new JTSessionListener(router, "signal-1");
+        JTSessionListener listener = new JTSessionListener(router, "signal-1", new CommandResponseTracker());
         Session session = mock(Session.class);
         DeviceDO device = new DeviceDO()
                 .setDeviceId("terminal-1")
@@ -58,8 +58,8 @@ class SignalEndpointCoverageTest {
     @Test
     void staleSessionDestructionDoesNotRemoveNewerAliasBindings() {
         InMemoryDeviceRouter router = new InMemoryDeviceRouter();
-        JTSessionListener first = new JTSessionListener(router, "signal-1");
-        JTSessionListener second = new JTSessionListener(router, "signal-2");
+        JTSessionListener first = new JTSessionListener(router, "signal-1", new CommandResponseTracker());
+        JTSessionListener second = new JTSessionListener(router, "signal-2", new CommandResponseTracker());
         Session firstSession = session("terminal-1", "138000000000");
         Session secondSession = session("terminal-1", "138000000000");
 

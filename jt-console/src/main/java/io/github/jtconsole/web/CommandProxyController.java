@@ -398,6 +398,15 @@ public class CommandProxyController {
         if (lower.contains("offline") || lower.contains("no session")) {
             return "设备当前不在线，无法下发指令。请确认车机已连接平台。";
         }
+        if (lower.contains("unsupported")) {
+            return "终端不支持该指令（设备已返回「不支持」应答）。";
+        }
+        if (lower.contains("failed to execute")) {
+            return "终端执行失败（设备已返回「失败」应答）。";
+        }
+        if (lower.contains("as invalid")) {
+            return "终端认为消息有误，请检查指令参数。";
+        }
         if (lower.contains("timed out") || lower.contains("timeout")) {
             return "指令已下发但设备在 10 秒内没有应答，请检查终端是否支持该指令。";
         }

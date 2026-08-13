@@ -13,4 +13,8 @@ public interface SignalListener {
 
     default void onError(String context, Throwable error) {
     }
+
+    /** 非致命诊断输出（如 FFmpeg stderr 行），用于界面日志面板 */
+    default void onDiagnostic(String message) {
+    }
 }
