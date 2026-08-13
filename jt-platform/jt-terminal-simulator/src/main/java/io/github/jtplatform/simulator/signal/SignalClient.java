@@ -314,7 +314,7 @@ public final class SignalClient implements AutoCloseable {
                         photoHandler.capture(command.getCommand(), command.getResolution());
                 ids = new int[photos.size()];
                 for (int index = 0; index < photos.size(); index++) {
-                    uploadPhoto(current, photos.get(index), index, photos.size(), command.getChannelId());
+                    uploadPhoto(current, photos.get(index), command.getChannelId());
                     ids[index] = photos.get(index).mediaId();
                 }
                 result = 0;
@@ -336,35 +336,26 @@ public final class SignalClient implements AutoCloseable {
     }
 
     /**
-     * 通过 0x0801 上传一张照片。JPEG 通常远大于单包上限（消息体长度 10 位 = 1023 字节），
-     * 需要按分包发送：每个分包携带 packageTotal/packageNo 并置分包标志位，
-     * 网关侧的多包重组器会还原完整文件。
+     * 通过 0x0801 上传一张照片。
+     *
+     * <p>JPEG 通常远大于单包上限（消息体长度 10 位 = 1023 字节），但<b>分包必须交给
+     * 编码器自动完成</b>：构建一条包含完整 JPEG 的消息，encode 时编码器自己切片、
+     * 设置 packageTotal/packageNo 与分包标志（见 JTMessageEncoder 的 slices 分支）。
+     * 手工设置分包字段会与编码器的头部长度计算错位，产生解码端「帧比声明长度短」
+     * 的异常——这在网关侧 MultiPacketDecoderTest 的用法中有对照验证。
      */
-    private void uploadPhoto(Connection current, PhotoCaptureHandler.Photo photo,
-                             int index, int total, int channelId) throws IOException {
-        byte[] jpeg = photo.jpeg();
-        // 1023 字节减去 0x0801 固定头（36）与分包头（4）后的安全余量
-        int chunkSize = 960;
-        int chunks = Math.max(1, (jpeg.length + chunkSize - 1) / chunkSize);
-        for (int chunk = 0; chunk < chunks; chunk++) {
-            int start = chunk * chunkSize;
-            int end = Math.min(jpeg.length, start + chunkSize);
-            T0801 upload = new T0801()
-                    .setId(photo.mediaId())
-                    .setType(0)          // 0.图像
-                    .setFormat(0)        // 0.JPEG
-                    .setEvent(0)         // 平台下发指令触发
-                    .setChannelId(channelId)
-                    .setLocation(zeroLocation())
-                    .setPacket(io.netty.buffer.Unpooled.wrappedBuffer(jpeg, start, end - start));
-            prepare(upload, serialNumbers.next());
-            if (chunks > 1) {
-                upload.setPackageTotal(chunks);
-                upload.setPackageNo(chunk + 1);
-                upload.setSubpackage(true);
-            }
-            current.writer.write(upload);
-        }
+    private void uploadPhoto(Connection current, PhotoCaptureHandler.Photo photo, int channelId)
+            throws IOException {
+        T0801 upload = new T0801()
+                .setId(photo.mediaId())
+                .setType(0)          // 0.图像
+                .setFormat(0)        // 0.JPEG
+                .setEvent(0)         // 平台下发指令触发
+                .setChannelId(channelId)
+                .setLocation(zeroLocation())
+                .setPacket(io.netty.buffer.Unpooled.wrappedBuffer(photo.jpeg()));
+        prepare(upload, serialNumbers.next());
+        current.writer.write(upload);
     }
 
     /** 0x0801 要求携带 28 字节位置信息；模拟器不追踪位置，填全零合法位置 */

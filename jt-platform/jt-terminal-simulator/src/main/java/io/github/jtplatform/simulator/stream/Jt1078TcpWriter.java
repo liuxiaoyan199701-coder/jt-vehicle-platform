@@ -41,8 +41,9 @@ public final class Jt1078TcpWriter implements AutoCloseable {
         this.output = new BufferedOutputStream(Objects.requireNonNull(output, "output"));
         this.connection = Objects.requireNonNull(connection, "connection");
         this.mobileNo = Objects.requireNonNull(mobileNo, "mobileNo");
-        if (!mobileNo.matches("\\d{1,12}")) {
-            throw new IllegalArgumentException("mobileNo must contain 1..12 digits");
+        // 2019 版手机号是 20 位 BCD[10]，SIM 字段编码时取末 12 位
+        if (!mobileNo.matches("\\d{1,20}")) {
+            throw new IllegalArgumentException("mobileNo must contain 1..20 digits");
         }
         if (channel < 1 || channel > 255) {
             throw new IllegalArgumentException("channel must be in range 1..255");

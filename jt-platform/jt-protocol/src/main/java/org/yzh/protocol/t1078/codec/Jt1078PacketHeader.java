@@ -58,9 +58,10 @@ public record Jt1078PacketHeader(
 
     static void validateDeviceId(String deviceId) {
         Objects.requireNonNull(deviceId, "deviceId");
-        if (!deviceId.matches("\\d{1,12}")) {
+        // 2019 版终端的手机号是 BCD[10]（20 位），同样可以作为 1078 的 SIM 来源
+        if (!deviceId.matches("\\d{1,20}")) {
             throw new IllegalArgumentException(
-                    "deviceId must contain 1..12 decimal digits");
+                    "deviceId must contain 1..20 decimal digits");
         }
     }
 

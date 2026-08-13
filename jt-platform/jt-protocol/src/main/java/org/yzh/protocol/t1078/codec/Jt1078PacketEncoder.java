@@ -95,7 +95,12 @@ public final class Jt1078PacketEncoder {
 
     private static byte[] encodeDeviceId(String deviceId) {
         Jt1078PacketHeader.validateDeviceId(deviceId);
-        String padded = "0".repeat(12 - deviceId.length()) + deviceId;
+        // RTP 头的 SIM 字段是 BCD[6]（12 位）。2019 版手机号是 20 位 BCD[10]，
+        // 左侧是填充零，真正的号码是右侧部分——取末 12 位再按 12 位对齐。
+        String significant = deviceId.length() > 12
+                ? deviceId.substring(deviceId.length() - 12)
+                : deviceId;
+        String padded = "0".repeat(12 - significant.length()) + significant;
         byte[] encoded = new byte[6];
         for (int index = 0; index < encoded.length; index++) {
             int high = padded.charAt(index * 2) - '0';

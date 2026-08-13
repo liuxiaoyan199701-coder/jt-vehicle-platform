@@ -61,7 +61,8 @@ class Jt1078PacketEncoderTest {
     void validatesDeviceIdentifiersBeforeBcdEncoding() {
         assertThrows(IllegalArgumentException.class, () -> audioHeader(""));
         assertThrows(IllegalArgumentException.class, () -> audioHeader("13800A38000"));
-        assertThrows(IllegalArgumentException.class, () -> audioHeader("1234567890123"));
+        // 2019 版手机号最长 20 位（BCD[10]），超过才拒绝
+        assertThrows(IllegalArgumentException.class, () -> audioHeader("123456789012345678901"));
     }
 
     @Test
