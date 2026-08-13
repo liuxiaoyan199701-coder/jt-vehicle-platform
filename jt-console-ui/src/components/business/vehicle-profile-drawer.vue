@@ -70,6 +70,12 @@ async function navigate(name: 'monitor' | 'track') {
   await router.push({ name, query: { device: deviceId } });
 }
 
+/** 设备未建档时跳到车辆档案页新建 */
+async function toVehicleArchive() {
+  close();
+  await router.push({ name: 'vehicle' });
+}
+
 function alarmTitle(alarm: AlarmEvent) {
   return alarm.geofenceName ? `${alarm.title} · ${alarm.geofenceName}` : alarm.title;
 }
@@ -84,10 +90,15 @@ function alarmTitle(alarm: AlarmEvent) {
 
       <NResult v-else-if="errorMessage" status="error" title="详情加载失败" :description="errorMessage">
         <template #footer>
-          <NButton type="primary" @click="deviceId && load(deviceId)">
-            <template #icon><SvgIcon icon="lucide:refresh-cw" /></template>
-            重试
-          </NButton>
+          <NSpace>
+            <NButton @click="deviceId && load(deviceId)">
+              <template #icon><SvgIcon icon="lucide:refresh-cw" /></template>
+              重试
+            </NButton>
+            <NButton v-if="errorMessage.includes('未建档')" type="primary" @click="toVehicleArchive">
+              去建档
+            </NButton>
+          </NSpace>
         </template>
       </NResult>
 
