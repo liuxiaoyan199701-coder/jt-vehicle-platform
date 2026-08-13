@@ -42,12 +42,27 @@ public final class PhotoCaptureHandler {
     private final SimulatorConfig config;
     private final Consumer<String> diagnostics;
     private final AtomicInteger mediaIdSequence;
+    /** 最近若干条 FFmpeg 诊断，失败时并入异常消息方便排查 */
+    private final java.util.Deque<String> recentDiagnostics = new java.util.ArrayDeque<>();
+    private static final int DIAGNOSTIC_TAIL = 5;
 
     public PhotoCaptureHandler(SimulatorConfig config, Consumer<String> diagnostics) {
         this.config = Objects.requireNonNull(config, "config");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         // 多媒体 ID 用时间戳起步，避免与历史 ID 撞车
         this.mediaIdSequence = new AtomicInteger((int) (System.currentTimeMillis() & 0x7FFF_FFFF));
+    }
+
+    private void rememberDiagnostic(String line) {
+        if (recentDiagnostics.size() >= DIAGNOSTIC_TAIL) {
+            recentDiagnostics.removeFirst();
+        }
+        recentDiagnostics.addLast(line);
+        diagnostics.accept(line);
+    }
+
+    private String diagnosticTail() {
+        return String.join(" | ", recentDiagnostics);
     }
 
     /**
@@ -70,11 +85,15 @@ public final class PhotoCaptureHandler {
 
         Path directory = Files.createTempDirectory("jt-photo-");
         try {
+            // dshow 输入参数与视频推流保持一致（thread_queue_size/rtbufsize），
+            // 且不要把 -framerate 作为输入选项——dshow 不接受这种设置方式，
+            // 会导致「Could not set video options」后打开输入失败。
             List<String> command = List.of(
                     executable.toString(),
                     "-hide_banner", "-nostdin", "-loglevel", "warning",
+                    "-thread_queue_size", "1024",
                     "-f", "dshow",
-                    "-framerate", "10",
+                    "-rtbufsize", "256M",
                     "-i", "video=" + camera,
                     "-frames:v", Integer.toString(count),
                     "-vf", "scale=" + size[0] + ":" + size[1],
@@ -82,7 +101,7 @@ public final class PhotoCaptureHandler {
                     "-f", "image2",
                     directory.resolve("photo-%02d.jpg").toString());
 
-            FfmpegProcess process = FfmpegProcess.start(command, diagnostics);
+            FfmpegProcess process = FfmpegProcess.start(command, this::rememberDiagnostic);
             Integer exit;
             try {
                 exit = process.exit().get(CAPTURE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -94,7 +113,9 @@ public final class PhotoCaptureHandler {
                         + CAPTURE_TIMEOUT_SECONDS + "s", timeout);
             }
             if (exit != 0) {
-                throw new IOException("ffmpeg exited with code " + exit + " while capturing photos");
+                String tail = diagnosticTail();
+                throw new IOException("ffmpeg exited with code " + exit + " while capturing photos"
+                        + (tail.isBlank() ? "" : "; ffmpeg: " + tail));
             }
 
             List<Path> files;
