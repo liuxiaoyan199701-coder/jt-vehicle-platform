@@ -41,6 +41,9 @@ jt:
     public-udp-port: 7101
     storage:
       multimedia-path: /var/lib/jt-platform/data/signal/multimedia
+      # 投递信封里 accessAddress 的前缀。浏览器经 nginx 的 /files/multimedia/ 访问，
+      # 因此这里是平台对外地址（不含路径）。为空时 accessAddress 为空串。
+      multimedia-access-base-url: "${JT_MULTIMEDIA_ACCESS_BASE_URL:}"
       alarm-attachment-path: /var/lib/jt-platform/data/signal/alarm-attachments
 
   registry:

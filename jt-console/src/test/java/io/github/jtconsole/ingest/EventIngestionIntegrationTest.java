@@ -11,7 +11,9 @@ import io.github.jtconsole.domain.Vehicle;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
+import io.github.jtconsole.repository.DeviceAttributeRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
+import io.github.jtconsole.repository.MediaRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import io.github.jtconsole.repository.TrackRepository;
 import io.github.jtconsole.repository.VehicleRepository;
@@ -299,6 +301,16 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        DeviceAttributeRepository deviceAttributeRepository(JdbcClient jdbc) {
+            return new DeviceAttributeRepository(jdbc);
+        }
+
+        @Bean
+        MediaRepository mediaRepository(JdbcClient jdbc) {
+            return new MediaRepository(jdbc);
+        }
+
+        @Bean
         VehicleRepository vehicleRepository(JdbcClient jdbc) {
             return new VehicleRepository(jdbc);
         }
@@ -344,14 +356,15 @@ class EventIngestionIntegrationTest {
         @Bean
         LocationService locationService(
                 TrackRepository tracks, StatusRepository statuses, ObjectMapper objectMapper,
-                AlarmService alarms, GeofenceService geofences, DailyStatService stats) {
-            return new LocationService(tracks, statuses, objectMapper, alarms, geofences, stats);
+                AlarmService alarms, GeofenceService geofences, DailyStatService stats,
+                DeviceAttributeRepository attributes) {
+            return new LocationService(tracks, statuses, objectMapper, alarms, geofences, stats, attributes);
         }
 
         @Bean
         EventIngestionService eventIngestionService(
-                EventRepository events, LocationService locations) {
-            return new EventIngestionService(events, locations);
+                EventRepository events, LocationService locations, MediaRepository media) {
+            return new EventIngestionService(events, locations, new MediaIngestionService(media));
         }
     }
 }

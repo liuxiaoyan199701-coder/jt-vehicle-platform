@@ -46,6 +46,8 @@ JT_DEVICE_LOCAL_LIST='${DEVICE_LOCAL_LIST}'
 JT_STREAM_AUTH_MODE='${STREAM_AUTH_MODE}'
 JT_MEDIA_MAX_STREAMS='${MEDIA_MAX_STREAMS}'
 JT_MEDIA_MAX_OUTBOUND_BPS='${MEDIA_MAX_OUTBOUND_BPS}'
+# 多媒体文件（拍照、苏标附件）的浏览器访问前缀，nginx 会把 /files/multimedia/ 反代到网关
+JT_MULTIMEDIA_ACCESS_BASE_URL='https://${PUBLIC_HOST}'
 EOF
 
 chown root:jt-console "$console_temporary"

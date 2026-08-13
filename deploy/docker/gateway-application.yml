@@ -15,6 +15,12 @@ jt:
       max-streams: ${MAX_STREAMS:20}
       max-outbound-bits-per-second: ${MAX_OUTBOUND_BPS:50000000}
 
+  signal:
+    storage:
+      multimedia-path: /var/lib/jt-platform/data/signal/multimedia
+      # 拍照/附件等多媒体文件的浏览器访问前缀，nginx 的 /files/multimedia/ 反代到网关 8100
+      multimedia-access-base-url: "${MULTIMEDIA_ACCESS_BASE_URL:http://localhost}"
+
   delivery:
     channels: [api]
     api:

@@ -191,3 +191,35 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle (
 
 CREATE INDEX IF NOT EXISTS idx_fleet_vehicle_fleet
     ON fleet_vehicle (fleet_id, device_id);
+
+-- 终端上传的多媒体文件元数据（摄像头拍照 0x8801 → 0x0801 上传、苏标附件等）。
+-- 二进制文件本身保存在网关的 /var/lib/jt-platform/data/signal/multimedia，
+-- 这里只存投递信封里带过来的标识与访问地址，供前端列表与展示。
+-- (device_id, file_id) 唯一：同一多媒体 ID 的重复投递只保留一条。
+CREATE TABLE IF NOT EXISTS media_file (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id      TEXT NOT NULL,
+    file_id        INTEGER NOT NULL,
+    file_type      TEXT NOT NULL,
+    file_format    TEXT,
+    file_name      TEXT,
+    size           INTEGER,
+    access_address TEXT,
+    channel_id     INTEGER,
+    event_code     INTEGER,
+    captured_at    TEXT NOT NULL,
+    UNIQUE (device_id, file_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_device_time
+    ON media_file (device_id, captured_at DESC, id DESC);
+
+-- 设备协议版本。车辆控制 0x8500 等双版本报文在 2011 与 2019 的编码不同
+-- （解锁/加锁的字节位置完全不一样），下发前必须知道设备实际注册的版本。
+-- 独立成表而不是给 device_status 加列：CREATE IF NOT EXISTS 不会给已存在的
+-- 表补列，独立建表天然兼容旧数据库。
+CREATE TABLE IF NOT EXISTS device_attribute (
+    device_id        TEXT PRIMARY KEY,
+    protocol_version TEXT NOT NULL,
+    updated_at       TEXT NOT NULL
+);

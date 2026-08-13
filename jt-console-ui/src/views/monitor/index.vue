@@ -7,6 +7,7 @@ import { useLiveSocket, type LiveLocationUpdate } from '@/hooks/use-live-socket'
 import { escapeHtmlText } from '@/utils/html';
 import { isLiveStatusNewer, reconcileLiveStatusSnapshot } from '@/utils/live-status';
 import VideoDialog from './modules/video-dialog.vue';
+import CommandPanel from './modules/command-panel.vue';
 import VehicleProfileDrawer from '@/components/business/vehicle-profile-drawer.vue';
 
 defineOptions({ name: 'MonitorIndex' });
@@ -23,6 +24,8 @@ const videoTarget = ref<{ deviceId: string; plateNo: string; channelCount: numbe
 const vehicleChannelCounts = ref(new Map<string, number>());
 const profileVisible = ref(false);
 const profileDeviceId = ref<string | null>(null);
+const commandVisible = ref(false);
+const commandTarget = ref<LiveStatus | null>(null);
 const calibrating = ref(false);
 const degraded = ref(false);
 const calibrationError = ref('');
@@ -235,6 +238,11 @@ function openProfile(vehicle: LiveStatus) {
   profileVisible.value = true;
 }
 
+function openCommands(vehicle: LiveStatus) {
+  commandTarget.value = vehicle;
+  commandVisible.value = true;
+}
+
 function openVideo(vehicle: LiveStatus) {
   videoTarget.value = {
     deviceId: vehicle.deviceId,
@@ -337,6 +345,21 @@ function formatTime(value: string | null) {
           <NButton size="tiny" quaternary class="mt-4px" @click.stop="openProfile(vehicle)">
             运营详情
           </NButton>
+          <NTooltip :disabled="vehicle.online" placement="right">
+            <template #trigger>
+              <NButton
+                size="tiny"
+                quaternary
+                type="warning"
+                class="mt-4px"
+                :disabled="!vehicle.online"
+                @click.stop="openCommands(vehicle)"
+              >
+                远程控制
+              </NButton>
+            </template>
+            设备离线，无法下发指令
+          </NTooltip>
         </div>
       </NScrollbar>
     </NCard>
@@ -355,6 +378,7 @@ function formatTime(value: string | null) {
 
     <VideoDialog v-model:visible="videoVisible" :target="videoTarget" />
     <VehicleProfileDrawer v-model:visible="profileVisible" :device-id="profileDeviceId" />
+    <CommandPanel v-model:visible="commandVisible" :vehicle="commandTarget" />
   </div>
 </template>
 

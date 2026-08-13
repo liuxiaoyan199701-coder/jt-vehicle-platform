@@ -414,3 +414,47 @@ export function setGeofenceEnabled(id: number, enabled: boolean) {
 export function deleteGeofence(id: number) {
   return request<void>({ url: `/geofences/${encodePathSegment(id)}`, method: 'delete' });
 }
+
+// ---------------- 远程控制（下行指令代理） ----------------
+
+export type CommandName =
+  | 'text'
+  | 'ptz'
+  | 'ptz-adjust'
+  | 'vehicle-control'
+  | 'photo'
+  | 'callback'
+  | 'track-follow';
+
+/** 指令应答：后端已把 T0001/T0805/T0201_0500 统一成 message + success */
+export interface CommandResult {
+  message: string;
+  success: boolean;
+  resultCode?: number;
+  result?: number;
+  photoIds?: number[];
+}
+
+export function sendDeviceCommand(command: CommandName, payload: Record<string, unknown>) {
+  return request<CommandResult>({ url: `/commands/${command}`, method: 'post', data: payload });
+}
+
+// ---------------- 多媒体（拍照结果） ----------------
+
+export interface MediaFileItem {
+  id: number;
+  deviceId: string;
+  fileId: number;
+  fileType: string;
+  fileFormat: string | null;
+  fileName: string | null;
+  size: number | null;
+  accessAddress: string | null;
+  channelId: number | null;
+  eventCode: number | null;
+  capturedAt: string;
+}
+
+export function fetchRecentMedia(deviceId: string, limit = 20) {
+  return request<MediaFileItem[]>({ url: '/media/recent', params: { deviceId, limit } });
+}

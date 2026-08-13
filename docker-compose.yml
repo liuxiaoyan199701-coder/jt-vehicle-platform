@@ -58,6 +58,8 @@ services:
       JT_INGEST_KEY: ${JT_INGEST_KEY:-local-demo-ingest-key-change-me}
       MAX_STREAMS: ${MAX_STREAMS:-20}
       MAX_OUTBOUND_BPS: ${MAX_OUTBOUND_BPS:-50000000}
+      # 拍照/附件等多媒体文件的浏览器访问前缀，由 nginx 的 /files/multimedia/ 反代到网关
+      MULTIMEDIA_ACCESS_BASE_URL: ${MULTIMEDIA_ACCESS_BASE_URL:-http://localhost}
     ports:
       # JT/T 808 终端信令
       - "7100:7100/tcp"

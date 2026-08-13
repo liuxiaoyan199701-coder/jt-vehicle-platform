@@ -10,10 +10,13 @@ public class EventIngestionService {
 
     private final EventRepository events;
     private final LocationService locations;
+    private final MediaIngestionService media;
 
-    public EventIngestionService(EventRepository events, LocationService locations) {
+    public EventIngestionService(
+            EventRepository events, LocationService locations, MediaIngestionService media) {
         this.events = events;
         this.locations = locations;
+        this.media = media;
     }
 
     @Transactional
@@ -23,6 +26,9 @@ public class EventIngestionService {
         if (!events.markProcessed(normalized.eventId())) {
             return IngestionResult.duplicate();
         }
+
+        // 多媒体上传先落元数据，再走位置/在线时间的常规处理
+        media.handleIfMediaUpload(normalized);
 
         LocationHandlingResult handled = locations.handle(normalized);
         return IngestionResult.committed(handled);

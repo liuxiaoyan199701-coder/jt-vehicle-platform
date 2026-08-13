@@ -5,6 +5,7 @@ import io.github.jtconsole.domain.AlarmDefinition;
 import io.github.jtconsole.operations.AlarmService;
 import io.github.jtconsole.operations.DailyStatService;
 import io.github.jtconsole.operations.GeofenceService;
+import io.github.jtconsole.repository.DeviceAttributeRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import io.github.jtconsole.repository.TrackRepository;
 import java.time.Instant;
@@ -39,6 +40,7 @@ public class LocationService {
     private final AlarmService alarms;
     private final GeofenceService geofences;
     private final DailyStatService dailyStats;
+    private final DeviceAttributeRepository deviceAttributes;
 
     public LocationService(
             TrackRepository tracks,
@@ -46,13 +48,15 @@ public class LocationService {
             ObjectMapper objectMapper,
             AlarmService alarms,
             GeofenceService geofences,
-            DailyStatService dailyStats) {
+            DailyStatService dailyStats,
+            DeviceAttributeRepository deviceAttributes) {
         this.tracks = tracks;
         this.statuses = statuses;
         this.objectMapper = objectMapper;
         this.alarms = alarms;
         this.geofences = geofences;
         this.dailyStats = dailyStats;
+        this.deviceAttributes = deviceAttributes;
     }
 
     /**
@@ -61,6 +65,9 @@ public class LocationService {
     public LocationHandlingResult handle(MessageEnvelope envelope) {
         String deviceId = envelope.deviceId();
         String receivedAt = normalizeReceivedAt(envelope.receivedAt());
+
+        // 每条报文都携带协议版本，持续记录以便双版本下行指令（如 0x8500）按正确版本编码
+        deviceAttributes.upsertProtocolVersion(deviceId, envelope.protocolVersion());
 
         if (!envelope.isLocationReport()) {
             // 心跳、鉴权等非位置消息只刷新在线时间
