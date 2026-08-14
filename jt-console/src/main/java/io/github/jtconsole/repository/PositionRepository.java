@@ -11,8 +11,13 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class PositionRepository {
 
-    private static final String COLUMNS =
-            "id, tenant_id, name, sort_order, remark, created_at, updated_at";
+    /**
+     * 用文本块而不是普通字面量：拼接方与它相接的下一段常以 {@code FROM} 开头且不带前导空格，
+     * 靠文本块末尾的换行分隔。写成单行字面量会拼出 {@code updated_atFROM position}。
+     */
+    private static final String COLUMNS = """
+            id, tenant_id, name, sort_order, remark, created_at, updated_at
+            """;
 
     private final JdbcClient jdbc;
 
