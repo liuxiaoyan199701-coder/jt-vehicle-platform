@@ -231,7 +231,19 @@ const local: App.I18n.Schema = {
     fleet: '车队管理',
     geofence: '电子围栏',
     vehicle: '车辆档案',
-    track: '轨迹回放'
+    track: '轨迹回放',
+    register: '注册',
+    system: '系统管理',
+    'system_user': '用户管理',
+    'system_role': '角色管理',
+    'system_department': '部门管理',
+    'system_position': '岗位管理',
+    'system_tenant': '租户管理',
+    'system_plan': '套餐与续费',
+    'system_registration': '注册审批',
+    'system_config': '租户配置',
+    'system_audit': '审计日志',
+    'system_profile': '个人中心'
   },
   page: {
     login: {

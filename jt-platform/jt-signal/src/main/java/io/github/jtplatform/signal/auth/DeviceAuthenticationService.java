@@ -12,11 +12,20 @@ public final class DeviceAuthenticationService {
     private final DeviceInformationSource informationSource;
     private final DeviceAuthMode mode;
     private final RemoteUnavailablePolicy unavailablePolicy;
+    private final UnregisteredDevicePolicy unregisteredPolicy;
 
     public DeviceAuthenticationService(
             DeviceInformationSource informationSource,
             DeviceAuthMode mode,
             RemoteUnavailablePolicy unavailablePolicy) {
+        this(informationSource, mode, unavailablePolicy, UnregisteredDevicePolicy.REJECT);
+    }
+
+    public DeviceAuthenticationService(
+            DeviceInformationSource informationSource,
+            DeviceAuthMode mode,
+            RemoteUnavailablePolicy unavailablePolicy,
+            UnregisteredDevicePolicy unregisteredPolicy) {
         this.informationSource = Objects.requireNonNull(informationSource, "informationSource");
         this.mode = Objects.requireNonNull(mode, "mode");
         if (mode == DeviceAuthMode.REMOTE_API && unavailablePolicy == null) {
@@ -24,6 +33,7 @@ public final class DeviceAuthenticationService {
                     "jt.auth.device.remote.unavailable-policy must be explicitly set to ALLOW or DENY in remote-api mode");
         }
         this.unavailablePolicy = unavailablePolicy;
+        this.unregisteredPolicy = Objects.requireNonNull(unregisteredPolicy, "unregisteredPolicy");
     }
 
     public DeviceAuthenticationDecision authenticate(DeviceDO presentedDevice) {
@@ -40,7 +50,7 @@ public final class DeviceAuthenticationService {
             return decideUnavailable(terminalId, presentedDevice, exception);
         }
         if (information.isEmpty()) {
-            return DeviceAuthenticationDecision.deny();
+            return decideUnregistered(terminalId, presentedDevice);
         }
 
         DeviceInformation found = information.get();
@@ -49,7 +59,28 @@ public final class DeviceAuthenticationService {
                     terminalId, found.terminalId());
             return DeviceAuthenticationDecision.deny();
         }
+        if (found.tenantInactive()) {
+            LOGGER.info("Owning tenant is not active; terminalId={}, tenant={}, decision=DENY",
+                    terminalId, found.tenantCode());
+            return DeviceAuthenticationDecision.deny();
+        }
         return DeviceAuthenticationDecision.allow(merge(presentedDevice, found));
+    }
+
+    /**
+     * A device with no archive. Only remote-api mode consults the configured policy: in
+     * allow-all mode the source never reports empty, and in local-list mode "absent from the
+     * list" already is the rejection.
+     */
+    private DeviceAuthenticationDecision decideUnregistered(
+            String terminalId, DeviceDO presentedDevice) {
+        if (mode != DeviceAuthMode.REMOTE_API
+                || unregisteredPolicy != UnregisteredDevicePolicy.ALLOW) {
+            return DeviceAuthenticationDecision.deny();
+        }
+        LOGGER.info("Device has no archive; terminalId={}, explicitPolicy=ALLOW, decision=ALLOW",
+                terminalId);
+        return DeviceAuthenticationDecision.allow(presentedDevice);
     }
 
     private DeviceAuthenticationDecision decideUnavailable(

@@ -1,9 +1,13 @@
 import { onBeforeUnmount, ref, shallowRef } from 'vue';
+import { useRuntimeConfigStore } from '@/store/modules/runtime-config';
 
 /**
  * 高德地图 JS API 加载与地图实例管理。
  *
- * 未配置 VITE_AMAP_KEY 时不会抛异常，而是把 error 置位让调用方显示占位提示——
+ * Key 在运行时从「生效配置」接口取，而不是构建期的 VITE_AMAP_KEY：租户级 Key 隔离要求
+ * 登录后才知道该用哪把 Key。构建期变量降级为无租户覆盖时的全局默认来源，由后端合并。
+ *
+ * 未配置 Key 时不会抛异常，而是把 error 置位让调用方显示占位提示——
  * 地图缺失不应该让整个监控页白屏。
  */
 
@@ -20,20 +24,23 @@ const PLUGINS = ['AMap.Scale', 'AMap.ToolBar', 'AMap.MoveAnimation'];
 let loadPromise: Promise<any> | null = null;
 
 /** 全局只加载一次脚本，多个页面并发调用共享同一个 Promise */
-function loadAMapScript(): Promise<any> {
+async function loadAMapScript(): Promise<any> {
   if (window.AMap) {
-    return Promise.resolve(window.AMap);
+    return window.AMap;
   }
   if (loadPromise) {
     return loadPromise;
   }
 
-  const key = import.meta.env.VITE_AMAP_KEY;
+  const runtimeConfig = useRuntimeConfigStore();
+  await runtimeConfig.ensureLoaded();
+
+  const key = runtimeConfig.amapKey;
   if (!key) {
-    return Promise.reject(new Error('未配置高德地图 key，请在 .env 中设置 VITE_AMAP_KEY'));
+    return Promise.reject(new Error('未配置高德地图 Key，请在「系统管理 → 租户配置」中填写'));
   }
 
-  const securityCode = import.meta.env.VITE_AMAP_SECURITY_CODE;
+  const securityCode = runtimeConfig.amapSecurityCode;
   if (securityCode) {
     // 2.0 起，若 key 在控制台绑定了安全密钥，必须在脚本加载前设置，否则所有请求返回 INVALID_USER_SCODE
     window._AMapSecurityConfig = { securityJsCode: securityCode };

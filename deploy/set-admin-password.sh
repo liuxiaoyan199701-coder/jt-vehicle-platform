@@ -5,6 +5,10 @@
 # 密码只以 BCrypt 哈希形式进入服务环境文件；明文单独写入 root-only 的
 # admin-initial-password，因为 07-verify-deployment.sh 依赖它做登录复检，
 # 两者不同步会导致部署验证失败。
+#
+# 注意：账号已迁入数据库后，这里的哈希只在「账号表为空」时用于引导首个平台管理员。
+# 对已经引导过的部署改这里不会改变任何人的密码——请改用控制台的
+# 「系统管理 → 用户管理 → 重置密码」，或在个人中心自行修改。
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"

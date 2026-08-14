@@ -27,6 +27,18 @@ declare module "@elegant-router/types" {
     "iframe-page": "/iframe-page/:url";
     "login": "/login";
     "monitor": "/monitor";
+    "register": "/register";
+    "system": "/system";
+    "system_audit": "/system/audit";
+    "system_config": "/system/config";
+    "system_department": "/system/department";
+    "system_plan": "/system/plan";
+    "system_position": "/system/position";
+    "system_profile": "/system/profile";
+    "system_registration": "/system/registration";
+    "system_role": "/system/role";
+    "system_tenant": "/system/tenant";
+    "system_user": "/system/user";
     "track": "/track";
     "vehicle": "/vehicle";
   };
@@ -70,6 +82,8 @@ declare module "@elegant-router/types" {
     | "iframe-page"
     | "login"
     | "monitor"
+    | "register"
+    | "system"
     | "track"
     | "vehicle"
   >;
@@ -98,6 +112,17 @@ declare module "@elegant-router/types" {
     | "geofence"
     | "home"
     | "monitor"
+    | "register"
+    | "system_audit"
+    | "system_config"
+    | "system_department"
+    | "system_plan"
+    | "system_position"
+    | "system_profile"
+    | "system_registration"
+    | "system_role"
+    | "system_tenant"
+    | "system_user"
     | "track"
     | "vehicle"
   >;

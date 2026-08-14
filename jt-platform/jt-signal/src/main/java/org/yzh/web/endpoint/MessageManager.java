@@ -92,6 +92,24 @@ public class MessageManager {
         return request(request.getClientId(), request, responseClass);
     }
 
+    /**
+     * Close the session of a device, if one is currently held by this instance.
+     *
+     * <p>Used when a device must stop being served immediately — for example when its owning
+     * tenant is suspended. Dropping the connection only accelerates the outcome: the device is
+     * free to reconnect, and it is the device authentication source that then refuses it.
+     *
+     * @return {@code true} when a live session was found and invalidated
+     */
+    public boolean disconnect(String identity) {
+        Session session = findSession(identity);
+        if (session == null) {
+            return false;
+        }
+        session.invalidate();
+        return true;
+    }
+
     Session findSession(String identity) {
         if (identity == null || identity.isBlank()) {
             return null;

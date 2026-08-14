@@ -107,7 +107,9 @@ public final class HttpRemoteDeviceInformationClient implements RemoteDeviceInfo
                     response.terminalId(),
                     response.deviceId(),
                     response.mobileNo(),
-                    response.plateNo());
+                    response.plateNo(),
+                    response.tenantCode(),
+                    response.tenantActive());
         } catch (DeviceInformationUnavailableException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -140,10 +142,17 @@ public final class HttpRemoteDeviceInformationClient implements RemoteDeviceInfo
         return value.trim();
     }
 
+    /**
+     * {@code tenantActive} is a fact about the owning tenant, not an access decision: this module
+     * still decides what an inactive tenant means. It stays boxed so that a source which does not
+     * report tenancy is distinguishable from one reporting "inactive".
+     */
     private record RemoteDeviceResponse(
             String terminalId,
             String deviceId,
             String mobileNo,
-            String plateNo) {
+            String plateNo,
+            String tenantCode,
+            Boolean tenantActive) {
     }
 }

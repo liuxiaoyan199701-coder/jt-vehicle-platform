@@ -6,6 +6,7 @@ import io.github.jtconsole.domain.AlarmLevel;
 import io.github.jtconsole.domain.AlarmPage;
 import io.github.jtconsole.domain.AlarmSource;
 import io.github.jtconsole.domain.AlarmStatus;
+import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -154,12 +155,24 @@ public class AlarmRepository {
                 List.of(deviceId)).intValue();
     }
 
-    public Optional<AlarmEvent> findById(long id) {
-        return jdbc.sql(SELECT_COLUMNS + " WHERE a.id = ?").param(id).query(MAPPER).optional();
+    /** 范围外的告警按「不存在」返回，与查询一个不存在的 id 完全一致。 */
+    public Optional<AlarmEvent> findById(long id, DataScope scope) {
+        if (scope.empty()) {
+            return Optional.empty();
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(id);
+        params.addAll(scope.parameters());
+        return jdbc.sql(SELECT_COLUMNS + " WHERE a.id = ?"
+                        + scope.deviceCondition("a.device_id"))
+                .params(params).query(MAPPER).optional();
     }
 
-    public AlarmPage search(AlarmFilter filter) {
-        Where where = where(filter);
+    public AlarmPage search(AlarmFilter filter, DataScope scope) {
+        if (scope.empty()) {
+            return new AlarmPage(List.of(), 0, filter.page(), filter.pageSize());
+        }
+        Where where = where(filter, scope);
         long total = number("SELECT COUNT(*) FROM alarm_event a LEFT JOIN vehicle v ON v.device_id = a.device_id "
                 + where.sql(), where.params()).longValue();
         int offset = (filter.page() - 1) * filter.pageSize();
@@ -172,20 +185,40 @@ public class AlarmRepository {
         return new AlarmPage(items, total, filter.page(), filter.pageSize());
     }
 
-    public List<AlarmEvent> recent(int limit) {
-        return jdbc.sql(SELECT_COLUMNS + " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?")
-                .param(limit).query(MAPPER).list();
+    public List<AlarmEvent> recent(int limit, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        List<Object> params = new ArrayList<>(scope.parameters());
+        params.add(limit);
+        return jdbc.sql(SELECT_COLUMNS + " WHERE 1 = 1" + scope.deviceCondition("a.device_id")
+                        + " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?")
+                .params(params).query(MAPPER).list();
     }
 
-    public List<AlarmEvent> recentByDevice(String deviceId, int limit) {
-        return jdbc.sql(SELECT_COLUMNS
-                        + " WHERE a.device_id = ? ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?")
-                .param(deviceId).param(limit).query(MAPPER).list();
+    public List<AlarmEvent> recentByDevice(String deviceId, int limit, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(deviceId);
+        params.addAll(scope.parameters());
+        params.add(limit);
+        return jdbc.sql(SELECT_COLUMNS + " WHERE a.device_id = ?"
+                        + scope.deviceCondition("a.device_id")
+                        + " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?")
+                .params(params).query(MAPPER).list();
     }
 
-    public long countOpenByDevice(String deviceId) {
-        return number("SELECT COUNT(*) FROM alarm_event WHERE device_id = ? AND status <> 'CLOSED'",
-                List.of(deviceId)).longValue();
+    public long countOpenByDevice(String deviceId, DataScope scope) {
+        if (scope.empty()) {
+            return 0;
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(deviceId);
+        params.addAll(scope.parameters());
+        return number("SELECT COUNT(*) FROM alarm_event WHERE device_id = ? AND status <> 'CLOSED'"
+                + scope.deviceCondition("device_id"), params).longValue();
     }
 
     public int acknowledge(long id, String note, String operator, String at) {
@@ -207,21 +240,32 @@ public class AlarmRepository {
                 .param(at).param(operator).param(note).param(at).param(id).update();
     }
 
-    public long countOpen() {
-        return number("SELECT COUNT(*) FROM alarm_event WHERE status <> 'CLOSED'", List.of()).longValue();
+    public long countOpen(DataScope scope) {
+        if (scope.empty()) {
+            return 0;
+        }
+        return number("SELECT COUNT(*) FROM alarm_event WHERE status <> 'CLOSED'"
+                + scope.deviceCondition("device_id"), scope.parameters()).longValue();
     }
 
-    public long countCriticalOpen() {
-        return number("SELECT COUNT(*) FROM alarm_event WHERE status <> 'CLOSED' AND level = 'CRITICAL'",
-                List.of()).longValue();
+    public long countCriticalOpen(DataScope scope) {
+        if (scope.empty()) {
+            return 0;
+        }
+        return number("SELECT COUNT(*) FROM alarm_event"
+                        + " WHERE status <> 'CLOSED' AND level = 'CRITICAL'"
+                        + scope.deviceCondition("device_id"),
+                scope.parameters()).longValue();
     }
 
-    public List<LevelCount> countOpenByLevel() {
-        return jdbc.sql("""
-                        SELECT level, COUNT(*) AS count
-                        FROM alarm_event WHERE status <> 'CLOSED'
-                        GROUP BY level ORDER BY level
-                        """)
+    public List<LevelCount> countOpenByLevel(DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        return jdbc.sql("SELECT level, COUNT(*) AS count FROM alarm_event"
+                        + " WHERE status <> 'CLOSED'" + scope.deviceCondition("device_id")
+                        + " GROUP BY level ORDER BY level")
+                .params(scope.parameters())
                 .query((rs, row) -> new LevelCount(AlarmLevel.valueOf(rs.getString("level")),
                         rs.getLong("count"))).list();
     }
@@ -231,9 +275,12 @@ public class AlarmRepository {
         return value == null ? 0 : value;
     }
 
-    private static Where where(AlarmFilter filter) {
+    private static Where where(AlarmFilter filter, DataScope scope) {
         StringBuilder sql = new StringBuilder(" WHERE 1 = 1");
         List<Object> params = new ArrayList<>();
+        // 范围条件排在最前：它是强制项，其余都是用户可选过滤。
+        sql.append(scope.deviceCondition("a.device_id"));
+        params.addAll(scope.parameters());
         add(sql, params, "a.status = ?", filter.status());
         add(sql, params, "a.level = ?", filter.level());
         add(sql, params, "a.source = ?", filter.source());

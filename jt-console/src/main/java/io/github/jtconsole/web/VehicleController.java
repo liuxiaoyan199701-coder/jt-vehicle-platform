@@ -1,9 +1,16 @@
 package io.github.jtconsole.web;
 
 import io.github.jtconsole.api.ApiResponse;
+import io.github.jtconsole.audit.Audited;
 import io.github.jtconsole.domain.Vehicle;
-import io.github.jtconsole.repository.VehicleRepository;
+import io.github.jtconsole.operations.VehicleService;
+import io.github.jtconsole.operations.VehicleService.VehicleRequest;
+import io.github.jtconsole.security.AuthorizedPrincipal;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.List;
+import java.util.Map;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,77 +24,65 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/vehicles")
 public class VehicleController {
 
-    private final VehicleRepository vehicles;
+    private final VehicleService vehicles;
 
-    public VehicleController(VehicleRepository vehicles) {
+    public VehicleController(VehicleService vehicles) {
         this.vehicles = vehicles;
     }
 
     @GetMapping
-    public ApiResponse<List<Vehicle>> list() {
-        return ApiResponse.ok(vehicles.findAll());
+    @RequirePermission(Permissions.VEHICLE_LIST)
+    public ApiResponse<List<Vehicle>> list(DataScope scope) {
+        return ApiResponse.ok(vehicles.list(scope));
     }
 
     @GetMapping("/{deviceId}")
-    public ApiResponse<Vehicle> get(@PathVariable String deviceId) {
-        String canonicalId = canonicalDeviceId(deviceId);
-        return vehicles.findById(canonicalId)
-                .map(ApiResponse::ok)
-                .orElseGet(() -> ApiResponse.error("4004", "车辆不存在：" + canonicalId));
+    @RequirePermission(Permissions.VEHICLE_LIST)
+    public ApiResponse<Vehicle> get(@PathVariable String deviceId, DataScope scope) {
+        return ApiResponse.ok(vehicles.get(deviceId, scope));
     }
 
     @PostMapping
-    public ApiResponse<Vehicle> create(@RequestBody Vehicle body) {
-        Vehicle vehicle = withCanonicalDeviceId(body);
-        validate(vehicle);
-        if (vehicles.exists(vehicle.deviceId())) {
-            return ApiResponse.error("4009", "终端号已存在：" + vehicle.deviceId());
-        }
-        vehicles.insert(vehicle);
-        return ApiResponse.ok(vehicles.findById(vehicle.deviceId()).orElse(vehicle));
+    @RequirePermission(Permissions.VEHICLE_CREATE)
+    @Audited(value = "新增车辆建档", resourceType = "vehicle")
+    public ApiResponse<Vehicle> create(
+            @RequestBody VehicleRequest body, AuthorizedPrincipal principal) {
+        return ApiResponse.ok(vehicles.create(principal, body));
     }
 
     @PutMapping("/{deviceId}")
-    public ApiResponse<Vehicle> update(@PathVariable String deviceId, @RequestBody Vehicle body) {
-        Vehicle vehicle = new Vehicle(canonicalDeviceId(deviceId), body.plateNo(), body.plateColor(),
-                body.brand(), body.channelCount() <= 0 ? 1 : body.channelCount(), body.remark(), null, null);
-        validate(vehicle);
-        if (vehicles.update(vehicle) == 0) {
-            return ApiResponse.error("4004", "车辆不存在：" + deviceId);
-        }
-        return ApiResponse.ok(vehicles.findById(vehicle.deviceId()).orElse(vehicle));
+    @RequirePermission(Permissions.VEHICLE_UPDATE)
+    @Audited(value = "编辑车辆档案", resourceType = "vehicle")
+    public ApiResponse<Vehicle> update(
+            @PathVariable String deviceId,
+            @RequestBody VehicleRequest body,
+            AuthorizedPrincipal principal) {
+        return ApiResponse.ok(vehicles.update(principal, deviceId, body));
     }
 
     @DeleteMapping("/{deviceId}")
-    public ApiResponse<Void> delete(@PathVariable String deviceId) {
-        vehicles.delete(canonicalDeviceId(deviceId));
+    @RequirePermission(Permissions.VEHICLE_DELETE)
+    @Audited(value = "删除车辆档案", resourceType = "vehicle")
+    public ApiResponse<Void> delete(
+            @PathVariable String deviceId, AuthorizedPrincipal principal) {
+        vehicles.delete(principal, deviceId);
         return ApiResponse.ok(null);
     }
 
-    private static void validate(Vehicle vehicle) {
-        if (vehicle.deviceId() == null || vehicle.deviceId().isBlank()) {
-            throw new IllegalArgumentException("终端号不能为空");
+    /**
+     * 跨租户调拨。只有平台管理员可用——调拨会让该设备的全部历史数据随归属转移可见性。
+     */
+    @PostMapping("/{deviceId}/tenant")
+    @RequirePermission(Permissions.PLATFORM_TENANT_MANAGE)
+    @Audited(value = "跨租户调拨车辆", resourceType = "vehicle")
+    public ApiResponse<Vehicle> reassign(
+            @PathVariable String deviceId,
+            @RequestBody Map<String, Long> body,
+            AuthorizedPrincipal principal) {
+        Long targetTenantId = body == null ? null : body.get("tenantId");
+        if (targetTenantId == null) {
+            throw new IllegalArgumentException("缺少目标租户");
         }
-        if (vehicle.plateNo() == null || vehicle.plateNo().isBlank()) {
-            throw new IllegalArgumentException("车牌号不能为空");
-        }
-    }
-
-    private static Vehicle withCanonicalDeviceId(Vehicle vehicle) {
-        return new Vehicle(canonicalDeviceId(vehicle.deviceId()), vehicle.plateNo(),
-                vehicle.plateColor(), vehicle.brand(),
-                vehicle.channelCount() <= 0 ? 1 : vehicle.channelCount(),
-                vehicle.remark(), null, null);
-    }
-
-    private static String canonicalDeviceId(String deviceId) {
-        if (deviceId == null) {
-            throw new IllegalArgumentException("终端号不能为空");
-        }
-        String trimmed = deviceId.trim();
-        if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException("终端号不能为空");
-        }
-        return trimmed;
+        return ApiResponse.ok(vehicles.reassign(principal, deviceId, targetTenantId));
     }
 }

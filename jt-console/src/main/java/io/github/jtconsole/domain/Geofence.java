@@ -16,6 +16,7 @@ public record Geofence(
         Double speedLimitKph,
         List<String> vehicleIds,
         int assignedVehicleCount,
+        Long tenantId,
         String createdAt,
         String updatedAt) {
 

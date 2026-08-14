@@ -1,6 +1,8 @@
 package io.github.jtconsole.repository;
 
 import io.github.jtconsole.domain.MediaFile;
+import io.github.jtconsole.security.DataScope;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -40,7 +42,14 @@ public class MediaRepository {
     /**
      * 某设备最近上传的多媒体文件，最新的在前。
      */
-    public List<MediaFile> findRecentByDevice(String deviceId, int limit) {
+    public List<MediaFile> findRecentByDevice(String deviceId, int limit, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(deviceId);
+        params.addAll(scope.parameters());
+        params.add(limit);
         return jdbc.sql("""
                         SELECT id, device_id AS deviceId, file_id AS fileId, file_type AS fileType,
                                file_format AS fileFormat, file_name AS fileName, size,
@@ -48,11 +57,11 @@ public class MediaRepository {
                                event_code AS eventCode, captured_at AS capturedAt
                         FROM media_file
                         WHERE device_id = ?
+                        """ + scope.deviceCondition("device_id") + """
                         ORDER BY captured_at DESC, id DESC
                         LIMIT ?
                         """)
-                .param(deviceId)
-                .param(limit)
+                .params(params)
                 .query(MediaFile.class)
                 .list();
     }

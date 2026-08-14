@@ -1,8 +1,13 @@
 package io.github.jtconsole.web;
 
 import io.github.jtconsole.api.ApiResponse;
+import io.github.jtconsole.audit.AuditRecorder;
+import io.github.jtconsole.gateway.DeviceDisconnectClient;
 import io.github.jtconsole.ingest.RecentEventLog;
+import io.github.jtconsole.live.DeviceOwnershipCache;
 import io.github.jtconsole.live.LiveBroadcaster;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -22,10 +27,21 @@ public class DiagnosticsController {
 
     private final RecentEventLog recentEvents;
     private final LiveBroadcaster broadcaster;
+    private final AuditRecorder audits;
+    private final DeviceOwnershipCache ownership;
+    private final DeviceDisconnectClient disconnects;
 
-    public DiagnosticsController(RecentEventLog recentEvents, LiveBroadcaster broadcaster) {
+    public DiagnosticsController(
+            RecentEventLog recentEvents,
+            LiveBroadcaster broadcaster,
+            AuditRecorder audits,
+            DeviceOwnershipCache ownership,
+            DeviceDisconnectClient disconnects) {
         this.recentEvents = recentEvents;
         this.broadcaster = broadcaster;
+        this.audits = audits;
+        this.ownership = ownership;
+        this.disconnects = disconnects;
     }
 
     /**
@@ -40,6 +56,7 @@ public class DiagnosticsController {
      * </ul>
      */
     @GetMapping("/events")
+    @RequirePermission(Permissions.SYSTEM_AUDIT_VIEW)
     public ApiResponse<Map<String, Object>> events(@RequestParam(defaultValue = "30") int limit) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("summary", recentEvents.summary());
@@ -52,6 +69,16 @@ public class DiagnosticsController {
                 "overflows", metrics.dispatchOverflows(),
                 "sendFailures", metrics.sendFailures(),
                 "slowSessions", metrics.slowSessions()));
+        // 审计是异步有界队列，积压与丢弃只有在这里才看得见。
+        AuditRecorder.Stats auditStats = audits.stats();
+        result.put("audit", Map.of(
+                "queued", auditStats.queued(),
+                "written", auditStats.written(),
+                "dropped", auditStats.dropped(),
+                "writeFailures", auditStats.writeFailures()));
+        result.put("tenancy", Map.of(
+                "ownershipCacheSize", ownership.size(),
+                "gatewayDisconnectFailures", disconnects.failureCount()));
         return ApiResponse.ok(result);
     }
 }

@@ -60,6 +60,29 @@ jt:
     operations:
       # 运营自然日、七日趋势和位置日汇总不依赖服务器默认时区。
       zone-id: ${JT_CONSOLE_OPERATIONS_ZONE_ID:Asia/Shanghai}
+    audit:
+      # 审计写入永不阻塞业务：队列满时丢弃并计数，可在 /api/diagnostics 观察积压。
+      queue-capacity: ${JT_CONSOLE_AUDIT_QUEUE_CAPACITY:4096}
+      retention: ${JT_CONSOLE_AUDIT_RETENTION:180d}
+      cleanup-batch-size: ${JT_CONSOLE_AUDIT_CLEANUP_BATCH:500}
+      cleanup-max-batches: ${JT_CONSOLE_AUDIT_CLEANUP_MAX_BATCHES:100}
+      # 低峰执行：SQLite 只有一个写锁，大批量删除与业务写入抢锁会体现为接口变慢。
+      cleanup-cron: ${JT_CONSOLE_AUDIT_CLEANUP_CRON:0 17 3 * * *}
+    registration:
+      # 自助注册是公网可达的写入口，默认关闭，由部署方按商务需要显式开启。
+      enabled: ${JT_CONSOLE_REGISTRATION_ENABLED:false}
+      pending-expiry: ${JT_CONSOLE_REGISTRATION_PENDING_EXPIRY:30d}
+      captcha-ttl: ${JT_CONSOLE_REGISTRATION_CAPTCHA_TTL:5m}
+      captcha-max-entries: ${JT_CONSOLE_REGISTRATION_CAPTCHA_MAX:5000}
+    tenancy:
+      # 网关查询设备档案的共享密钥。与投递密钥、管理员凭据、token 相互独立；
+      # 留空表示不开放该接口（网关继续用 allow-all / local-list 模式）。
+      device-registry-key: ${JT_CONSOLE_DEVICE_REGISTRY_KEY:}
+      expiry-scan-millis: ${JT_CONSOLE_TENANT_EXPIRY_SCAN_MILLIS:3600000}
+      # 以下为全局默认值，可被租户配置覆盖（见 /api/config）。
+      platform-name: ${JT_CONSOLE_PLATFORM_NAME:车联网监控平台}
+      amap-key: ${JT_CONSOLE_AMAP_KEY:}
+      amap-security-code: ${JT_CONSOLE_AMAP_SECURITY_CODE:}
 
 management:
   endpoints:

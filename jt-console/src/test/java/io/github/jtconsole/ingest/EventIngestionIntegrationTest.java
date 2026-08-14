@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.jtconsole.domain.LiveStatus;
-import io.github.jtconsole.domain.Vehicle;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
@@ -23,6 +22,15 @@ import io.github.jtconsole.operations.AlarmService;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.operations.DailyStatService;
 import io.github.jtconsole.operations.GeofenceService;
+import io.github.jtconsole.operations.VehicleService;
+import io.github.jtconsole.live.DeviceOwnershipCache;
+import io.github.jtconsole.iam.OrganizationService;
+import io.github.jtconsole.repository.PlanRepository;
+import io.github.jtconsole.repository.TenantRepository;
+import io.github.jtconsole.security.AuthorizedPrincipal;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.support.TestPrincipals;
+import io.github.jtconsole.support.TestSchema;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -61,6 +69,9 @@ class EventIngestionIntegrationTest {
 
     private static final String START = "2026-08-11T00:00:00";
     private static final String END = "2026-08-11T23:59:59";
+    /** 平台视角：跨租户可见，含未建档设备。 */
+    private static final DataScope SCOPE = DataScope.platform();
+    private static long TENANT_ID;
 
     @org.springframework.beans.factory.annotation.Autowired
     private DataSource dataSource;
@@ -80,6 +91,12 @@ class EventIngestionIntegrationTest {
     @org.springframework.beans.factory.annotation.Autowired
     private VehicleRepository vehicles;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private VehicleService vehicleService;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private PlatformTransactionManager transactionManager;
+
     private ExecutorService workers;
 
     @BeforeEach
@@ -87,6 +104,8 @@ class EventIngestionIntegrationTest {
         try (Connection connection = dataSource.getConnection()) {
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("schema.sql"));
         }
+        TestSchema.migrate(jdbc, transactionManager);
+        TENANT_ID = TestSchema.defaultTenantId(jdbc);
         jdbc.sql("DROP TRIGGER IF EXISTS fail_status_write").update();
         jdbc.sql("DELETE FROM alarm_condition_state").update();
         jdbc.sql("DELETE FROM geofence_presence").update();
@@ -199,27 +218,28 @@ class EventIngestionIntegrationTest {
 
     @Test
     void keepsLeadingZeroDeviceKeysIsolatedAcrossCrudStatusAndTracks() {
-        VehicleController controller = new VehicleController(vehicles);
-        controller.create(vehicle(" 00123 ", "京A00123"));
-        controller.create(vehicle("123", "京A00124"));
+        AuthorizedPrincipal platform = TestPrincipals.platform();
+        VehicleController controller = new VehicleController(vehicleService);
+        controller.create(vehicle(" 00123 ", "京A00123"), platform);
+        controller.create(vehicle("123", "京A00124"), platform);
 
         ingestion.ingest(location("event-zero", "00123", "2026-08-11T13:00:00"));
         ingestion.ingest(location("event-plain", "123", "2026-08-11T14:00:00"));
 
-        Map<String, LiveStatus> liveById = statuses.findAllLive().stream()
+        Map<String, LiveStatus> liveById = statuses.findAllLive(SCOPE).stream()
                 .collect(Collectors.toMap(LiveStatus::deviceId, status -> status));
         assertEquals("京A00123", liveById.get("00123").plateNo());
         assertEquals("京A00124", liveById.get("123").plateNo());
-        assertEquals(1, tracks.findRange("00123", START, END, 10).size());
-        assertEquals(1, tracks.findRange("123", START, END, 10).size());
+        assertEquals(1, tracks.findRange("00123", START, END, 10, SCOPE).size());
+        assertEquals(1, tracks.findRange("123", START, END, 10, SCOPE).size());
 
-        controller.update(" 00123 ", vehicle("ignored", "京A00999"));
-        assertEquals("京A00999", controller.get("00123").data().plateNo());
-        assertEquals("京A00124", controller.get("123").data().plateNo());
+        controller.update(" 00123 ", vehicle("ignored", "京A00999"), platform);
+        assertEquals("京A00999", controller.get("00123", SCOPE).data().plateNo());
+        assertEquals("京A00124", controller.get("123", SCOPE).data().plateNo());
 
-        controller.delete(" 123 ");
-        assertTrue(vehicles.findById("00123").isPresent());
-        assertFalse(vehicles.findById("123").isPresent());
+        controller.delete(" 123 ", platform);
+        assertTrue(vehicles.findById("00123", SCOPE).isPresent());
+        assertFalse(vehicles.findById("123", SCOPE).isPresent());
         assertEquals(1, tracks.countByDevice("00123"));
         assertEquals(1, tracks.countByDevice("123"));
     }
@@ -229,8 +249,9 @@ class EventIngestionIntegrationTest {
         return count == null ? 0 : count;
     }
 
-    private static Vehicle vehicle(String deviceId, String plateNo) {
-        return new Vehicle(deviceId, plateNo, "蓝色", "测试车辆", 1, null, null, null);
+    private static VehicleService.VehicleRequest vehicle(String deviceId, String plateNo) {
+        return new VehicleService.VehicleRequest(
+                deviceId, plateNo, "蓝色", "测试车辆", 1, null, TENANT_ID, null);
     }
 
     private static MessageEnvelope location(String eventId, String deviceId, String deviceTime) {
@@ -313,6 +334,25 @@ class EventIngestionIntegrationTest {
         @Bean
         VehicleRepository vehicleRepository(JdbcClient jdbc) {
             return new VehicleRepository(jdbc);
+        }
+
+        @Bean
+        TenantRepository tenantRepository(JdbcClient jdbc) {
+            return new TenantRepository(jdbc);
+        }
+
+        @Bean
+        PlanRepository planRepository(JdbcClient jdbc) {
+            return new PlanRepository(jdbc);
+        }
+
+        /** 本测试的车辆都不挂部门，组织校验与广播缓存用替身即可。 */
+        @Bean
+        VehicleService vehicleService(
+                VehicleRepository vehicles, TenantRepository tenants, PlanRepository plans) {
+            return new VehicleService(vehicles, tenants, plans,
+                    org.mockito.Mockito.mock(OrganizationService.class),
+                    org.mockito.Mockito.mock(DeviceOwnershipCache.class));
         }
 
         @Bean

@@ -1,6 +1,7 @@
 package io.github.jtplatform.media.talkback;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import io.github.jtplatform.common.model.StreamKey;
@@ -33,14 +34,31 @@ class TalkbackPacketEncoderTest {
         }
     }
 
+    /**
+     * 设备标识的合法范围是 1..20 位十进制数字——2019 版协议的手机号占 20 位 BCD，
+     * 早先按 12 位判定会把合规设备挡在门外。因此这里只断言真正的边界：
+     * 非数字一律拒绝，超过 20 位一律拒绝，13 位是合法的。
+     */
     @Test
     void rejectsInvalidDeviceIdentifiers() {
         assertThrows(IllegalArgumentException.class, () -> TalkbackPacketEncoder.encode(
                 new StreamKey("13800A38000", 2, StreamKind.TALKBACK),
                 new byte[0], Jt1078Constants.PT_G711A, 0, CLOCK));
         assertThrows(IllegalArgumentException.class, () -> TalkbackPacketEncoder.encode(
-                new StreamKey("1234567890123", 2, StreamKind.TALKBACK),
+                new StreamKey("123456789012345678901", 2, StreamKind.TALKBACK),
                 new byte[0], Jt1078Constants.PT_G711A, 0, CLOCK));
+    }
+
+    @Test
+    void acceptsThe2019TwentyDigitMobileNumber() {
+        ByteBuf encoded = TalkbackPacketEncoder.encode(
+                new StreamKey("12345678901234567890", 2, StreamKind.TALKBACK),
+                new byte[0], Jt1078Constants.PT_G711A, 0, CLOCK);
+        try {
+            assertNotNull(encoded);
+        } finally {
+            encoded.release();
+        }
     }
 
     @Test

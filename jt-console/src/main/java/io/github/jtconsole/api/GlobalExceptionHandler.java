@@ -1,5 +1,7 @@
 package io.github.jtconsole.api;
 
+import io.github.jtconsole.audit.AuditContext;
+import io.github.jtconsole.iam.IamException;
 import io.github.jtconsole.operations.FleetBusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +25,15 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.OK)
     public ApiResponse<Void> handleFleetBusiness(FleetBusinessException failure) {
         LOGGER.debug("Rejected fleet request: {}", failure.code());
+        AuditContext.businessCode(failure.code());
+        return ApiResponse.error(failure.code(), failure.getMessage());
+    }
+
+    @ExceptionHandler(IamException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public ApiResponse<Void> handleIam(IamException failure) {
+        LOGGER.debug("Rejected identity or tenancy request: {}", failure.code());
+        AuditContext.businessCode(failure.code());
         return ApiResponse.error(failure.code(), failure.getMessage());
     }
 
@@ -30,6 +41,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.OK)
     public ApiResponse<Void> handleBadRequest(IllegalArgumentException failure) {
         LOGGER.debug("Rejected invalid console request: {}", failure.getClass().getSimpleName());
+        AuditContext.businessCode("4000");
         return ApiResponse.error("4000", "请求参数错误");
     }
 
@@ -37,6 +49,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.OK)
     public ApiResponse<Void> handleUnexpected(Exception failure) {
         LOGGER.error("Unhandled error in console API: {}", failure.getClass().getSimpleName());
+        AuditContext.businessCode("5000");
         return ApiResponse.error("5000", "服务器内部错误");
     }
 }

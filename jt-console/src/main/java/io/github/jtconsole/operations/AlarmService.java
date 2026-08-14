@@ -7,6 +7,7 @@ import io.github.jtconsole.domain.AlarmStatus;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.AlarmRepository.ConditionState;
 import io.github.jtconsole.repository.DailyStatRepository;
+import io.github.jtconsole.security.DataScope;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
@@ -106,8 +107,8 @@ public class AlarmService {
     }
 
     @Transactional
-    public ActionResult acknowledge(long id, String note, String operator) {
-        AlarmEvent event = alarms.findById(id).orElse(null);
+    public ActionResult acknowledge(long id, String note, String operator, DataScope scope) {
+        AlarmEvent event = alarms.findById(id, scope).orElse(null);
         if (event == null) return ActionResult.NOT_FOUND;
         if (event.status() != AlarmStatus.OPEN) return ActionResult.INVALID_STATE;
         String at = Instant.now().toString();
@@ -116,8 +117,8 @@ public class AlarmService {
     }
 
     @Transactional
-    public ActionResult close(long id, String note, String operator) {
-        AlarmEvent event = alarms.findById(id).orElse(null);
+    public ActionResult close(long id, String note, String operator, DataScope scope) {
+        AlarmEvent event = alarms.findById(id, scope).orElse(null);
         if (event == null) return ActionResult.NOT_FOUND;
         if (event.status() == AlarmStatus.CLOSED) return ActionResult.INVALID_STATE;
         String at = Instant.now().toString();

@@ -13,8 +13,35 @@ public class ConsoleProperties {
     private Security security = new Security();
     private Broadcast broadcast = new Broadcast();
     private Operations operations = new Operations();
+    private Audit audit = new Audit();
+    private Registration registration = new Registration();
+    private Tenancy tenancy = new Tenancy();
     private Duration offlineTimeout = Duration.ofMinutes(5);
     private Duration eventRetention = Duration.ofHours(24);
+
+    public Audit getAudit() {
+        return audit;
+    }
+
+    public void setAudit(Audit audit) {
+        this.audit = audit;
+    }
+
+    public Registration getRegistration() {
+        return registration;
+    }
+
+    public void setRegistration(Registration registration) {
+        this.registration = registration;
+    }
+
+    public Tenancy getTenancy() {
+        return tenancy;
+    }
+
+    public void setTenancy(Tenancy tenancy) {
+        this.tenancy = tenancy;
+    }
 
     public Gateway getGateway() {
         return gateway;
@@ -288,6 +315,165 @@ public class ConsoleProperties {
 
         public void setZoneId(String zoneId) {
             this.zoneId = zoneId;
+        }
+    }
+
+    public static class Audit {
+        /** 有界队列容量。满了丢弃并计数，绝不阻塞业务请求。 */
+        private int queueCapacity = 4096;
+        /** 保留期。超期记录由每日任务分批清理。 */
+        private Duration retention = Duration.ofDays(180);
+        /** 单批删除条数，避免一条长事务阻塞业务写入。 */
+        private int cleanupBatchSize = 500;
+        /** 单次清理的最大批数，给清理任务一个时间上界。 */
+        private int cleanupMaxBatches = 100;
+        /** 清理任务的 cron 表达式，默认凌晨低峰执行。 */
+        private String cleanupCron = "0 17 3 * * *";
+
+        public String getCleanupCron() {
+            return cleanupCron;
+        }
+
+        public void setCleanupCron(String cleanupCron) {
+            this.cleanupCron = cleanupCron;
+        }
+
+        public int getQueueCapacity() {
+            return queueCapacity;
+        }
+
+        public void setQueueCapacity(int queueCapacity) {
+            this.queueCapacity = queueCapacity;
+        }
+
+        public Duration getRetention() {
+            return retention;
+        }
+
+        public void setRetention(Duration retention) {
+            this.retention = retention;
+        }
+
+        public int getCleanupBatchSize() {
+            return cleanupBatchSize;
+        }
+
+        public void setCleanupBatchSize(int cleanupBatchSize) {
+            this.cleanupBatchSize = cleanupBatchSize;
+        }
+
+        public int getCleanupMaxBatches() {
+            return cleanupMaxBatches;
+        }
+
+        public void setCleanupMaxBatches(int cleanupMaxBatches) {
+            this.cleanupMaxBatches = cleanupMaxBatches;
+        }
+    }
+
+    public static class Registration {
+        /**
+         * 自助注册入口开关。默认关闭：注册接口是公网可达的写入口，
+         * 应由部署方按商务需要显式开启，而不是装上就开着。
+         */
+        private boolean enabled = false;
+        /** 待审批申请的自动过期时限。 */
+        private Duration pendingExpiry = Duration.ofDays(30);
+        /** 图形验证码有效期。 */
+        private Duration captchaTtl = Duration.ofMinutes(5);
+        /** 同时保留的验证码上限，防止公网入口把内存打满。 */
+        private int captchaMaxEntries = 5_000;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public Duration getPendingExpiry() {
+            return pendingExpiry;
+        }
+
+        public void setPendingExpiry(Duration pendingExpiry) {
+            this.pendingExpiry = pendingExpiry;
+        }
+
+        public Duration getCaptchaTtl() {
+            return captchaTtl;
+        }
+
+        public void setCaptchaTtl(Duration captchaTtl) {
+            this.captchaTtl = captchaTtl;
+        }
+
+        public int getCaptchaMaxEntries() {
+            return captchaMaxEntries;
+        }
+
+        public void setCaptchaMaxEntries(int captchaMaxEntries) {
+            this.captchaMaxEntries = captchaMaxEntries;
+        }
+    }
+
+    public static class Tenancy {
+        /**
+         * 网关查询设备档案使用的共享密钥。与投递密钥、管理员凭据、token 相互独立；
+         * 留空表示不开放该接口（网关仍可用 allow-all / local-list 模式）。
+         */
+        private String deviceRegistryKey = "";
+        /**
+         * 到期扫描周期（毫秒）。用毫秒而不是 Duration，是因为 {@code @Scheduled} 的
+         * fixedDelayString 只认 ISO-8601 或纯数字，"1h" 这种 Boot 风格写法会解析失败。
+         * 登录与档案接口另有实时判定，本任务只负责状态落库与联动。
+         */
+        private long expiryScanMillis = 3_600_000L;
+        /** 平台显示名称的全局默认值，可被租户配置覆盖。 */
+        private String platformName = "车联网监控平台";
+        /** 高德地图 Key 的全局默认值，可被租户配置覆盖。 */
+        private String amapKey = "";
+        /** 高德地图安全密钥的全局默认值，可被租户配置覆盖。 */
+        private String amapSecurityCode = "";
+
+        public String getDeviceRegistryKey() {
+            return deviceRegistryKey;
+        }
+
+        public void setDeviceRegistryKey(String deviceRegistryKey) {
+            this.deviceRegistryKey = deviceRegistryKey;
+        }
+
+        public long getExpiryScanMillis() {
+            return expiryScanMillis;
+        }
+
+        public void setExpiryScanMillis(long expiryScanMillis) {
+            this.expiryScanMillis = expiryScanMillis;
+        }
+
+        public String getPlatformName() {
+            return platformName;
+        }
+
+        public void setPlatformName(String platformName) {
+            this.platformName = platformName;
+        }
+
+        public String getAmapKey() {
+            return amapKey;
+        }
+
+        public void setAmapKey(String amapKey) {
+            this.amapKey = amapKey;
+        }
+
+        public String getAmapSecurityCode() {
+            return amapSecurityCode;
+        }
+
+        public void setAmapSecurityCode(String amapSecurityCode) {
+            this.amapSecurityCode = amapSecurityCode;
         }
     }
 }

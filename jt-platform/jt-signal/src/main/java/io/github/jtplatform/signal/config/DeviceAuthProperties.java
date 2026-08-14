@@ -2,6 +2,7 @@ package io.github.jtplatform.signal.config;
 
 import io.github.jtplatform.signal.auth.DeviceAuthMode;
 import io.github.jtplatform.signal.auth.RemoteUnavailablePolicy;
+import io.github.jtplatform.signal.auth.UnregisteredDevicePolicy;
 import java.net.URI;
 import java.time.Duration;
 import java.util.LinkedHashMap;
@@ -43,7 +44,23 @@ public class DeviceAuthProperties {
         private Duration cacheTtl = Duration.ofMinutes(5);
         private long cacheMaximumSize = 100_000;
         private RemoteUnavailablePolicy unavailablePolicy;
+        /**
+         * What to do with a device the remote source has no archive for. Defaults to REJECT,
+         * matching what remote-api mode has always done; set ALLOW where devices are commissioned
+         * in the field before they are archived in the console.
+         */
+        private UnregisteredDevicePolicy unregisteredDevicePolicy = UnregisteredDevicePolicy.REJECT;
         private Map<String, String> headers = new LinkedHashMap<>();
+
+        public UnregisteredDevicePolicy getUnregisteredDevicePolicy() {
+            return unregisteredDevicePolicy;
+        }
+
+        public void setUnregisteredDevicePolicy(UnregisteredDevicePolicy unregisteredDevicePolicy) {
+            this.unregisteredDevicePolicy = unregisteredDevicePolicy == null
+                    ? UnregisteredDevicePolicy.REJECT
+                    : unregisteredDevicePolicy;
+        }
 
         public URI getEndpoint() {
             return endpoint;

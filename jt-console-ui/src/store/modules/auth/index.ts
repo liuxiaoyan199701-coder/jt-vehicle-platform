@@ -24,9 +24,25 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   const userInfo: Api.Auth.UserInfo = reactive({
     userId: '',
     userName: '',
+    displayName: '',
+    tenantId: null,
+    tenantName: '',
+    platform: false,
     roles: [],
+    roleDetails: [],
+    permissions: [],
     buttons: []
   });
+
+  /** 是否持有某个权限码。菜单与按钮据此呈现，真正的拦截在后端 */
+  function hasPermission(code: string) {
+    return (userInfo.permissions ?? []).includes(code);
+  }
+
+  /** 是否持有其中任一权限码 */
+  function hasAnyPermission(...codes: string[]) {
+    return codes.some(code => hasPermission(code));
+  }
 
   /** is super role in static route */
   const isStaticSuper = computed(() => {
@@ -46,7 +62,13 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     Object.assign(userInfo, {
       userId: '',
       userName: '',
+      displayName: '',
+      tenantId: null,
+      tenantName: '',
+      platform: false,
       roles: [],
+      roleDetails: [],
+      permissions: [],
       buttons: []
     });
     endLoading();
@@ -195,6 +217,8 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     isStaticSuper,
     isLogin,
     loginLoading,
+    hasPermission,
+    hasAnyPermission,
     resetStore,
     logout,
     login,

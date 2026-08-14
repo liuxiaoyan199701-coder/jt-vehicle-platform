@@ -3,6 +3,7 @@ import './plugins/assets';
 import { setupVueRootValidator } from 'vite-plugin-vue-transition-root-validator/client';
 import { setupAppVersionNotification, setupDayjs, setupIconifyOffline, setupLoading, setupNProgress } from './plugins';
 import { setupStore } from './store';
+import { setupPermissionDirective } from './directives/permission';
 import { setupRouter } from './router';
 import { getLocale, setupI18n } from './locales';
 import App from './App.vue';
@@ -19,6 +20,9 @@ async function setupApp() {
   const app = createApp(App);
 
   setupStore(app);
+
+  // 指令依赖 pinia，必须在 setupStore 之后注册
+  setupPermissionDirective(app);
 
   await setupRouter(app);
 

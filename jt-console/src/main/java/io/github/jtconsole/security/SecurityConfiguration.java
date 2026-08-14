@@ -1,6 +1,7 @@
 package io.github.jtconsole.security;
 
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.gateway.DeviceRegistryKeyFilter;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.context.annotation.Bean;
@@ -66,11 +67,14 @@ public class SecurityConfiguration {
             SessionTokenService tokens,
             IngestKeyProvider ingestKeys,
             JsonSecurityResponseWriter responses,
-            CorsConfigurationSource corsConfigurationSource) throws Exception {
+            CorsConfigurationSource corsConfigurationSource,
+            ConsoleProperties properties) throws Exception {
         BearerTokenAuthenticationFilter bearerFilter =
                 new BearerTokenAuthenticationFilter(tokens, responses);
         IngestKeyAuthenticationFilter ingestFilter =
                 new IngestKeyAuthenticationFilter(ingestKeys, responses);
+        DeviceRegistryKeyFilter registryFilter =
+                new DeviceRegistryKeyFilter(properties, responses);
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -91,14 +95,24 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/login", "/api/auth/refreshToken")
                         .permitAll()
+                        // 自助注册与验证码是公网入口，由图形验证码、来源限流与人工审批
+                        // 三重约束，并可由配置整体关闭。
+                        .requestMatchers(HttpMethod.GET, "/api/public/registration/captcha")
+                        .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/public/registration")
+                        .permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**", "/ws/**")
                         .permitAll()
                         .requestMatchers(HttpMethod.POST, "/ingest/jt-events")
+                        .permitAll()
+                        // 网关设备档案接口由独立共享密钥过滤器把关，不走用户会话。
+                        .requestMatchers("/gateway/device-registry")
                         .permitAll()
                         .requestMatchers("/api/**")
                         .authenticated()
                         .anyRequest()
                         .denyAll())
+                .addFilterBefore(registryFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(ingestFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(bearerFilter, UsernamePasswordAuthenticationFilter.class);
 

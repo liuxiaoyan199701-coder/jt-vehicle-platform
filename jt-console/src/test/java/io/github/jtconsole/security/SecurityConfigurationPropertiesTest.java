@@ -2,8 +2,12 @@ package io.github.jtconsole.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.repository.AccountRepository;
+import io.github.jtconsole.repository.RoleRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -27,9 +31,14 @@ class SecurityConfigurationPropertiesTest {
     @Test
     void deploymentModeRejectsMissingAdministratorHash() {
         ConsoleProperties properties = deployedProperties();
+        AccountRepository accounts = mock(AccountRepository.class);
+        when(accounts.isEmpty()).thenReturn(true);
 
-        assertThatThrownBy(() -> new AdminCredentialService(
-                        properties, new BCryptPasswordEncoder()))
+        AdminAccountBootstrap bootstrap = new AdminAccountBootstrap(
+                properties, accounts, mock(RoleRepository.class),
+                new BCryptPasswordEncoder(), mock(PermissionCatalogSynchronizer.class));
+
+        assertThatThrownBy(bootstrap::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("BCrypt");
     }

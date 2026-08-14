@@ -4,6 +4,9 @@ import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.live.LiveBroadcaster;
 import io.github.jtconsole.repository.StatusRepository;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,13 +29,15 @@ public class MonitorController {
      * 全部设备的最新位置与在线状态。前端进入监控页时拉一次全量，之后靠 WebSocket 增量更新。
      */
     @GetMapping("/live")
-    public ApiResponse<List<LiveStatus>> live() {
-        return ApiResponse.ok(statuses.findAllLive());
+    @RequirePermission(Permissions.MONITOR_VIEW)
+    public ApiResponse<List<LiveStatus>> live(DataScope scope) {
+        return ApiResponse.ok(statuses.findAllLive(scope));
     }
 
     @GetMapping("/stats")
-    public ApiResponse<Map<String, Object>> stats() {
-        List<LiveStatus> all = statuses.findAllLive();
+    @RequirePermission(Permissions.MONITOR_VIEW)
+    public ApiResponse<Map<String, Object>> stats(DataScope scope) {
+        List<LiveStatus> all = statuses.findAllLive(scope);
         long online = all.stream().filter(LiveStatus::online).count();
         LiveBroadcaster.BroadcastMetrics metrics = broadcaster.metrics();
         return ApiResponse.ok(Map.of(

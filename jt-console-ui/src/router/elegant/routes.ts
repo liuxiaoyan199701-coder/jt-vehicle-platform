@@ -120,6 +120,149 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'register',
+    path: '/register',
+    component: 'layout.blank$view.register',
+    meta: {
+      title: 'register',
+      i18nKey: 'route.register',
+      constant: true,
+      hideInMenu: true
+    }
+  },
+  {
+    name: 'system',
+    path: '/system',
+    component: 'layout.base',
+    meta: {
+      title: 'system',
+      i18nKey: 'route.system',
+      icon: 'mdi:cog-outline',
+      order: 90
+    },
+    children: [
+      {
+        name: 'system_audit',
+        path: '/system/audit',
+        component: 'view.system_audit',
+        meta: {
+          title: '审计日志',
+          i18nKey: 'route.system_audit',
+          icon: 'mdi:text-box-search-outline',
+          permissions: ['system:audit:view'],
+          order: 9
+        }
+      },
+      {
+        name: 'system_config',
+        path: '/system/config',
+        component: 'view.system_config',
+        meta: {
+          title: '租户配置',
+          i18nKey: 'route.system_config',
+          icon: 'mdi:tune',
+          permissions: ['system:config:view', 'platform:config:manage'],
+          order: 8
+        }
+      },
+      {
+        name: 'system_department',
+        path: '/system/department',
+        component: 'view.system_department',
+        meta: {
+          title: '部门管理',
+          i18nKey: 'route.system_department',
+          icon: 'mdi:file-tree-outline',
+          permissions: ['system:dept:list'],
+          order: 3
+        }
+      },
+      {
+        name: 'system_plan',
+        path: '/system/plan',
+        component: 'view.system_plan',
+        meta: {
+          title: '套餐与续费',
+          i18nKey: 'route.system_plan',
+          icon: 'mdi:package-variant-closed',
+          permissions: ['platform:plan:manage'],
+          order: 6
+        }
+      },
+      {
+        name: 'system_position',
+        path: '/system/position',
+        component: 'view.system_position',
+        meta: {
+          title: '岗位管理',
+          i18nKey: 'route.system_position',
+          icon: 'mdi:badge-account-outline',
+          permissions: ['system:position:list'],
+          order: 4
+        }
+      },
+      {
+        name: 'system_profile',
+        path: '/system/profile',
+        component: 'view.system_profile',
+        meta: {
+          title: '个人中心',
+          i18nKey: 'route.system_profile',
+          icon: 'mdi:account-cog-outline',
+          order: 10
+        }
+      },
+      {
+        name: 'system_registration',
+        path: '/system/registration',
+        component: 'view.system_registration',
+        meta: {
+          title: '注册审批',
+          i18nKey: 'route.system_registration',
+          icon: 'mdi:clipboard-check-outline',
+          permissions: ['platform:registration:review'],
+          order: 7
+        }
+      },
+      {
+        name: 'system_role',
+        path: '/system/role',
+        component: 'view.system_role',
+        meta: {
+          title: '角色管理',
+          i18nKey: 'route.system_role',
+          icon: 'mdi:shield-account-outline',
+          permissions: ['system:role:list'],
+          order: 2
+        }
+      },
+      {
+        name: 'system_tenant',
+        path: '/system/tenant',
+        component: 'view.system_tenant',
+        meta: {
+          title: '租户管理',
+          i18nKey: 'route.system_tenant',
+          icon: 'mdi:domain',
+          permissions: ['platform:tenant:manage'],
+          order: 5
+        }
+      },
+      {
+        name: 'system_user',
+        path: '/system/user',
+        component: 'view.system_user',
+        meta: {
+          title: '用户管理',
+          i18nKey: 'route.system_user',
+          icon: 'mdi:account-group-outline',
+          permissions: ['system:account:list'],
+          order: 1
+        }
+      }
+    ]
+  },
+  {
     name: 'track',
     path: '/track',
     component: 'layout.base$view.track',

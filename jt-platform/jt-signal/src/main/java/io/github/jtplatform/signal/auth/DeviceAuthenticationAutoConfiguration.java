@@ -44,7 +44,8 @@ public class DeviceAuthenticationAutoConfiguration {
         return new DeviceAuthenticationService(
                 informationSource,
                 properties.getMode(),
-                properties.getRemote().getUnavailablePolicy());
+                properties.getRemote().getUnavailablePolicy(),
+                properties.getRemote().getUnregisteredDevicePolicy());
     }
 
     private static DeviceInformationSource remoteSource(

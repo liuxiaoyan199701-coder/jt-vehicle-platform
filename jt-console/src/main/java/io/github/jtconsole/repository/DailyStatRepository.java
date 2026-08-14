@@ -1,8 +1,10 @@
 package io.github.jtconsole.repository;
 
 import io.github.jtconsole.domain.VehicleDailyStat;
+import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -64,40 +66,62 @@ public class DailyStatRepository {
                 .param(deviceId).param(date).param(count).param(updatedAt).update();
     }
 
-    public List<VehicleDailyStat> findByDeviceRange(String deviceId, String start, String end) {
+    public List<VehicleDailyStat> findByDeviceRange(
+            String deviceId, String start, String end, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(deviceId);
+        params.add(start);
+        params.add(end);
+        params.addAll(scope.parameters());
         return jdbc.sql("""
                         SELECT device_id, stat_date, distance_km, point_count, moving_points,
                                max_speed_kph, alarm_count, last_lat, last_lng, last_mileage,
                                last_device_time
                         FROM vehicle_daily_stat
                         WHERE device_id = ? AND stat_date >= ? AND stat_date <= ?
-                        ORDER BY stat_date
-                        """)
-                .param(deviceId).param(start).param(end).query(DailyStatRepository::map).list();
+                        """ + scope.deviceCondition("device_id") + " ORDER BY stat_date")
+                .params(params).query(DailyStatRepository::map).list();
     }
 
-    public List<DailyAggregate> aggregateRange(String start, String end) {
+    public List<DailyAggregate> aggregateRange(String start, String end, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(start);
+        params.add(end);
+        params.addAll(scope.parameters());
         return jdbc.sql("""
                         SELECT s.stat_date, COALESCE(SUM(s.distance_km), 0) distance_km,
                                SUM(CASE WHEN s.point_count > 0 THEN 1 ELSE 0 END) active_vehicles,
                                COALESCE(SUM(s.alarm_count), 0) new_alarms
                         FROM vehicle_daily_stat s JOIN vehicle v ON v.device_id = s.device_id
                         WHERE s.stat_date >= ? AND s.stat_date <= ?
+                        """ + scope.vehicleCondition("v") + """
                         GROUP BY s.stat_date ORDER BY s.stat_date
                         """)
-                .param(start).param(end)
+                .params(params)
                 .query((rs, row) -> new DailyAggregate(rs.getString("stat_date"),
                         rs.getDouble("distance_km"), rs.getInt("active_vehicles"),
                         rs.getInt("new_alarms"))).list();
     }
 
-    public double totalDistance(String date) {
+    public double totalDistance(String date, DataScope scope) {
+        if (scope.empty()) {
+            return 0;
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(date);
+        params.addAll(scope.parameters());
         Number value = jdbc.sql("""
                         SELECT COALESCE(SUM(s.distance_km), 0)
                         FROM vehicle_daily_stat s JOIN vehicle v ON v.device_id = s.device_id
                         WHERE s.stat_date = ?
-                        """)
-                .param(date).query(Number.class).single();
+                        """ + scope.vehicleCondition("v"))
+                .params(params).query(Number.class).single();
         return value == null ? 0 : value.doubleValue();
     }
 

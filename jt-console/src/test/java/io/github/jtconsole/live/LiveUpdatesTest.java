@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeout;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -18,9 +19,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.security.AuthorizationResolver;
 import io.github.jtconsole.security.SessionTokenService;
 import io.github.jtconsole.security.SessionTokenService.AuthenticatedSession;
 import io.github.jtconsole.security.SessionTokenService.AuthenticationState;
+import io.github.jtconsole.support.TestPrincipals;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
@@ -50,7 +53,7 @@ class LiveUpdatesTest {
     @Test
     void acceptsValidTokenFromTrimmedAllowedOrigin() {
         SessionTokenService tokens = tokenService();
-        String token = tokens.issue("admin").token();
+        String token = tokens.issue(1L, "admin", null).token();
         LiveWebSocketHandshakeInterceptor interceptor =
                 new LiveWebSocketHandshakeInterceptor(tokens, Set.of("  " + ALLOWED_ORIGIN + "  "));
         ServerHttpRequest request = request(ALLOWED_ORIGIN,
@@ -91,7 +94,7 @@ class LiveUpdatesTest {
     @Test
     void rejectsDisallowedOriginEvenWithValidToken() {
         SessionTokenService tokens = tokenService();
-        String token = tokens.issue("admin").token();
+        String token = tokens.issue(1L, "admin", null).token();
         LiveWebSocketHandshakeInterceptor interceptor =
                 new LiveWebSocketHandshakeInterceptor(tokens, Set.of(ALLOWED_ORIGIN));
         ServerHttpResponse response = mock(ServerHttpResponse.class);
@@ -144,7 +147,7 @@ class LiveUpdatesTest {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = tokenService();
         Map<String, Object> attributes = authenticatedAttributes(
-                tokens, tokens.issue("admin").token());
+                tokens, tokens.issue(1L, "admin", null).token());
         CountDownLatch attributesRequested = new CountDownLatch(1);
         CountDownLatch continueRegistration = new CountDownLatch(1);
         AtomicReference<Throwable> registrationFailure = new AtomicReference<>();
@@ -235,7 +238,7 @@ class LiveUpdatesTest {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
                 new ConsoleProperties(), List.of(broadcaster));
-        SessionTokenService.TokenPair credentials = tokens.issue("admin");
+        SessionTokenService.TokenPair credentials = tokens.issue(1L, "admin", null);
         Map<String, Object> attributes = authenticatedAttributes(tokens, credentials.token());
 
         assertTrue(tokens.revokeSessionForAccessToken(credentials.token()));
@@ -255,7 +258,7 @@ class LiveUpdatesTest {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
                 new ConsoleProperties(), List.of(broadcaster));
-        SessionTokenService.TokenPair original = tokens.issue("admin");
+        SessionTokenService.TokenPair original = tokens.issue(1L, "admin", null);
         Map<String, Object> originalAttributes = authenticatedAttributes(tokens, original.token());
         SessionTokenService.TokenPair rotated = tokens
                 .rotateRefreshToken(original.refreshToken())
@@ -342,7 +345,8 @@ class LiveUpdatesTest {
             return "{\"type\":\"location\",\"data\":{}}";
         }).when(objectMapper).writeValueAsString(any(Object.class));
         LiveBroadcaster broadcaster = new LiveBroadcaster(
-                objectMapper, 1, 4, 1, Duration.ofSeconds(30));
+                objectMapper, 1, 4, 1, Duration.ofSeconds(30),
+                platformAuthorizations(), platformOwnership());
         WebSocketSession session = authenticatedSession("overflow-test-session");
 
         try {
@@ -365,7 +369,8 @@ class LiveUpdatesTest {
     @Test
     void completedSendsDoNotAccumulateCancelledTimeoutTasks() throws Exception {
         LiveBroadcaster broadcaster = new LiveBroadcaster(
-                new ObjectMapper(), 64, 64, 1, Duration.ofMinutes(5));
+                new ObjectMapper(), 64, 64, 1, Duration.ofMinutes(5),
+                platformAuthorizations(), platformOwnership());
         WebSocketSession session = authenticatedSession("timeout-cleanup-session");
         AtomicInteger sentMessages = new AtomicInteger();
         doAnswer(invocation -> {
@@ -392,8 +397,8 @@ class LiveUpdatesTest {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
                 new ConsoleProperties(), List.of(broadcaster));
-        SessionTokenService.TokenPair revokedCredentials = tokens.issue("admin");
-        SessionTokenService.TokenPair activeCredentials = tokens.issue("admin");
+        SessionTokenService.TokenPair revokedCredentials = tokens.issue(1L, "admin", null);
+        SessionTokenService.TokenPair activeCredentials = tokens.issue(1L, "admin", null);
         LiveWebSocketHandshakeInterceptor interceptor =
                 new LiveWebSocketHandshakeInterceptor(tokens, Set.of(ALLOWED_ORIGIN));
         Map<String, Object> revokedAttributes = new HashMap<>();
@@ -433,7 +438,7 @@ class LiveUpdatesTest {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
                 new ConsoleProperties(), List.of(broadcaster));
-        SessionTokenService.TokenPair original = tokens.issue("admin");
+        SessionTokenService.TokenPair original = tokens.issue(1L, "admin", null);
         LiveWebSocketHandshakeInterceptor interceptor =
                 new LiveWebSocketHandshakeInterceptor(tokens, Set.of(ALLOWED_ORIGIN));
         Map<String, Object> originalAttributes = new HashMap<>();
@@ -487,11 +492,29 @@ class LiveUpdatesTest {
                 2,
                 sessionQueueCapacity,
                 2,
-                Duration.ofSeconds(30));
+                Duration.ofSeconds(30),
+                platformAuthorizations(), platformOwnership());
     }
 
     private static SessionTokenService tokenService() {
         return new SessionTokenService(new ConsoleProperties());
+    }
+
+    /**
+     * 本测试关注广播的排队、背压与撤销语义，因此把授权解析固定为平台管理员，
+     * 让所有更新都能通过范围过滤；范围过滤本身另有专门的用例覆盖。
+     */
+    private static AuthorizationResolver platformAuthorizations() {
+        AuthorizationResolver resolver = mock(AuthorizationResolver.class);
+        when(resolver.resolve(anyLong()))
+                .thenReturn(java.util.Optional.of(TestPrincipals.platform()));
+        return resolver;
+    }
+
+    private static DeviceOwnershipCache platformOwnership() {
+        DeviceOwnershipCache ownership = mock(DeviceOwnershipCache.class);
+        when(ownership.visibleTo(any(), any())).thenReturn(true);
+        return ownership;
     }
 
     private static ServerHttpRequest request(String origin, String protocols) {
@@ -505,7 +528,7 @@ class LiveUpdatesTest {
 
     private static WebSocketSession authenticatedSession(String id) {
         SessionTokenService tokens = tokenService();
-        return session(id, authenticatedAttributes(tokens, tokens.issue("admin").token()));
+        return session(id, authenticatedAttributes(tokens, tokens.issue(1L, "admin", null).token()));
     }
 
     private static Map<String, Object> authenticatedAttributes(

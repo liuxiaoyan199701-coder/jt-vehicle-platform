@@ -48,7 +48,8 @@ import org.yzh.web.model.enums.SessionKey;
 @EnableConfigurationProperties(SignalProperties.class)
 @ConditionalOnProperty(prefix = "jt.signal", name = "enabled", havingValue = "true", matchIfMissing = true)
 @ComponentScan(basePackages = "org.yzh.web")
-@Import(SignalStreamCommandController.class)
+@Import({SignalStreamCommandController.class,
+        io.github.jtplatform.signal.admin.DeviceSessionAdminController.class})
 public class SignalAutoConfiguration implements EnvironmentAware {
     private Environment environment;
 

@@ -60,7 +60,7 @@ test('vehicle profile normalization keeps exact canonical device id', () => {
     openAlarmCount: 0,
     recentAlarms: []
   });
-  assert.equal(profile.vehicle.deviceId, '00123');
+  assert.equal(profile.vehicle?.deviceId, '00123');
   assert.equal(profile.today.distanceKm, 0);
   assert.equal(profile.last7Days.activeDays, 0);
 });

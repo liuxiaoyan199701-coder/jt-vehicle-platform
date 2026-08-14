@@ -235,7 +235,19 @@ const local: App.I18n.Schema = {
     fleet: 'Fleet Management',
     geofence: 'Geofences',
     vehicle: 'Vehicles',
-    track: 'Track Playback'
+    track: 'Track Playback',
+    register: 'Register',
+    system: 'System',
+    'system_user': 'User Management',
+    'system_role': 'Role Management',
+    'system_department': 'Departments',
+    'system_position': 'Positions',
+    'system_tenant': 'Tenants',
+    'system_plan': 'Plans & Renewals',
+    'system_registration': 'Registrations',
+    'system_config': 'Configuration',
+    'system_audit': 'Audit Log',
+    'system_profile': 'Profile'
   },
   page: {
     login: {

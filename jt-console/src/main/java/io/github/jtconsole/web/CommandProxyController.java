@@ -1,7 +1,13 @@
 package io.github.jtconsole.web;
 
 import io.github.jtconsole.api.ApiResponse;
+import io.github.jtconsole.audit.AuditContext;
+import io.github.jtconsole.audit.Audited;
+import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -42,14 +48,17 @@ public class CommandProxyController {
     private final RestClient gateway;
     private final ObjectMapper objectMapper;
     private final DeviceAttributeRepository deviceAttributes;
+    private final VehicleService vehicles;
 
     public CommandProxyController(
             RestClient commandGatewayRestClient,
             ObjectMapper objectMapper,
-            DeviceAttributeRepository deviceAttributes) {
+            DeviceAttributeRepository deviceAttributes,
+            VehicleService vehicles) {
         this.gateway = commandGatewayRestClient;
         this.objectMapper = objectMapper;
         this.deviceAttributes = deviceAttributes;
+        this.vehicles = vehicles;
     }
 
     /**
@@ -60,8 +69,16 @@ public class CommandProxyController {
      * @param body    各指令的请求体，字段见各 builder 的 javadoc
      */
     @PostMapping("/{command}")
+    @RequirePermission(Permissions.COMMAND_SEND)
+    @Audited(value = "下发终端指令", resourceType = "vehicle")
     public ApiResponse<Map<String, Object>> send(
-            @PathVariable String command, @RequestBody Map<String, Object> body) {
+            @PathVariable String command, @RequestBody Map<String, Object> body,
+            DataScope scope) {
+        // 归属校验必须在构造网关请求之前：越权指令 MUST NOT 触达网关。
+        String targetDeviceId = vehicles.requireVisibleDevice(
+                body == null ? null : String.valueOf(body.get("deviceId")), scope);
+        AuditContext.resource("vehicle", targetDeviceId);
+        AuditContext.detail("指令=" + command);
         Prepared prepared = switch (command) {
             case "text" -> textCommand(body);
             case "ptz" -> ptzCommand(body);

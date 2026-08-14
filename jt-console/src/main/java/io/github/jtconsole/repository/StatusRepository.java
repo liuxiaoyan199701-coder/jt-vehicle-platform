@@ -1,7 +1,9 @@
 package io.github.jtconsole.repository;
 
 import io.github.jtconsole.domain.LiveStatus;
+import io.github.jtconsole.security.DataScope;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -110,11 +112,27 @@ public class StatusRepository {
     }
 
     /**
-     * 实时监控列表。左连接车辆档案，未建档的设备也会出现（plateNo 为空）。设备键是协议层
-     * 已经解码完成的 canonical 字符串，关联必须精确，不能再次做数值化或前导零归一化。
+     * 实时监控列表。设备键是协议层已经解码完成的 canonical 字符串，关联必须精确，
+     * 不能再次做数值化或前导零归一化。
+     *
+     * <p>未建档设备（{@code plateNo} 为空）只对平台管理员出现：租户用户的世界里
+     * 只有本租户已建档车辆，因此租户范围下用 {@code INNER JOIN} 而非左连接。
      */
-    public List<LiveStatus> findAllLive() {
-        return jdbc.sql("""
+    public List<LiveStatus> findAllLive(DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        boolean unscoped = scope.tenantId() == null;
+        String join = unscoped
+                ? "LEFT JOIN vehicle v ON v.device_id = s.device_id"
+                : "JOIN vehicle v ON v.device_id = s.device_id";
+        String sql = LIVE_COLUMNS + " FROM device_status s " + join
+                + " WHERE 1 = 1" + scope.vehicleCondition("v")
+                + " ORDER BY s.online DESC, v.plate_no";
+        return jdbc.sql(sql).params(scope.parameters()).query(LiveStatus.class).list();
+    }
+
+    private static final String LIVE_COLUMNS = """
                         SELECT s.device_id      AS deviceId,
                                v.plate_no       AS plateNo,
                                s.online         AS online,
@@ -132,42 +150,49 @@ public class StatusRepository {
                                s.positioned     AS positioned,
                                s.alarm_json     AS alarmJson,
                                s.status_json    AS statusJson
-                        FROM device_status s
-                        LEFT JOIN vehicle v
-                               ON v.device_id = s.device_id
-                        ORDER BY s.online DESC, v.plate_no
-                        """)
-                .query(LiveStatus.class)
-                .list();
+            """;
+
+    public Optional<LiveStatus> findLiveByDevice(String deviceId, DataScope scope) {
+        if (scope.empty()) {
+            return Optional.empty();
+        }
+        boolean unscoped = scope.tenantId() == null;
+        String join = unscoped
+                ? "LEFT JOIN vehicle v ON v.device_id = s.device_id"
+                : "JOIN vehicle v ON v.device_id = s.device_id";
+        String sql = LIVE_COLUMNS + " FROM device_status s " + join
+                + " WHERE s.device_id = ?" + scope.vehicleCondition("v");
+        List<Object> params = new ArrayList<>();
+        params.add(deviceId);
+        params.addAll(scope.parameters());
+        return jdbc.sql(sql).params(params).query(LiveStatus.class).optional();
     }
 
-    public Optional<LiveStatus> findLiveByDevice(String deviceId) {
-        return jdbc.sql("""
-                        SELECT s.device_id AS deviceId, v.plate_no AS plateNo,
-                               s.online AS online, s.last_seen_at AS lastSeenAt,
-                               s.device_time AS deviceTime, s.lat, s.lng,
-                               s.gcj_lat AS gcjLat, s.gcj_lng AS gcjLng,
-                               s.speed_kph AS speedKph, s.direction, s.altitude, s.mileage,
-                               s.acc_on AS accOn, s.positioned AS positioned,
-                               s.alarm_json AS alarmJson, s.status_json AS statusJson
-                        FROM device_status s LEFT JOIN vehicle v ON v.device_id = s.device_id
-                        WHERE s.device_id = ?
-                        """)
-                .param(deviceId).query(LiveStatus.class).optional();
-    }
-
-    /** 首页车队口径只统计已建档车辆，未知在线终端单独返回。 */
-    public FleetSnapshot fleetSnapshot() {
-        return jdbc.sql("""
-                        SELECT COUNT(v.device_id) AS fleet_vehicles,
-                               SUM(CASE WHEN s.online = 1 THEN 1 ELSE 0 END) AS online,
-                               SUM(CASE WHEN s.online = 1 AND COALESCE(s.speed_kph, 0) > 5 THEN 1 ELSE 0 END) AS moving,
-                               SUM(CASE WHEN s.online = 1 AND COALESCE(s.speed_kph, 0) <= 5 THEN 1 ELSE 0 END) AS idle,
-                               (SELECT COUNT(*) FROM device_status u
-                                LEFT JOIN vehicle known ON known.device_id = u.device_id
-                                WHERE u.online = 1 AND known.device_id IS NULL) AS unknown_online
-                        FROM vehicle v LEFT JOIN device_status s ON s.device_id = v.device_id
-                        """)
+    /**
+     * 首页车队口径只统计范围内已建档车辆；未知在线终端只对平台管理员有意义，
+     * 租户范围下恒为 0。
+     */
+    public FleetSnapshot fleetSnapshot(DataScope scope) {
+        if (scope.empty()) {
+            return new FleetSnapshot(0, 0, 0, 0, 0, 0);
+        }
+        String unknownOnline = scope.tenantId() == null
+                ? """
+                  (SELECT COUNT(*) FROM device_status u
+                   LEFT JOIN vehicle known ON known.device_id = u.device_id
+                   WHERE u.online = 1 AND known.device_id IS NULL)
+                  """
+                : "0";
+        String sql = """
+                SELECT COUNT(v.device_id) AS fleet_vehicles,
+                       SUM(CASE WHEN s.online = 1 THEN 1 ELSE 0 END) AS online,
+                       SUM(CASE WHEN s.online = 1 AND COALESCE(s.speed_kph, 0) > 5 THEN 1 ELSE 0 END) AS moving,
+                       SUM(CASE WHEN s.online = 1 AND COALESCE(s.speed_kph, 0) <= 5 THEN 1 ELSE 0 END) AS idle,
+                       %s AS unknown_online
+                FROM vehicle v LEFT JOIN device_status s ON s.device_id = v.device_id
+                WHERE 1 = 1%s
+                """.formatted(unknownOnline, scope.vehicleCondition("v"));
+        return jdbc.sql(sql).params(scope.parameters())
                 .query((rs, row) -> {
                     int fleet = rs.getInt("fleet_vehicles");
                     int online = rs.getInt("online");

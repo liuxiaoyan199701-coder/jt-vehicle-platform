@@ -189,6 +189,34 @@ jt:
 投递密钥。不要把 token 放进 URL、日志、源码或前端环境文件。可使用
 `jt-console/tools/verify-ingest.sh` 验证未授权拒绝、登录、幂等和精确设备键。
 
+### 账号、角色与多租户
+
+账号存在数据库里，不再来自环境变量。`JT_CONSOLE_ADMIN_USERNAME` / `JT_CONSOLE_ADMIN_PASSWORD_HASH`
+只在**账号表为空**时用于引导首个平台管理员；引导完成后它们不再参与认证——两套真值来源会在改密后
+留下「旧密码仍能登录」的后门。
+
+- **权限**由后端代码定义权限码目录，启动时同步进库；界面只能勾选，不能新建。
+- **角色**是数据：四个内置角色（平台管理员 / 租户管理员 / 租户操作员 / 租户只读）由代码同步维护、
+  不可改删；租户可自建角色并选择数据范围（本租户全部 / 本部门及以下 / 本部门 / 自定义部门）。
+- **账号可绑定多角色**，权限取并集、数据范围取并集。角色调整最迟 30 秒生效；禁用账号、停用租户、
+  重置密码则**即时**撤销会话（含实时 WebSocket）。
+- **租户是硬边界**：`vehicle.tenant_id` 是「设备 → 租户」的唯一权威映射，轨迹、状态、告警、统计、
+  多媒体都经它过滤。越权访问一律返回「不存在」，不用 403——403 会告诉对方「这个标识存在，只是不属于你」。
+- **部门是租户内的软范围**，车辆可挂部门；未分配部门的车辆只对「本租户全部」范围可见。
+- **岗位只是人事标签**，不参与任何权限判定。
+
+自助注册默认关闭（`jt.console.registration.enabled`）：它是公网可达的写入口，应由部署方按商务需要
+显式开启。开启后受图形验证码、来源限流与人工审批三重约束，注册成功也只是进入待审批。
+
+### 从单租户版本升级
+
+启动时按 `PRAGMA user_version` 自动执行增量迁移，无需手工操作：建全部新表、给车辆/车队/围栏补
+归属列、创建默认套餐与默认租户、把存量数据全部归入默认租户、并用环境变量引导平台管理员。
+**升级后原管理员用户名密码直接可用，所见与升级前完全一致**（平台管理员跨租户可见全部数据）。
+
+每步迁移单事务，失败即回滚并中止启动、版本号不推进。回滚到旧版本时新列不被旧 SQL 引用、新表被忽略；
+仍建议升级前备份 `data/jt-console.db`。
+
 ## 运营功能与 API
 
 以下运营端点均位于控制台，默认继承 Bearer 认证：
@@ -284,8 +312,41 @@ jt:
 ```
 
 网关发起 `GET <endpoint>?terminalId=<terminalId>`。成功响应是设备信息对象，至少包含非空
-`deviceId`，可以包含 `terminalId`、`mobileNo`、`plateNo`；响应不得包含 `allowed`、`authorized`、
-`accessAllowed` 或 `decision` 等权限判定字段。生产环境建议使用 `deny`，在档案服务不可用时拒绝接入。
+`deviceId`，可以包含 `terminalId`、`mobileNo`、`plateNo`、`tenantCode`、`tenantActive`；响应不得包含
+`allowed`、`authorized`、`accessAllowed` 或 `decision` 等权限判定字段——档案服务只陈述事实，
+判定始终留在网关，控制台故障才能靠 `unavailable-policy` 降级而不是把设备全部踢下线。
+生产环境建议使用 `deny`，在档案服务不可用时拒绝接入。
+
+`tenantActive=false`（租户被停用或已到期）的设备一律拒绝。查无此档的设备按
+`unregistered-device-policy` 处理，默认 `reject`；若交付流程是「先接入、后建档」，显式改为 `allow`：
+
+```yaml
+jt:
+  auth:
+    device:
+      remote:
+        unregistered-device-policy: allow
+```
+
+本仓库的 jt-console 自带该档案接口，把 `endpoint` 指向它即可：
+
+```yaml
+jt:
+  auth:
+    device:
+      mode: remote-api
+      remote:
+        endpoint: http://127.0.0.1:8300/gateway/device-registry
+        unavailable-policy: allow
+        headers:
+          X-JT-Registry-Key: "${JT_CONSOLE_DEVICE_REGISTRY_KEY}"
+```
+
+同一把密钥要配到控制台的 `jt.console.tenancy.device-registry-key`。它与投递密钥、管理员凭据、
+浏览器 token 相互独立——这条链路的调用方是网关进程而不是人。留空表示该接口不开放。
+
+租户被停用或到期时，控制台会调用网关的 `POST /internal/devices/disconnect` 断开其设备；
+该接口用 `jt.signal.admin-key` 校验同一把密钥。断连只是加速手段，真正的拒绝发生在设备鉴权侧。
 
 ### 开流鉴权
 

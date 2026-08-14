@@ -4,6 +4,7 @@ import io.github.jtconsole.domain.Fleet;
 import io.github.jtconsole.domain.FleetMember;
 import io.github.jtconsole.domain.FleetSummary;
 import io.github.jtconsole.domain.Vehicle;
+import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
@@ -16,7 +17,7 @@ import org.springframework.stereotype.Repository;
 public class FleetRepository {
 
     private static final String FLEET_COLUMNS = """
-            f.id, f.code, f.name, f.manager, f.contact_phone, f.remark,
+            f.id, f.code, f.name, f.manager, f.contact_phone, f.remark, f.tenant_id,
             f.created_at, f.updated_at
             """;
 
@@ -26,7 +27,10 @@ public class FleetRepository {
         this.jdbc = jdbc;
     }
 
-    public List<FleetSummary> findAllSummaries(String keyword, String date) {
+    public List<FleetSummary> findAllSummaries(String keyword, String date, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
         String pattern = "%" + escapeLike(keyword == null ? "" : keyword) + "%";
         return jdbc.sql("""
                         WITH open_alarm AS (
@@ -40,7 +44,7 @@ public class FleetRepository {
                             WHERE stat_date = ?
                         )
                         SELECT f.id, f.code, f.name, f.manager, f.contact_phone, f.remark,
-                               f.created_at, f.updated_at,
+                               f.tenant_id, f.created_at, f.updated_at,
                             COUNT(v.device_id) AS total_vehicles,
                             COALESCE(SUM(CASE WHEN s.online = 1 THEN 1 ELSE 0 END), 0) AS online,
                             COALESCE(SUM(CASE WHEN s.online = 1 AND COALESCE(s.speed_kph, 0) > 5
@@ -55,26 +59,36 @@ public class FleetRepository {
                         LEFT JOIN device_status s ON s.device_id = v.device_id
                         LEFT JOIN open_alarm ON open_alarm.device_id = v.device_id
                         LEFT JOIN today ON today.device_id = v.device_id
-                        WHERE f.code LIKE ? ESCAPE '\\'
+                        WHERE (f.code LIKE ? ESCAPE '\\'
                            OR f.name LIKE ? ESCAPE '\\'
                            OR COALESCE(f.manager, '') LIKE ? ESCAPE '\\'
-                           OR COALESCE(f.contact_phone, '') LIKE ? ESCAPE '\\'
+                           OR COALESCE(f.contact_phone, '') LIKE ? ESCAPE '\\')
+                        """ + scope.tenantCondition("f") + """
                         GROUP BY f.id, f.code, f.name, f.manager, f.contact_phone, f.remark,
-                                 f.created_at, f.updated_at
+                                 f.tenant_id, f.created_at, f.updated_at
                         ORDER BY f.name COLLATE NOCASE, f.code, f.id
                         """)
                 .param(date)
                 .param(pattern).param(pattern).param(pattern).param(pattern)
+                .params(scope.tenantParameters())
                 .query(FleetRepository::mapSummary)
                 .list();
     }
 
-    public Optional<Fleet> findById(long id) {
-        return jdbc.sql("SELECT " + FLEET_COLUMNS + " FROM fleet f WHERE f.id = ?")
-                .param(id).query(FleetRepository::mapFleet).optional();
+    public Optional<Fleet> findById(long id, DataScope scope) {
+        if (scope.empty()) {
+            return Optional.empty();
+        }
+        return jdbc.sql("SELECT " + FLEET_COLUMNS + " FROM fleet f WHERE f.id = ?"
+                        + scope.tenantCondition("f"))
+                .param(id).params(scope.tenantParameters())
+                .query(FleetRepository::mapFleet).optional();
     }
 
-    public Optional<FleetSummary> findSummary(long id, String date) {
+    public Optional<FleetSummary> findSummary(long id, String date, DataScope scope) {
+        if (scope.empty()) {
+            return Optional.empty();
+        }
         return jdbc.sql("""
                         WITH open_alarm AS (
                             SELECT device_id, COUNT(*) AS open_count
@@ -87,7 +101,7 @@ public class FleetRepository {
                             WHERE stat_date = ?
                         )
                         SELECT f.id, f.code, f.name, f.manager, f.contact_phone, f.remark,
-                               f.created_at, f.updated_at,
+                               f.tenant_id, f.created_at, f.updated_at,
                             COUNT(v.device_id) AS total_vehicles,
                             COALESCE(SUM(CASE WHEN s.online = 1 THEN 1 ELSE 0 END), 0) AS online,
                             COALESCE(SUM(CASE WHEN s.online = 1 AND COALESCE(s.speed_kph, 0) > 5
@@ -103,13 +117,18 @@ public class FleetRepository {
                         LEFT JOIN open_alarm ON open_alarm.device_id = v.device_id
                         LEFT JOIN today ON today.device_id = v.device_id
                         WHERE f.id = ?
+                        """ + scope.tenantCondition("f") + """
                         GROUP BY f.id, f.code, f.name, f.manager, f.contact_phone, f.remark,
-                                 f.created_at, f.updated_at
+                                 f.tenant_id, f.created_at, f.updated_at
                         """)
-                .param(date).param(id).query(FleetRepository::mapSummary).optional();
+                .param(date).param(id).params(scope.tenantParameters())
+                .query(FleetRepository::mapSummary).optional();
     }
 
-    public List<FleetMember> findMembers(long fleetId, String date) {
+    public List<FleetMember> findMembers(long fleetId, String date, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
         return jdbc.sql("""
                         WITH open_alarm AS (
                             SELECT device_id, COUNT(*) AS open_count
@@ -124,6 +143,8 @@ public class FleetRepository {
                         SELECT v.device_id, v.plate_no, v.plate_color, v.brand, v.channel_count,
                                v.remark AS vehicle_remark, v.created_at AS vehicle_created_at,
                                v.updated_at AS vehicle_updated_at,
+                               v.tenant_id AS vehicle_tenant_id,
+                               v.department_id AS vehicle_department_id,
                                f.id AS fleet_id, f.code AS fleet_code, f.name AS fleet_name,
                                COALESCE(s.online, 0) AS online, s.speed_kph, s.last_seen_at,
                                COALESCE(open_alarm.open_count, 0) AS open_alarm_count,
@@ -135,9 +156,10 @@ public class FleetRepository {
                         LEFT JOIN open_alarm ON open_alarm.device_id = v.device_id
                         LEFT JOIN today ON today.device_id = v.device_id
                         WHERE f.id = ?
+                        """ + scope.vehicleCondition("v") + """
                         ORDER BY v.plate_no COLLATE NOCASE, v.device_id
                         """)
-                .param(date).param(fleetId)
+                .param(date).param(fleetId).params(scope.parameters())
                 .query(FleetRepository::mapMember).list();
     }
 
@@ -145,11 +167,11 @@ public class FleetRepository {
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.sql("""
                         INSERT INTO fleet (code, name, manager, contact_phone, remark,
-                                           created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                           tenant_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """)
                 .param(fleet.code()).param(fleet.name()).param(fleet.manager())
-                .param(fleet.contactPhone()).param(fleet.remark())
+                .param(fleet.contactPhone()).param(fleet.remark()).param(fleet.tenantId())
                 .param(fleet.createdAt()).param(fleet.updatedAt()).update(key);
         Number value = key.getKey();
         if (value == null) throw new IllegalStateException("创建车队后未返回主键");
@@ -168,13 +190,24 @@ public class FleetRepository {
                 .param(fleet.updatedAt()).param(fleet.id()).update();
     }
 
-    public boolean codeExists(String code, Long excludedId) {
-        Integer count = excludedId == null
-                ? jdbc.sql("SELECT COUNT(*) FROM fleet WHERE code = ?")
-                        .param(code).query(Integer.class).single()
-                : jdbc.sql("SELECT COUNT(*) FROM fleet WHERE code = ? AND id <> ?")
-                        .param(code).param(excludedId).query(Integer.class).single();
+    /** 车队编码在租户内唯一：不同客户各自的「一队」「二队」互不冲突。 */
+    public boolean codeExists(String code, Long excludedId, Long tenantId) {
+        StringBuilder sql = new StringBuilder(
+                "SELECT COUNT(*) FROM fleet WHERE code = ? AND COALESCE(tenant_id, 0) = ?");
+        java.util.List<Object> params = new java.util.ArrayList<>();
+        params.add(code);
+        params.add(tenantId == null ? 0L : tenantId);
+        if (excludedId != null) {
+            sql.append(" AND id <> ?");
+            params.add(excludedId);
+        }
+        Integer count = jdbc.sql(sql.toString()).params(params).query(Integer.class).single();
         return count != null && count > 0;
+    }
+
+    public Optional<Long> findTenantId(long fleetId) {
+        return jdbc.sql("SELECT tenant_id FROM fleet WHERE id = ?")
+                .param(fleetId).query(Long.class).optional();
     }
 
     public int memberCount(long fleetId) {
@@ -226,13 +259,17 @@ public class FleetRepository {
     private static Fleet mapFleet(ResultSet rs, int row) throws SQLException {
         return new Fleet(rs.getLong("id"), rs.getString("code"), rs.getString("name"),
                 rs.getString("manager"), rs.getString("contact_phone"), rs.getString("remark"),
+                RowValues.nullableLong(rs, "tenant_id"),
                 rs.getString("created_at"), rs.getString("updated_at"));
     }
 
     private static FleetMember mapMember(ResultSet rs, int row) throws SQLException {
         Vehicle vehicle = new Vehicle(rs.getString("device_id"), rs.getString("plate_no"),
                 rs.getString("plate_color"), rs.getString("brand"), rs.getInt("channel_count"),
-                rs.getString("vehicle_remark"), rs.getString("vehicle_created_at"),
+                rs.getString("vehicle_remark"),
+                RowValues.nullableLong(rs, "vehicle_tenant_id"),
+                RowValues.nullableLong(rs, "vehicle_department_id"),
+                rs.getString("vehicle_created_at"),
                 rs.getString("vehicle_updated_at"));
         Fleet.Summary fleet = new Fleet.Summary(rs.getLong("fleet_id"),
                 rs.getString("fleet_code"), rs.getString("fleet_name"));

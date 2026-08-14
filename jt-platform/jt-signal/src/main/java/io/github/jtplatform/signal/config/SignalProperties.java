@@ -8,6 +8,12 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SignalProperties {
     private boolean enabled = true;
     private String instanceId = "signal-1";
+    /**
+     * Shared key for the {@code /internal/devices/**} administration endpoints. Independent of every
+     * other credential in the deployment: the caller is a peer process, not a person. Empty means
+     * the endpoints stay closed.
+     */
+    private String adminKey = "";
     private int publicTcpPort = 7100;
     private int publicUdpPort = 7101;
     private Integer tcpPort;
@@ -22,6 +28,14 @@ public class SignalProperties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public String getAdminKey() {
+        return adminKey;
+    }
+
+    public void setAdminKey(String adminKey) {
+        this.adminKey = adminKey;
     }
 
     public String getInstanceId() {

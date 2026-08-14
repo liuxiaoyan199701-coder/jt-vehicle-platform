@@ -8,6 +8,8 @@ import io.github.jtconsole.geo.CoordTransform;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
 import io.github.jtconsole.repository.VehicleRepository;
+import io.github.jtconsole.security.AuthorizedPrincipal;
+import io.github.jtconsole.security.DataScope;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -37,51 +39,59 @@ public class GeofenceService {
         this.alarmService = alarmService;
     }
 
-    public List<Geofence> findAll() {
-        return geofences.findAll();
+    public List<Geofence> findAll(DataScope scope) {
+        return geofences.findAll(scope);
     }
 
-    public Optional<Geofence> findById(long id) {
-        return geofences.findById(id);
+    public Optional<Geofence> findById(long id, DataScope scope) {
+        return geofences.findById(id, scope);
     }
 
     @Transactional
-    public Geofence create(Geofence input) {
+    public Geofence create(AuthorizedPrincipal caller, Geofence input) {
+        Long tenantId = requireOwningTenant(caller, input);
         Geofence value = validate(input);
-        long id = geofences.insert(value);
-        if (!value.vehicleIds().isEmpty()) replaceVehicles(id, value.vehicleIds());
-        return geofences.findById(id).orElseThrow();
+        long id = geofences.insert(new Geofence(
+                null, value.name(), value.centerGcjLat(), value.centerGcjLng(),
+                value.radiusMeters(), value.color(), value.enabled(), value.alertOnEnter(),
+                value.alertOnExit(), value.speedLimitKph(), value.vehicleIds(),
+                0, tenantId, null, null));
+        if (!value.vehicleIds().isEmpty()) {
+            replaceVehicles(id, value.vehicleIds(), caller.scope());
+        }
+        return geofences.findById(id, caller.scope()).orElseThrow();
     }
 
     @Transactional
-    public Optional<Geofence> update(long id, Geofence input) {
-        Optional<Geofence> existing = geofences.findById(id);
+    public Optional<Geofence> update(long id, Geofence input, DataScope scope) {
+        Optional<Geofence> existing = geofences.findById(id, scope);
         if (existing.isEmpty()) return Optional.empty();
         Geofence value = validate(input);
         geofences.update(id, value);
-        replaceVehicles(id, value.vehicleIds());
+        replaceVehicles(id, value.vehicleIds(), scope);
         if (runtimeRulesChanged(existing.get(), value)) {
             resetRuntime(id, false);
         }
-        return geofences.findById(id);
+        return geofences.findById(id, scope);
     }
 
     @Transactional
-    public Optional<Geofence> setEnabled(long id, boolean enabled) {
-        Optional<Geofence> existing = geofences.findById(id);
+    public Optional<Geofence> setEnabled(long id, boolean enabled, DataScope scope) {
+        Optional<Geofence> existing = geofences.findById(id, scope);
         if (existing.isEmpty()) return Optional.empty();
         if (existing.get().enabled() == enabled) return existing;
         if (geofences.setEnabled(id, enabled) == 0) return Optional.empty();
         resetRuntime(id, false);
-        return geofences.findById(id);
+        return geofences.findById(id, scope);
     }
 
     @Transactional
-    public Optional<Geofence> replaceVehicles(long id, List<String> rawDeviceIds) {
-        if (geofences.findById(id).isEmpty()) return Optional.empty();
+    public Optional<Geofence> replaceVehicles(long id, List<String> rawDeviceIds, DataScope scope) {
+        if (geofences.findById(id, scope).isEmpty()) return Optional.empty();
         List<String> ids = normalizeVehicleIds(rawDeviceIds);
         for (String deviceId : ids) {
-            if (!vehicles.exists(deviceId)) {
+            // 范围外的车辆对调用者就该是「未建档」，不能因为它全局存在就允许绑定。
+            if (!vehicles.visible(deviceId, scope)) {
                 throw new IllegalArgumentException("围栏只能分配已建档车辆");
             }
         }
@@ -91,15 +101,26 @@ public class GeofenceService {
         removed.removeAll(retained);
         geofences.replaceVehicles(id, ids);
         removed.forEach(deviceId -> alarms.deleteGeofenceCondition(id, deviceId));
-        return geofences.findById(id);
+        return geofences.findById(id, scope);
     }
 
     @Transactional
-    public boolean delete(long id) {
-        if (geofences.findById(id).isEmpty()) return false;
+    public boolean delete(long id, DataScope scope) {
+        if (geofences.findById(id, scope).isEmpty()) return false;
         resetRuntime(id, true);
         geofences.deleteAssignments(id);
         return geofences.delete(id) == 1;
+    }
+
+    /** 围栏归属租户：租户用户即自己的租户，平台管理员必须显式指定。 */
+    private static Long requireOwningTenant(AuthorizedPrincipal caller, Geofence input) {
+        if (!caller.platform()) {
+            return caller.tenantId();
+        }
+        if (input == null || input.tenantId() == null) {
+            throw new IllegalArgumentException("请先选择围栏所属租户");
+        }
+        return input.tenantId();
     }
 
     /** @return 此位置新创建的围栏告警数量。 */
@@ -176,7 +197,8 @@ public class GeofenceService {
         return new Geofence(input.id(), name, input.centerGcjLat(), input.centerGcjLng(),
                 input.radiusMeters(), color.toUpperCase(), input.enabled(), input.alertOnEnter(),
                 input.alertOnExit(), input.speedLimitKph(), input.vehicleIds(),
-                input.assignedVehicleCount(), input.createdAt(), input.updatedAt());
+                input.assignedVehicleCount(), input.tenantId(),
+                input.createdAt(), input.updatedAt());
     }
 
     private static List<String> normalizeVehicleIds(List<String> values) {

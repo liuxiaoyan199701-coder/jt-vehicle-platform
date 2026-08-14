@@ -14,6 +14,7 @@ import io.github.jtconsole.domain.Vehicle;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.repository.VehicleRepository;
 import io.github.jtconsole.security.SessionTokenService;
+import io.github.jtconsole.support.TestSchema;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,6 +41,9 @@ class FleetManagementIntegrationTest {
     private static final String DATABASE_URL = "jdbc:sqlite:file:fleet-management-"
             + UUID.randomUUID() + "?mode=memory&cache=shared";
 
+    /** 存量数据在迁移里归入默认租户，测试沿用同一租户建档。 */
+    private long TENANT_ID;
+
     @Autowired private WebApplicationContext context;
     @Autowired private JdbcClient jdbc;
     @Autowired private VehicleRepository vehicles;
@@ -59,7 +63,8 @@ class FleetManagementIntegrationTest {
     @BeforeEach
     void reset() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        bearer = "Bearer " + tokens.issue("admin").token();
+        bearer = "Bearer " + tokens.issue(1L, "admin", null).token();
+        TENANT_ID = TestSchema.defaultTenantId(jdbc);
         for (String table : List.of(
                 "alarm_condition_state", "geofence_presence", "geofence_vehicle",
                 "alarm_event", "geofence", "vehicle_daily_stat", "track_point",
@@ -275,6 +280,8 @@ class FleetManagementIntegrationTest {
             String code, String name, String manager, String contactPhone, String remark)
             throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
+        // 平台管理员必须显式指定车队归属租户，否则请求被拒。
+        body.put("tenantId", TENANT_ID);
         body.put("code", code);
         body.put("name", name);
         body.put("manager", manager);
@@ -370,7 +377,7 @@ class FleetManagementIntegrationTest {
 
     private void createVehicle(String deviceId, String plateNo) {
         vehicles.insert(new Vehicle(deviceId, plateNo, "blue", "test", 1,
-                null, null, null));
+                null, TENANT_ID, null, null, null));
     }
 
     private void insertStatus(String deviceId, boolean online, double speed, String lastSeenAt) {

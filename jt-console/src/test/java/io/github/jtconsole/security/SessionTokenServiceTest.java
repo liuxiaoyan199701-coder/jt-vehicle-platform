@@ -41,7 +41,7 @@ class SessionTokenServiceTest {
 
     @Test
     void accessTokenExpiresButRefreshTokenCanStillRotate() {
-        SessionTokenService.TokenPair issued = tokens.issue("admin");
+        SessionTokenService.TokenPair issued = tokens.issue(1L, "admin", null);
 
         assertThat(tokens.validateAccessToken(issued.token())).contains("admin");
         clock.advance(Duration.ofSeconds(10));
@@ -55,7 +55,7 @@ class SessionTokenServiceTest {
 
     @Test
     void refreshRotationRejectsReplay() {
-        SessionTokenService.TokenPair issued = tokens.issue("admin");
+        SessionTokenService.TokenPair issued = tokens.issue(1L, "admin", null);
 
         assertThat(tokens.rotateRefreshToken(issued.refreshToken())).isPresent();
         assertThat(tokens.rotateRefreshToken(issued.refreshToken())).isEmpty();
@@ -64,7 +64,7 @@ class SessionTokenServiceTest {
 
     @Test
     void concurrentRefreshHasAtMostOneWinner() throws Exception {
-        SessionTokenService.TokenPair issued = tokens.issue("admin");
+        SessionTokenService.TokenPair issued = tokens.issue(1L, "admin", null);
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Optional<SessionTokenService.TokenPair>>> attempts =
                 java.util.stream.IntStream.range(0, 8)
@@ -86,7 +86,7 @@ class SessionTokenServiceTest {
 
     @Test
     void logoutRevokesBothCredentials() {
-        SessionTokenService.TokenPair issued = tokens.issue("admin");
+        SessionTokenService.TokenPair issued = tokens.issue(1L, "admin", null);
 
         assertThat(tokens.revokeSessionForAccessToken(issued.token())).isTrue();
         assertThat(tokens.validateAccessToken(issued.token())).isEmpty();
@@ -95,7 +95,7 @@ class SessionTokenServiceTest {
 
     @Test
     void authenticatedHandleRevokesCurrentCredentialsAfterRefreshRotation() {
-        SessionTokenService.TokenPair issued = tokens.issue("admin");
+        SessionTokenService.TokenPair issued = tokens.issue(1L, "admin", null);
         SessionTokenService.AuthenticatedSession authentication =
                 tokens.validateAccessSession(issued.token()).orElseThrow();
 

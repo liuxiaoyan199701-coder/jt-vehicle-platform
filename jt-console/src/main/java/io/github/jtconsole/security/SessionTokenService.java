@@ -61,10 +61,15 @@ public final class SessionTokenService {
         this.revocationListeners = List.copyOf(revocationListeners);
     }
 
-    public synchronized TokenPair issue(String username) {
+    /**
+     * 为已认证账号签发会话。会话只携带身份快照（账号、用户名、租户），
+     * 权限与数据范围每次请求另行解析——访问 token 有效期是 7 天，
+     * 把权限固化进会话意味着调整角色要等重新登录才生效。
+     */
+    public synchronized TokenPair issue(long accountId, String username, Long tenantId) {
         Instant now = clock.instant();
         purgeExpired(now);
-        Session session = new Session(randomToken(), username, now);
+        Session session = new Session(randomToken(), accountId, username, tenantId, now);
         activeSessionsById.put(session.sessionId, session);
         rotate(session, now);
         return session.tokenPair();
@@ -165,6 +170,31 @@ public final class SessionTokenService {
         return true;
     }
 
+    /**
+     * 撤销某账号的全部会话。账号被禁用、删除或被管理员重置密码时调用——
+     * 访问 token 有效期已放宽到 7 天，不即时撤销等于禁用形同虚设。
+     *
+     * @param exceptSessionId 需要保留的会话（用户改自己密码时保留当前会话），可为空
+     * @return 实际撤销的会话数
+     */
+    public synchronized int revokeByAccount(long accountId, String exceptSessionId) {
+        List<Session> targets = activeSessionsById.values().stream()
+                .filter(session -> session.accountId == accountId)
+                .filter(session -> !session.sessionId.equals(exceptSessionId))
+                .toList();
+        targets.forEach(this::revoke);
+        return targets.size();
+    }
+
+    /** 撤销某租户全部账号的会话。租户停用或到期时调用。 */
+    public synchronized int revokeByTenant(long tenantId) {
+        List<Session> targets = activeSessionsById.values().stream()
+                .filter(session -> session.tenantId != null && session.tenantId == tenantId)
+                .toList();
+        targets.forEach(this::revoke);
+        return targets.size();
+    }
+
     private void rotate(Session session, Instant now) {
         session.accessToken = randomToken();
         session.accessCredential = new AccessCredential(randomToken());
@@ -239,7 +269,9 @@ public final class SessionTokenService {
 
     public static final class AuthenticatedSession implements Principal {
         private final String sessionId;
+        private final long accountId;
         private final String username;
+        private final Long tenantId;
         private final AtomicBoolean sessionRevoked;
         private final AccessCredential accessCredential;
         private final Instant accessTokenExpiresAt;
@@ -251,7 +283,9 @@ public final class SessionTokenService {
                 Instant accessTokenExpiresAt,
                 Clock clock) {
             this.sessionId = session.sessionId;
+            this.accountId = session.accountId;
             this.username = session.username;
+            this.tenantId = session.tenantId;
             this.sessionRevoked = session.revoked;
             this.accessCredential = accessCredential;
             this.accessTokenExpiresAt = accessTokenExpiresAt;
@@ -264,6 +298,15 @@ public final class SessionTokenService {
 
         public String accessCredentialId() {
             return accessCredential.credentialId;
+        }
+
+        public long accountId() {
+            return accountId;
+        }
+
+        /** 会话所属租户；平台账号为空。 */
+        public Long tenantId() {
+            return tenantId;
         }
 
         public String username() {
@@ -303,7 +346,9 @@ public final class SessionTokenService {
 
     private static final class Session {
         private final String sessionId;
+        private final long accountId;
         private final String username;
+        private final Long tenantId;
         private final Instant issuedAt;
         private String accessToken;
         private AccessCredential accessCredential;
@@ -312,9 +357,12 @@ public final class SessionTokenService {
         private Instant refreshExpiresAt;
         private final AtomicBoolean revoked = new AtomicBoolean();
 
-        private Session(String sessionId, String username, Instant issuedAt) {
+        private Session(String sessionId, long accountId, String username, Long tenantId,
+                Instant issuedAt) {
             this.sessionId = sessionId;
+            this.accountId = accountId;
             this.username = username;
+            this.tenantId = tenantId;
             this.issuedAt = issuedAt;
         }
 

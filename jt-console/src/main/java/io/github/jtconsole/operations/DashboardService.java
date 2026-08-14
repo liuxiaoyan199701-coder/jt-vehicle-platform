@@ -5,6 +5,7 @@ import io.github.jtconsole.domain.DashboardOverview;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.StatusRepository;
+import io.github.jtconsole.security.DataScope;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -32,17 +33,17 @@ public class DashboardService {
     }
 
     @Transactional(readOnly = true)
-    public DashboardOverview overview() {
+    public DashboardOverview overview(DataScope scope) {
         LocalDate today = dates.today();
         LocalDate start = today.minusDays(6);
-        StatusRepository.FleetSnapshot fleet = statuses.fleetSnapshot();
+        StatusRepository.FleetSnapshot fleet = statuses.fleetSnapshot(scope);
         DashboardOverview.Summary summary = new DashboardOverview.Summary(
                 fleet.fleetVehicles(), fleet.online(), fleet.offline(), fleet.moving(), fleet.idle(),
-                fleet.unknownOnline(), alarms.countOpen(), alarms.countCriticalOpen(),
-                round(stats.totalDistance(today.toString())));
+                fleet.unknownOnline(), alarms.countOpen(scope), alarms.countCriticalOpen(scope),
+                round(stats.totalDistance(today.toString(), scope)));
 
         Map<String, DailyStatRepository.DailyAggregate> byDate = new HashMap<>();
-        stats.aggregateRange(start.toString(), today.toString())
+        stats.aggregateRange(start.toString(), today.toString(), scope)
                 .forEach(value -> byDate.put(value.date(), value));
         List<DashboardOverview.DailyTrend> trend = new ArrayList<>();
         for (int offset = 0; offset < 7; offset++) {
@@ -55,12 +56,12 @@ public class DashboardService {
         }
 
         Map<AlarmLevel, Long> levelCounts = new EnumMap<>(AlarmLevel.class);
-        alarms.countOpenByLevel().forEach(value -> levelCounts.put(value.level(), value.count()));
+        alarms.countOpenByLevel(scope).forEach(value -> levelCounts.put(value.level(), value.count()));
         List<DashboardOverview.AlarmLevelCount> levels = new ArrayList<>();
         for (AlarmLevel level : AlarmLevel.values()) {
             levels.add(new DashboardOverview.AlarmLevelCount(level, levelCounts.getOrDefault(level, 0L)));
         }
-        return new DashboardOverview(summary, trend, levels, alarms.recent(10));
+        return new DashboardOverview(summary, trend, levels, alarms.recent(10, scope));
     }
 
     private static double round(double value) {

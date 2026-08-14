@@ -1,7 +1,13 @@
 package io.github.jtconsole.web;
 
 import io.github.jtconsole.api.ApiResponse;
+import io.github.jtconsole.audit.AuditContext;
+import io.github.jtconsole.audit.Audited;
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.operations.VehicleService;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -36,12 +42,15 @@ public class StreamProxyController {
     private final RestClient gateway;
     private final ObjectMapper objectMapper;
     private final String publicWebsocketBaseUrl;
+    private final VehicleService vehicles;
 
     public StreamProxyController(
-            RestClient gatewayRestClient, ObjectMapper objectMapper, ConsoleProperties properties) {
+            RestClient gatewayRestClient, ObjectMapper objectMapper,
+            ConsoleProperties properties, VehicleService vehicles) {
         this.gateway = gatewayRestClient;
         this.objectMapper = objectMapper;
         this.publicWebsocketBaseUrl = properties.getMedia().getPublicWebsocketBaseUrl();
+        this.vehicles = vehicles;
     }
 
     /**
@@ -50,12 +59,17 @@ public class StreamProxyController {
      * @return 网关的 {@code {streamId, instanceId, wsUrl, token, state}}
      */
     @PostMapping("/open")
-    public ApiResponse<Map<String, Object>> open(@RequestBody Map<String, Object> request) {
+    @RequirePermission(Permissions.VIDEO_PLAY)
+    @Audited(value = "开启实时视频", resourceType = "vehicle")
+    public ApiResponse<Map<String, Object>> open(
+            @RequestBody Map<String, Object> request, DataScope scope) {
         Object deviceId = request.get("deviceId");
         if (deviceId == null || deviceId.toString().isBlank()) {
             throw new IllegalArgumentException("deviceId 不能为空");
         }
-        String canonicalId = deviceId.toString().trim();
+        // 归属校验必须在触达网关之前：越权请求 MUST NOT 产生任何开流信令。
+        String canonicalId = vehicles.requireVisibleDevice(deviceId.toString(), scope);
+        AuditContext.resource("vehicle", canonicalId);
         Map<String, Object> gatewayRequest = new LinkedHashMap<>(request);
         gatewayRequest.put("deviceId", canonicalId);
         gatewayRequest.putIfAbsent("channel", 1);

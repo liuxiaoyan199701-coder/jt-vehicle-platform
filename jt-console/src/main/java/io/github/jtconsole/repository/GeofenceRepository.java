@@ -2,6 +2,7 @@ package io.github.jtconsole.repository;
 
 import io.github.jtconsole.domain.Geofence;
 import io.github.jtconsole.domain.GeofenceCandidate;
+import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
@@ -18,7 +19,7 @@ public class GeofenceRepository {
     private static final String SELECT = """
             SELECT g.id, g.name, g.center_gcj_lat, g.center_gcj_lng, g.radius_meters,
                    g.color, g.enabled, g.alert_on_enter, g.alert_on_exit, g.speed_limit_kph,
-                   g.created_at, g.updated_at,
+                   g.tenant_id, g.created_at, g.updated_at,
                    (SELECT COUNT(*) FROM geofence_vehicle gv WHERE gv.geofence_id = g.id) assigned_count
             FROM geofence g
             """;
@@ -28,12 +29,26 @@ public class GeofenceRepository {
         this.jdbc = jdbc;
     }
 
-    public List<Geofence> findAll() {
-        return jdbc.sql(SELECT + " ORDER BY g.name, g.id").query(this::map).list();
+    public List<Geofence> findAll(DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        return jdbc.sql(SELECT + " WHERE 1 = 1" + scope.tenantCondition("g")
+                        + " ORDER BY g.name, g.id")
+                .params(scope.tenantParameters()).query(this::map).list();
     }
 
-    public Optional<Geofence> findById(long id) {
-        return jdbc.sql(SELECT + " WHERE g.id = ?").param(id).query(this::map).optional();
+    public Optional<Geofence> findById(long id, DataScope scope) {
+        if (scope.empty()) {
+            return Optional.empty();
+        }
+        return jdbc.sql(SELECT + " WHERE g.id = ?" + scope.tenantCondition("g"))
+                .param(id).params(scope.tenantParameters()).query(this::map).optional();
+    }
+
+    public Optional<Long> findTenantId(long geofenceId) {
+        return jdbc.sql("SELECT tenant_id FROM geofence WHERE id = ?")
+                .param(geofenceId).query(Long.class).optional();
     }
 
     public long insert(Geofence value) {
@@ -43,13 +58,14 @@ public class GeofenceRepository {
                         INSERT INTO geofence (
                             name, center_gcj_lat, center_gcj_lng, radius_meters, color,
                             enabled, alert_on_enter, alert_on_exit, speed_limit_kph,
-                            created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            tenant_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """)
                 .param(value.name()).param(value.centerGcjLat()).param(value.centerGcjLng())
                 .param(value.radiusMeters()).param(value.color()).param(value.enabled() ? 1 : 0)
                 .param(value.alertOnEnter() ? 1 : 0).param(value.alertOnExit() ? 1 : 0)
-                .param(value.speedLimitKph()).param(now).param(now).update(key);
+                .param(value.speedLimitKph()).param(value.tenantId())
+                .param(now).param(now).update(key);
         Number id = key.getKey();
         if (id == null) throw new IllegalStateException("创建围栏后未返回主键");
         return id.longValue();
@@ -145,7 +161,8 @@ public class GeofenceRepository {
                 rs.getString("color"), rs.getBoolean("enabled"),
                 rs.getBoolean("alert_on_enter"), rs.getBoolean("alert_on_exit"),
                 nullableDouble(rs, "speed_limit_kph"), assignedVehicleIds(id),
-                rs.getInt("assigned_count"), rs.getString("created_at"), rs.getString("updated_at"));
+                rs.getInt("assigned_count"), RowValues.nullableLong(rs, "tenant_id"),
+                rs.getString("created_at"), rs.getString("updated_at"));
     }
 
     private static Double nullableDouble(ResultSet rs, String column) throws SQLException {

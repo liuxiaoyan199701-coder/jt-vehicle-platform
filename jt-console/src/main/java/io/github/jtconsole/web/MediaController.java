@@ -3,6 +3,9 @@ package io.github.jtconsole.web;
 import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.domain.MediaFile;
 import io.github.jtconsole.repository.MediaRepository;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,12 +27,15 @@ public class MediaController {
     }
 
     @GetMapping("/recent")
+    @RequirePermission(Permissions.MEDIA_LIST)
     public ApiResponse<List<MediaFile>> recent(
             @RequestParam String deviceId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(defaultValue = "20") int limit,
+            DataScope scope) {
         if (deviceId.isBlank()) {
             throw new IllegalArgumentException("deviceId 不能为空");
         }
-        return ApiResponse.ok(media.findRecentByDevice(deviceId.trim(), Math.min(Math.max(limit, 1), 100)));
+        return ApiResponse.ok(media.findRecentByDevice(
+                deviceId.trim(), Math.min(Math.max(limit, 1), 100), scope));
     }
 }

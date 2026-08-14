@@ -1,6 +1,8 @@
 package io.github.jtconsole.live;
 
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.security.AuthorizationResolver;
+import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.SessionRevocationListener;
 import io.github.jtconsole.security.SessionTokenService.AuthenticatedSession;
 import io.github.jtconsole.security.SessionTokenService.AuthenticationState;
@@ -56,6 +58,8 @@ public class LiveBroadcaster extends TextWebSocketHandler
     private final Map<String, ClientSession> sessions = new ConcurrentHashMap<>();
     private final ArrayBlockingQueue<PendingBroadcast> dispatchQueue;
     private final ObjectMapper objectMapper;
+    private final AuthorizationResolver authorizations;
+    private final DeviceOwnershipCache ownership;
     private final int dispatchQueueCapacity;
     private final int sessionQueueCapacity;
     private final long sendTimeoutMillis;
@@ -72,13 +76,19 @@ public class LiveBroadcaster extends TextWebSocketHandler
     private long nextSequenceToDispatch;
 
     @Autowired
-    public LiveBroadcaster(ObjectMapper objectMapper, ConsoleProperties properties) {
+    public LiveBroadcaster(
+            ObjectMapper objectMapper,
+            ConsoleProperties properties,
+            AuthorizationResolver authorizations,
+            DeviceOwnershipCache ownership) {
         this(
                 objectMapper,
                 properties.getBroadcast().getDispatchQueueCapacity(),
                 properties.getBroadcast().getSessionQueueCapacity(),
                 properties.getBroadcast().getWorkerThreads(),
-                properties.getBroadcast().getSendTimeout());
+                properties.getBroadcast().getSendTimeout(),
+                authorizations,
+                ownership);
     }
 
     LiveBroadcaster(
@@ -86,8 +96,12 @@ public class LiveBroadcaster extends TextWebSocketHandler
             int dispatchQueueCapacity,
             int sessionQueueCapacity,
             int workerThreads,
-            Duration sendTimeout) {
+            Duration sendTimeout,
+            AuthorizationResolver authorizations,
+            DeviceOwnershipCache ownership) {
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+        this.authorizations = Objects.requireNonNull(authorizations, "authorizations");
+        this.ownership = Objects.requireNonNull(ownership, "ownership");
         this.dispatchQueueCapacity = requirePositive(dispatchQueueCapacity, "dispatchQueueCapacity");
         this.sessionQueueCapacity = requirePositive(sessionQueueCapacity, "sessionQueueCapacity");
         int workerCount = requirePositive(workerThreads, "workerThreads");
@@ -183,7 +197,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
     public boolean publish(Map<String, Object> update) {
         Objects.requireNonNull(update, "update");
         Map<String, Object> snapshot = Collections.unmodifiableMap(new LinkedHashMap<>(update));
-        return offer("location", snapshot);
+        return offer("location", deviceIdOf(snapshot), snapshot);
     }
 
     /**
@@ -191,10 +205,15 @@ public class LiveBroadcaster extends TextWebSocketHandler
      */
     public void broadcastLocation(Object data) {
         Objects.requireNonNull(data, "data");
-        offer("location", data);
+        offer("location", data instanceof Map<?, ?> map ? deviceIdOf(map) : null, data);
     }
 
-    private boolean offer(String type, Object data) {
+    private static String deviceIdOf(Map<?, ?> update) {
+        Object deviceId = update.get("deviceId");
+        return deviceId == null ? null : deviceId.toString();
+    }
+
+    private boolean offer(String type, String deviceId, Object data) {
         if (!running.get() || sessions.isEmpty()) {
             return true;
         }
@@ -205,7 +224,8 @@ public class LiveBroadcaster extends TextWebSocketHandler
             if (!running.get() || sessions.isEmpty()) {
                 return true;
             }
-            PendingBroadcast pending = new PendingBroadcast(nextSequenceToAssign, type, data);
+            PendingBroadcast pending =
+                    new PendingBroadcast(nextSequenceToAssign, type, deviceId, data);
             if (dispatchQueue.offer(pending)) {
                 nextSequenceToAssign++;
                 return true;
@@ -234,7 +254,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
                     LOGGER.warn("Failed to serialize live update (failureType={})",
                             serializationFailure.getClass().getName());
                 }
-                dispatchInOrder(pending.sequence(), json);
+                dispatchInOrder(pending.sequence(), pending.deviceId(), json);
             } catch (InterruptedException interrupted) {
                 if (!running.get()) {
                     Thread.currentThread().interrupt();
@@ -244,7 +264,8 @@ public class LiveBroadcaster extends TextWebSocketHandler
         }
     }
 
-    private void dispatchInOrder(long sequence, String json) throws InterruptedException {
+    private void dispatchInOrder(long sequence, String deviceId, String json)
+            throws InterruptedException {
         synchronized (dispatchOrderLock) {
             while (running.get() && sequence != nextSequenceToDispatch) {
                 dispatchOrderLock.wait();
@@ -253,7 +274,11 @@ public class LiveBroadcaster extends TextWebSocketHandler
                 return;
             }
             if (json != null) {
-                sessions.values().forEach(client -> client.offer(json));
+                // 每个会话按自己的数据范围过滤：未建档设备只推平台管理员，
+                // 租户会话只收到本租户可见车辆的更新。
+                sessions.values().stream()
+                        .filter(client -> client.canSee(deviceId))
+                        .forEach(client -> client.offer(json));
             }
             nextSequenceToDispatch++;
             dispatchOrderLock.notifyAll();
@@ -382,6 +407,24 @@ public class LiveBroadcaster extends TextWebSocketHandler
                 AuthenticatedSession authentication) {
             this.session = session;
             this.authentication = authentication;
+        }
+
+        /**
+         * 该会话是否应收到这台设备的更新。
+         *
+         * <p>数据范围每次都经带 30 秒缓存的解析器取用，而不是在建连时定死：
+         * 部门调整或角色收紧后，长连接不必重连就会跟上新的可见范围。
+         */
+        private boolean canSee(String deviceId) {
+            if (deviceId == null) {
+                // 不带设备标识的广播（如系统级通知）只发给平台管理员，避免误扩散。
+                return authorizations.resolve(authentication.accountId())
+                        .map(AuthorizedPrincipal::platform)
+                        .orElse(false);
+            }
+            return authorizations.resolve(authentication.accountId())
+                    .map(principal -> ownership.visibleTo(deviceId, principal.scope()))
+                    .orElse(false);
         }
 
         private synchronized void start() {
@@ -535,7 +578,8 @@ public class LiveBroadcaster extends TextWebSocketHandler
         return value;
     }
 
-    private record PendingBroadcast(long sequence, String type, Object data) {}
+    private record PendingBroadcast(
+            long sequence, String type, String deviceId, Object data) {}
 
     public record BroadcastMetrics(
             int subscribers,

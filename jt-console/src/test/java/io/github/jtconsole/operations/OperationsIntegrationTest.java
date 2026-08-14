@@ -23,7 +23,11 @@ import io.github.jtconsole.repository.AlarmRepository.AlarmFilter;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
 import io.github.jtconsole.repository.VehicleRepository;
+import io.github.jtconsole.security.AuthorizedPrincipal;
+import io.github.jtconsole.security.DataScope;
 import io.github.jtconsole.security.SessionTokenService;
+import io.github.jtconsole.support.TestPrincipals;
+import io.github.jtconsole.support.TestSchema;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +51,10 @@ class OperationsIntegrationTest {
     private static final String DATABASE_URL = "jdbc:sqlite:file:operations-" + UUID.randomUUID()
             + "?mode=memory&cache=shared";
     private static final String DEVICE = "00123";
+    /** 平台视角：跨租户可见，含未建档设备。 */
+    private static final DataScope SCOPE = DataScope.platform();
+    private static final AuthorizedPrincipal PLATFORM = TestPrincipals.platform();
+    private long TENANT_ID;
 
     @Autowired private WebApplicationContext context;
     @Autowired private JdbcClient jdbc;
@@ -73,7 +81,8 @@ class OperationsIntegrationTest {
     @BeforeEach
     void reset() {
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-        bearer = "Bearer " + tokens.issue("admin").token();
+        bearer = "Bearer " + tokens.issue(1L, "admin", null).token();
+        TENANT_ID = TestSchema.defaultTenantId(jdbc);
         jdbc.sql("DROP TRIGGER IF EXISTS fail_alarm_write").update();
         for (String table : List.of(
                 "alarm_condition_state", "geofence_presence", "geofence_vehicle",
@@ -90,7 +99,7 @@ class OperationsIntegrationTest {
         assertThat(count("alarm_event")).isEqualTo(1);
         assertThat(count("track_point")).isZero();
         assertThat(alarms.countActive(DEVICE)).isEqualTo(1);
-        assertThat(alarms.recent(10).getFirst().type()).isEqualTo("overspeed");
+        assertThat(alarms.recent(10, SCOPE).getFirst().type()).isEqualTo("overspeed");
 
         ingestion.ingest(location("p-2", DEVICE, "2026-08-11T10:01:00",
                 39.9, 116.4, 20, null, true, Map.of(), false));
@@ -110,13 +119,13 @@ class OperationsIntegrationTest {
         ingestion.ingest(location("p-other", "123", "2026-08-11T10:05:00",
                 39.9, 116.4, 20, null, true, Map.of("overspeed", true), true));
         assertThat(alarms.search(new AlarmFilter(null, null, null, DEVICE,
-                null, null, null, null, 1, 20)).total()).isEqualTo(2);
+                null, null, null, null, 1, 20), SCOPE).total()).isEqualTo(2);
     }
 
     @Test
     void geofenceTransitionsDeduplicateSpeedAndManagementChangesAreAtomic() {
         createVehicle(DEVICE);
-        Geofence created = geofences.create(fence(null, "仓库", List.of(DEVICE), true, 30.0));
+        Geofence created = geofences.create(PLATFORM, fence(null, "仓库", List.of(DEVICE), true, 30.0));
         assertThat(created.vehicleIds()).containsExactly(DEVICE);
 
         ingestion.ingest(location("g-1", DEVICE, "2026-08-11T11:00:00",
@@ -133,17 +142,18 @@ class OperationsIntegrationTest {
         assertThat(alarmTypes()).containsExactlyInAnyOrder("geofenceEnter", "geofenceOverspeed");
 
         assertThatThrownBy(() -> geofences.update(created.id(),
-                fence(created.id(), "不应保存", List.of("unknown"), true, 30.0)))
+                fence(created.id(), "不应保存", List.of("unknown"), true, 30.0), SCOPE))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(geofences.findById(created.id()).orElseThrow().name()).isEqualTo("仓库");
-        assertThat(geofences.findById(created.id()).orElseThrow().vehicleIds()).containsExactly(DEVICE);
+        assertThat(geofences.findById(created.id(), SCOPE).orElseThrow().name()).isEqualTo("仓库");
+        assertThat(geofences.findById(created.id(), SCOPE).orElseThrow().vehicleIds())
+                .containsExactly(DEVICE);
 
-        geofences.setEnabled(created.id(), false);
+        geofences.setEnabled(created.id(), false, SCOPE);
         assertThat(alarms.countActive(DEVICE)).isZero();
         ingestion.ingest(location("g-5", DEVICE, "2026-08-11T11:04:00",
                 39.90, 116.30, 50, 100.8, true, Map.of(), true));
         assertThat(count("alarm_event")).isEqualTo(2);
-        geofences.delete(created.id());
+        geofences.delete(created.id(), SCOPE);
         assertThat(count("alarm_event")).isEqualTo(2);
         assertThat(count("geofence_vehicle")).isZero();
         assertThat(count("geofence_presence")).isZero();
@@ -153,24 +163,24 @@ class OperationsIntegrationTest {
     @Test
     void equivalentGeofenceManagementDoesNotRestartAnActiveOverspeedCondition() {
         createVehicle(DEVICE);
-        Geofence created = geofences.create(fence(null, "等价配置", List.of(DEVICE), true, 30.0));
+        Geofence created = geofences.create(PLATFORM, fence(null, "等价配置", List.of(DEVICE), true, 30.0));
 
         ingestion.ingest(location("same-1", DEVICE, "2026-08-11T11:10:00",
                 39.90, 116.40, 40.0, 100.0, true, Map.of(), true));
         long afterInitialReport = alarmTotal(AlarmSource.GEOFENCE, "geofenceOverspeed");
 
         geofences.update(created.id(),
-                fence(created.id(), "等价配置", List.of(DEVICE), true, 30.0));
+                fence(created.id(), "等价配置", List.of(DEVICE), true, 30.0), SCOPE);
         ingestion.ingest(location("same-2", DEVICE, "2026-08-11T11:11:00",
                 39.90, 116.40, 41.0, 100.1, true, Map.of(), true));
         long afterEquivalentUpdate = alarmTotal(AlarmSource.GEOFENCE, "geofenceOverspeed");
 
-        geofences.setEnabled(created.id(), true);
+        geofences.setEnabled(created.id(), true, SCOPE);
         ingestion.ingest(location("same-3", DEVICE, "2026-08-11T11:12:00",
                 39.90, 116.40, 42.0, 100.2, true, Map.of(), true));
         long afterRepeatedEnable = alarmTotal(AlarmSource.GEOFENCE, "geofenceOverspeed");
 
-        geofences.replaceVehicles(created.id(), List.of(DEVICE));
+        geofences.replaceVehicles(created.id(), List.of(DEVICE), SCOPE);
         ingestion.ingest(location("same-4", DEVICE, "2026-08-11T11:13:00",
                 39.90, 116.40, 43.0, 100.3, true, Map.of(), true));
         long afterEquivalentAssignment = alarmTotal(AlarmSource.GEOFENCE, "geofenceOverspeed");
@@ -189,7 +199,7 @@ class OperationsIntegrationTest {
     @Test
     void missingSpeedInsideGeofenceDoesNotClearActiveOverspeed() {
         createVehicle(DEVICE);
-        Geofence created = geofences.create(fence(null, "限速围栏", List.of(DEVICE), true, 30.0));
+        Geofence created = geofences.create(PLATFORM, fence(null, "限速围栏", List.of(DEVICE), true, 30.0));
 
         ingestion.ingest(location("speed-1", DEVICE, "2026-08-11T11:20:00",
                 39.90, 116.40, 40.0, 200.0, true, Map.of(), true));
@@ -232,7 +242,7 @@ class OperationsIntegrationTest {
     @Test
     void lateLocationsDoNotRewindLatestStatusGeofenceOrProtocolState() {
         createVehicle(DEVICE);
-        Geofence created = geofences.create(fence(null, "时序围栏", List.of(DEVICE), true, null));
+        Geofence created = geofences.create(PLATFORM, fence(null, "时序围栏", List.of(DEVICE), true, null));
 
         ingestion.ingest(locationAt("late-new", DEVICE, "2026-08-11T10:10:00",
                 "2026-08-11T02:10:00Z", 39.90, 116.40, 20.0, 401.0,
@@ -328,7 +338,7 @@ class OperationsIntegrationTest {
     @Test
     void alarmFailureRollsBackAllDerivedStateAndSameEventCanRetry() {
         createVehicle(DEVICE);
-        Geofence fence = geofences.create(fence(null, "回滚围栏", List.of(DEVICE), true, null));
+        Geofence fence = geofences.create(PLATFORM, fence(null, "回滚围栏", List.of(DEVICE), true, null));
         ingestion.ingest(location("r-base", DEVICE, "2026-08-11T12:00:00",
                 39.90, 116.30, 10, 10.0, true, Map.of(), true));
         int tracksBefore = count("track_point");
@@ -379,7 +389,7 @@ class OperationsIntegrationTest {
 
         ingestion.ingest(location("api-alarm", DEVICE, "2026-08-11T13:00:00",
                 39.9, 116.4, 10, null, true, Map.of("emergency", true), true));
-        AlarmEvent alarm = alarms.recent(1).getFirst();
+        AlarmEvent alarm = alarms.recent(1, SCOPE).getFirst();
         mvc.perform(post("/api/alarms/{id}/acknowledge", alarm.id())
                         .header(HttpHeaders.AUTHORIZATION, bearer)
                         .contentType(MediaType.APPLICATION_JSON).content("{\"note\":\"已核实\"}"))
@@ -401,12 +411,13 @@ class OperationsIntegrationTest {
     @Test
     void geofenceHttpMutationAcceptsFrontendContractAndPersistsAssignmentsAtomically() throws Exception {
         createVehicle(DEVICE);
+        // 平台管理员必须显式指定围栏归属租户，否则请求被拒。
         String body = """
                 {"name":"HTTP 围栏","centerGcjLat":39.90,"centerGcjLng":116.40,
                  "radiusMeters":500,"color":"#18A058","enabled":true,
                  "alertOnEnter":true,"alertOnExit":true,"speedLimitKph":60,
-                 "vehicleIds":["00123"]}
-                """;
+                 "vehicleIds":["00123"],"tenantId":%d}
+                """.formatted(TENANT_ID);
         String response = mvc.perform(post("/api/geofences")
                         .header(HttpHeaders.AUTHORIZATION, bearer)
                         .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -427,28 +438,28 @@ class OperationsIntegrationTest {
 
     private void createVehicle(String deviceId) {
         vehicles.insert(new Vehicle(deviceId, "京A" + deviceId, "蓝色", "测试车", 1,
-                null, null, null));
+                null, TENANT_ID, null, null, null));
     }
 
-    private static Geofence fence(
+    private Geofence fence(
             Long id, String name, List<String> deviceIds, boolean enabled, Double speedLimit) {
         return new Geofence(id, name, 39.90, 116.40, 1000,
                 "#1677FF", enabled, true, true, speedLimit,
-                deviceIds, deviceIds.size(), null, null);
+                deviceIds, deviceIds.size(), TENANT_ID, null, null);
     }
 
     private List<String> alarmTypes() {
-        return alarms.recent(100).stream().map(AlarmEvent::type).toList();
+        return alarms.recent(100, SCOPE).stream().map(AlarmEvent::type).toList();
     }
 
     private long alarmTotal(AlarmSource source, String type) {
         return alarms.search(new AlarmFilter(null, null, source, DEVICE,
-                type, null, null, null, 1, 20)).total();
+                type, null, null, null, 1, 20), SCOPE).total();
     }
 
     private AlarmEvent alarm(AlarmSource source, String type) {
         return alarms.search(new AlarmFilter(null, null, source, DEVICE,
-                type, null, null, null, 1, 20)).items().getFirst();
+                type, null, null, null, 1, 20), SCOPE).items().getFirst();
     }
 
     private int count(String table) {

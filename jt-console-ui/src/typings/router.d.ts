@@ -22,6 +22,13 @@ declare module 'vue-router' {
      * It only works when the route mode is "static", if the route mode is "dynamic", it will be ignored
      */
     roles?: string[];
+    /**
+     * Permission codes of the route
+     *
+     * Route is shown if the current user holds at least one of them. Menu visibility is a
+     * convenience only — the backend enforces the same codes on every request.
+     */
+    permissions?: string[];
     /** Whether to cache the route */
     keepAlive?: boolean | null;
     /**

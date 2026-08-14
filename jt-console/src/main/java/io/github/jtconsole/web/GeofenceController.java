@@ -2,7 +2,12 @@ package io.github.jtconsole.web;
 
 import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.domain.Geofence;
+import io.github.jtconsole.audit.Audited;
 import io.github.jtconsole.operations.GeofenceService;
+import io.github.jtconsole.security.AuthorizedPrincipal;
+import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.Permissions;
+import io.github.jtconsole.security.RequirePermission;
 import java.util.List;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,45 +29,61 @@ public class GeofenceController {
     }
 
     @GetMapping
-    public ApiResponse<List<Geofence>> list() {
-        return ApiResponse.ok(geofences.findAll());
+    @RequirePermission(Permissions.GEOFENCE_LIST)
+    public ApiResponse<List<Geofence>> list(DataScope scope) {
+        return ApiResponse.ok(geofences.findAll(scope));
     }
 
     @GetMapping("/{id}")
-    public ApiResponse<Geofence> get(@PathVariable long id) {
-        return geofences.findById(id).map(ApiResponse::ok)
+    @RequirePermission(Permissions.GEOFENCE_LIST)
+    public ApiResponse<Geofence> get(@PathVariable long id, DataScope scope) {
+        return geofences.findById(id, scope).map(ApiResponse::ok)
                 .orElseGet(() -> ApiResponse.error("4004", "围栏不存在"));
     }
 
     @PostMapping
-    public ApiResponse<Geofence> create(@RequestBody GeofenceRequest body) {
-        return ApiResponse.ok(geofences.create(body.toDomain()));
+    @RequirePermission(Permissions.GEOFENCE_MANAGE)
+    @Audited(value = "新增电子围栏", resourceType = "geofence")
+    public ApiResponse<Geofence> create(
+            @RequestBody GeofenceRequest body, AuthorizedPrincipal principal) {
+        return ApiResponse.ok(geofences.create(principal, body.toDomain()));
     }
 
     @PutMapping("/{id}")
-    public ApiResponse<Geofence> update(@PathVariable long id, @RequestBody GeofenceRequest body) {
-        return geofences.update(id, body.toDomain()).map(ApiResponse::ok)
+    @RequirePermission(Permissions.GEOFENCE_MANAGE)
+    @Audited(value = "编辑电子围栏", resourceType = "geofence")
+    public ApiResponse<Geofence> update(
+            @PathVariable long id, @RequestBody GeofenceRequest body, DataScope scope) {
+        return geofences.update(id, body.toDomain(), scope).map(ApiResponse::ok)
                 .orElseGet(() -> ApiResponse.error("4004", "围栏不存在"));
     }
 
     @PutMapping("/{id}/vehicles")
+    @RequirePermission(Permissions.GEOFENCE_MANAGE)
+    @Audited(value = "调整围栏车辆", resourceType = "geofence")
     public ApiResponse<Geofence> replaceVehicles(
-            @PathVariable long id, @RequestBody VehicleAssignments body) {
+            @PathVariable long id, @RequestBody VehicleAssignments body, DataScope scope) {
         List<String> ids = body == null ? null : body.deviceIds();
-        return geofences.replaceVehicles(id, ids).map(ApiResponse::ok)
+        return geofences.replaceVehicles(id, ids, scope).map(ApiResponse::ok)
                 .orElseGet(() -> ApiResponse.error("4004", "围栏不存在"));
     }
 
     @PutMapping("/{id}/enabled")
-    public ApiResponse<Geofence> setEnabled(@PathVariable long id, @RequestBody EnabledRequest body) {
+    @RequirePermission(Permissions.GEOFENCE_MANAGE)
+    @Audited(value = "启停电子围栏", resourceType = "geofence")
+    public ApiResponse<Geofence> setEnabled(
+            @PathVariable long id, @RequestBody EnabledRequest body, DataScope scope) {
         if (body == null || body.enabled() == null) throw new IllegalArgumentException("enabled 不能为空");
-        return geofences.setEnabled(id, body.enabled()).map(ApiResponse::ok)
+        return geofences.setEnabled(id, body.enabled(), scope).map(ApiResponse::ok)
                 .orElseGet(() -> ApiResponse.error("4004", "围栏不存在"));
     }
 
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> delete(@PathVariable long id) {
-        return geofences.delete(id) ? ApiResponse.ok(null) : ApiResponse.error("4004", "围栏不存在");
+    @RequirePermission(Permissions.GEOFENCE_MANAGE)
+    @Audited(value = "删除电子围栏", resourceType = "geofence")
+    public ApiResponse<Void> delete(@PathVariable long id, DataScope scope) {
+        return geofences.delete(id, scope)
+                ? ApiResponse.ok(null) : ApiResponse.error("4004", "围栏不存在");
     }
 
     public record VehicleAssignments(List<String> deviceIds) {}
@@ -78,7 +99,8 @@ public class GeofenceController {
             Boolean alertOnEnter,
             Boolean alertOnExit,
             Double speedLimitKph,
-            List<String> vehicleIds) {
+            List<String> vehicleIds,
+            Long tenantId) {
 
         Geofence toDomain() {
             if (centerGcjLat == null || centerGcjLng == null || radiusMeters == null) {
@@ -86,7 +108,8 @@ public class GeofenceController {
             }
             return new Geofence(null, name, centerGcjLat, centerGcjLng, radiusMeters,
                     color, Boolean.TRUE.equals(enabled), Boolean.TRUE.equals(alertOnEnter),
-                    Boolean.TRUE.equals(alertOnExit), speedLimitKph, vehicleIds, 0, null, null);
+                    Boolean.TRUE.equals(alertOnExit), speedLimitKph, vehicleIds, 0,
+                    tenantId, null, null);
         }
     }
 }
