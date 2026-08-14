@@ -33,7 +33,21 @@ public record MessageEnvelope(
     /** JT/T 808 位置信息汇报 0x0200 */
     public static final long LOCATION_REPORT = 0x0200L;
 
+    /** JT/T 808 定位数据批量上传 0x0704 */
+    public static final long BATCH_LOCATION_REPORT = 0x0704L;
+
+    /** 单点位置汇报。批量报文不算在内，两者的处理路径不同。 */
     public boolean isLocationReport() {
         return messageId != null && messageId == LOCATION_REPORT;
+    }
+
+    /**
+     * 定位数据批量上传。{@code payload.items} 是一组与 0x0200 形态一致的位置。
+     *
+     * <p>注意 {@code payload.type}（0 正常批量 / 1 盲区补报）与信封的 {@link #type()}
+     * （{@code location}/{@code alarm}）同名不同义。
+     */
+    public boolean isBatchLocationReport() {
+        return messageId != null && messageId == BATCH_LOCATION_REPORT;
     }
 }

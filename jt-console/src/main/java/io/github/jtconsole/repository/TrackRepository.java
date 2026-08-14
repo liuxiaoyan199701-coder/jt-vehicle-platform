@@ -16,7 +16,16 @@ public class TrackRepository {
         this.jdbc = jdbc;
     }
 
-    public void insert(
+    /**
+     * 写入一个轨迹点。
+     *
+     * <p>同一设备的同一设备时间只保留一条：补传的时间窗常与已实时上报的点重叠，重复写入会让
+     * 轨迹出现重影、日里程被重复累加。冲突即忽略而不是先查后写——SQLite 并发投递下先查后写仍有
+     * 竞态，数据库约束才是唯一可靠的位置。
+     *
+     * @return 真正插入了新行时为 {@code true}；命中已有点而被忽略时为 {@code false}
+     */
+    public boolean insert(
             String deviceId,
             String deviceTime,
             String receivedAt,
@@ -29,11 +38,12 @@ public class TrackRepository {
             Integer altitude,
             Double mileage,
             String alarmJson) {
-        jdbc.sql("""
+        return jdbc.sql("""
                         INSERT INTO track_point (device_id, device_time, received_at, lat, lng,
                                                  gcj_lat, gcj_lng, speed_kph, direction, altitude,
                                                  mileage, alarm_json)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (device_id, device_time) DO NOTHING
                         """)
                 .param(deviceId)
                 .param(deviceTime)
@@ -47,7 +57,7 @@ public class TrackRepository {
                 .param(altitude)
                 .param(mileage)
                 .param(alarmJson)
-                .update();
+                .update() > 0;
     }
 
     /**

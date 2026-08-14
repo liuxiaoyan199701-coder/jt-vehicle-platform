@@ -6,6 +6,10 @@ import io.github.jtconsole.repository.DailyStatRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 
@@ -27,10 +31,42 @@ public class DailyStatService {
     public void record(
             String deviceId, String deviceTime, String receivedAt,
             double lat, double lng, Double speedKph, Double mileage) {
-        LocalDate date = dates.resolve(deviceTime, receivedAt);
-        VehicleDailyStat previous = stats.find(deviceId, date.toString())
-                .orElse(VehicleDailyStat.empty(deviceId, date.toString()));
-        Optional<LocalDateTime> incomingTime = parseDeviceTime(deviceTime);
+        recordAll(deviceId, List.of(new Point(deviceTime, receivedAt, lat, lng, speedKph, mileage)));
+    }
+
+    /**
+     * 一次记录多个点，按自然日聚合后每天只做一次读-改-写。
+     *
+     * <p>批量补传一次可能带来上千个点。逐点读-改-写会在同一个事务里对同一行做上千次
+     * SELECT + UPSERT，而 SQLite 只有一把写锁——那会把整个投递通道卡住。
+     *
+     * <p>点应当已按设备时间升序排列：里程累加依赖严格递增的设备时间，乱序点只计数不计里程。
+     */
+    public void recordAll(String deviceId, List<Point> points) {
+        if (points.isEmpty()) {
+            return;
+        }
+        Map<LocalDate, List<Point>> byDate = new LinkedHashMap<>();
+        for (Point point : points) {
+            byDate.computeIfAbsent(dates.resolve(point.deviceTime(), point.receivedAt()),
+                    ignored -> new ArrayList<>()).add(point);
+        }
+        String updatedAt = dates.now().toString();
+        byDate.forEach((date, dayPoints) -> {
+            VehicleDailyStat stat = stats.find(deviceId, date.toString())
+                    .orElse(VehicleDailyStat.empty(deviceId, date.toString()));
+            for (Point point : dayPoints) {
+                stat = fold(stat, point);
+            }
+            stats.save(stat, updatedAt);
+        });
+    }
+
+    /**
+     * 把一个点折进当日统计。纯函数，不碰数据库，因此单点与批量可以共用同一套累加规则。
+     */
+    private static VehicleDailyStat fold(VehicleDailyStat previous, Point point) {
+        Optional<LocalDateTime> incomingTime = parseDeviceTime(point.deviceTime());
         Optional<LocalDateTime> previousTime = parseDeviceTime(previous.lastDeviceTime());
         boolean ordered = incomingTime.isPresent()
                 && (previousTime.isEmpty() || incomingTime.get().isAfter(previousTime.get()));
@@ -40,18 +76,24 @@ public class DailyStatService {
         Double lastMileage = previous.lastMileage();
         String lastDeviceTime = previous.lastDeviceTime();
         if (ordered) {
-            distance += distanceIncrement(previous, lat, lng, mileage);
-            lastLat = lat;
-            lastLng = lng;
-            lastMileage = mileage;
-            lastDeviceTime = deviceTime;
+            distance += distanceIncrement(previous, point.lat(), point.lng(), point.mileage());
+            lastLat = point.lat();
+            lastLng = point.lng();
+            lastMileage = point.mileage();
+            lastDeviceTime = point.deviceTime();
         }
-        VehicleDailyStat next = new VehicleDailyStat(
-                deviceId, date.toString(), round(distance), previous.pointCount() + 1,
+        Double speedKph = point.speedKph();
+        return new VehicleDailyStat(
+                previous.deviceId(), previous.date(), round(distance), previous.pointCount() + 1,
                 previous.movingPoints() + (speedKph != null && speedKph > MOVING_SPEED_KPH ? 1 : 0),
                 Math.max(previous.maxSpeedKph(), speedKph == null ? 0 : speedKph),
                 previous.alarmCount(), lastLat, lastLng, lastMileage, lastDeviceTime);
-        stats.save(next, dates.now().toString());
+    }
+
+    /** 参与日统计累加的一个位置点。 */
+    public record Point(
+            String deviceTime, String receivedAt,
+            double lat, double lng, Double speedKph, Double mileage) {
     }
 
     private static double distanceIncrement(

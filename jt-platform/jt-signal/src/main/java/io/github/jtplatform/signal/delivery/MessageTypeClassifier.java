@@ -33,7 +33,7 @@ public final class MessageTypeClassifier {
             return MessageType.ALARM;
         }
         if (id == JT808.定位数据批量上传) {
-            return MessageType.LOCATION;
+            return MessageType.BATCH_LOCATION;
         }
         if (id == JT808.终端心跳) {
             return MessageType.HEARTBEAT;

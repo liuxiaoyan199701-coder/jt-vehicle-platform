@@ -19,7 +19,26 @@ public class StatusRepository {
     }
 
     /**
+     * 设备时间领先服务器时间多久就判定为时钟异常，单位：天。
+     *
+     * <p>不能取更小的值：{@code device_time} 是终端本地时间（北京时间），{@code last_seen_at} 是
+     * UTC，正常设备在 {@code julianday} 下就已经「领先」8 小时。这个阈值只用来拦截 RTC 未初始化
+     * 或跳变到 2099 这类离谱的时钟，不去管时区差与常见的几分钟偏移。
+     */
+    private static final double CLOCK_AHEAD_TOLERANCE_DAYS = 1.0D;
+
+    /**
      * 位置汇报到达时 UPSERT 设备最新状态。
+     *
+     * <p>覆盖判定按 {@code device_time} 而不是 {@code received_at}：一条 0x0704 批量补传里的所有点
+     * 共享同一个接收时间，用接收时间比较会让除第一个点外的全部点被误判为过期；单点路径上网络抖动
+     * 导致的后发先至，也会让较早的定位点覆盖较晚的。
+     *
+     * <p>设备时间缺失或明显领先服务器时间的点不参与覆盖竞争——空值会被当成最小值，而领先的脏值一旦
+     * 写成水位，此后所有正常点都比它「更早」，设备位置就永久停更了。反过来，若库里已经存着这样一个
+     * 脏水位（本次变更之前写入的），下一个正常点会把它冲掉。
+     *
+     * @return 本次是否成为该设备的最新状态
      */
     public boolean upsertLocation(
             String deviceId,
@@ -60,8 +79,15 @@ public class StatusRepository {
                             alarm_json = excluded.alarm_json,
                             status_json = excluded.status_json,
                             updated_at = excluded.updated_at
-                        WHERE device_status.last_seen_at IS NULL
-                           OR julianday(excluded.last_seen_at) > julianday(device_status.last_seen_at)
+                        WHERE julianday(excluded.device_time) IS NOT NULL
+                          AND julianday(excluded.device_time)
+                              <= julianday(excluded.last_seen_at) + ?
+                          AND (device_status.device_time IS NULL
+                               OR julianday(device_status.device_time) IS NULL
+                               OR julianday(excluded.device_time)
+                                  > julianday(device_status.device_time)
+                               OR julianday(device_status.device_time)
+                                  > julianday(excluded.last_seen_at) + ?)
                         """)
                 .param(deviceId)
                 .param(lastSeenAt)
@@ -79,6 +105,8 @@ public class StatusRepository {
                 .param(alarmJson)
                 .param(statusJson)
                 .param(Instant.now().toString())
+                .param(CLOCK_AHEAD_TOLERANCE_DAYS)
+                .param(CLOCK_AHEAD_TOLERANCE_DAYS)
                 .update();
         return updated > 0;
     }

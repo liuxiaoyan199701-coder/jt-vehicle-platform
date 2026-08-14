@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +45,7 @@ import org.yzh.protocol.jsatl12.T9208;
 import org.yzh.protocol.t1078.T9105;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0801;
 import org.yzh.web.model.entity.DeviceDO;
 import org.yzh.web.model.enums.SessionKey;
@@ -178,6 +180,18 @@ class SignalMessageCoverageTest {
     @Test
     void classifiesPreviouslyUnmappedT9105() {
         assertEquals(MessageType.MULTIMEDIA, classifier.classify(new T9105()));
+    }
+
+    @Test
+    void batchLocationIsDeliveredReliablyUnlikeRealtimeLocation() {
+        // 补传是那段轨迹的唯一副本，而它偏偏在通道最拥挤的时刻到达：
+        // 若和实时位置一样按尽力而为投递，恰好会在这时被优先丢弃。
+        T0704 batch = new T0704();
+        batch.setMessageId(batch.reflectMessageId());
+
+        assertEquals(MessageType.BATCH_LOCATION, classifier.classify(batch));
+        assertTrue(MessageType.BATCH_LOCATION.isCritical());
+        assertFalse(MessageType.LOCATION.isCritical());
     }
 
     @Test

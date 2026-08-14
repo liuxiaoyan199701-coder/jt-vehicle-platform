@@ -371,8 +371,13 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
-        BusinessDateService businessDateService() {
-            return new BusinessDateService(new ConsoleProperties());
+        ConsoleProperties consoleProperties() {
+            return new ConsoleProperties();
+        }
+
+        @Bean
+        BusinessDateService businessDateService(ConsoleProperties properties) {
+            return new BusinessDateService(properties);
         }
 
         @Bean
@@ -394,11 +399,25 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        LocationProjection locationProjection(
+                TrackRepository tracks, StatusRepository statuses, DailyStatService stats,
+                ObjectMapper objectMapper) {
+            return new LocationProjection(tracks, statuses, stats, objectMapper);
+        }
+
+        @Bean
+        BatchLocationService batchLocationService(
+                LocationProjection projection, StatusRepository statuses,
+                ConsoleProperties properties) {
+            return new BatchLocationService(projection, statuses, properties);
+        }
+
+        @Bean
         LocationService locationService(
-                TrackRepository tracks, StatusRepository statuses, ObjectMapper objectMapper,
-                AlarmService alarms, GeofenceService geofences, DailyStatService stats,
+                StatusRepository statuses, LocationProjection projection,
+                BatchLocationService batches, AlarmService alarms, GeofenceService geofences,
                 DeviceAttributeRepository attributes) {
-            return new LocationService(tracks, statuses, objectMapper, alarms, geofences, stats, attributes);
+            return new LocationService(statuses, projection, batches, alarms, geofences, attributes);
         }
 
         @Bean

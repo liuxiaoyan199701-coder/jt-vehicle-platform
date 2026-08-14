@@ -67,6 +67,39 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void duplicateTrackPointsAreCollapsedBeforeTheUniqueIndexIsBuilt() {
+        // 唯一约束之前入库的重复点：同一设备同一设备时间被写了三次
+        String received = Instant.now().toString();
+        for (int copy = 0; copy < 3; copy++) {
+            insertTrackPoint("00123", "2026-08-11T10:00:00", received);
+        }
+        insertTrackPoint("00123", "2026-08-11T10:01:00", received);
+        // 没有设备时间的点无从判断是否重复，必须原样保留
+        insertTrackPoint("00123", null, received);
+        insertTrackPoint("00123", null, received);
+
+        TestSchema.migrate(jdbc, transactions);
+
+        assertThat(scalar("SELECT COUNT(*) FROM track_point WHERE device_time = '2026-08-11T10:00:00'"))
+                .isEqualTo(1L);
+        assertThat(scalar("SELECT COUNT(*) FROM track_point WHERE device_time IS NULL")).isEqualTo(2L);
+        assertThat(scalar("SELECT COUNT(*) FROM track_point")).isEqualTo(4L);
+    }
+
+    @Test
+    void theUniqueIndexKeepsLaterDuplicatesOut() {
+        TestSchema.migrate(jdbc, transactions);
+        String received = Instant.now().toString();
+
+        insertTrackPoint("00123", "2026-08-11T10:00:00", received);
+        // 补传批次里重复的那个点：约束把它挡掉，而不是让轨迹出现重影
+        int second = insertOrIgnoreTrackPoint("00123", "2026-08-11T10:00:00", received);
+
+        assertThat(second).isZero();
+        assertThat(scalar("SELECT COUNT(*) FROM track_point")).isEqualTo(1L);
+    }
+
+    @Test
     void freshDatabaseReachesLatestVersionAndDoesNotRepeatMigrations() {
         TestSchema.migrate(jdbc, transactions);
         long versionAfterFirstRun = userVersion();
@@ -100,14 +133,15 @@ class SchemaMigrationTest {
         };
         SchemaMigrationRunner runner = new SchemaMigrationRunner(
                 jdbc, transactions,
-                List.of(new V1TenancySchemaMigration(), new V2DefaultTenantMigration(), failing));
+                List.of(new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
+                        new V3TrackPointUniquenessMigration(), failing));
 
         assertThatThrownBy(runner::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("v99");
 
-        // 前两步已提交，失败的第三步整体回滚且版本号停在 2。
-        assertThat(userVersion()).isEqualTo(2L);
+        // 前几步已提交，失败的那一步整体回滚且版本号停在最后一个成功的版本。
+        assertThat(userVersion()).isEqualTo(3L);
         assertThat(scalar("""
                 SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'half_applied'
                 """)).isZero();
@@ -129,6 +163,25 @@ class SchemaMigrationTest {
     private long scalar(String sql) {
         Long value = jdbc.sql(sql).query(Long.class).single();
         return value == null ? 0L : value;
+    }
+
+    private void insertTrackPoint(String deviceId, String deviceTime, String receivedAt) {
+        jdbc.sql("""
+                        INSERT INTO track_point (device_id, device_time, received_at,
+                                                 lat, lng, gcj_lat, gcj_lng)
+                        VALUES (?, ?, ?, 39.9, 116.4, 39.9, 116.4)
+                        """)
+                .param(deviceId).param(deviceTime).param(receivedAt).update();
+    }
+
+    private int insertOrIgnoreTrackPoint(String deviceId, String deviceTime, String receivedAt) {
+        return jdbc.sql("""
+                        INSERT INTO track_point (device_id, device_time, received_at,
+                                                 lat, lng, gcj_lat, gcj_lng)
+                        VALUES (?, ?, ?, 39.9, 116.4, 39.9, 116.4)
+                        ON CONFLICT (device_id, device_time) DO NOTHING
+                        """)
+                .param(deviceId).param(deviceTime).param(receivedAt).update();
     }
 
     private long tenantIdOf(String table, String keyColumn, String key) {

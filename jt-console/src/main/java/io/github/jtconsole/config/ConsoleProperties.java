@@ -13,7 +13,16 @@ public class ConsoleProperties {
     private Security security = new Security();
     private Broadcast broadcast = new Broadcast();
     private Operations operations = new Operations();
+    private Ingest ingest = new Ingest();
     private Audit audit = new Audit();
+
+    public Ingest getIngest() {
+        return ingest;
+    }
+
+    public void setIngest(Ingest ingest) {
+        this.ingest = ingest;
+    }
     private Registration registration = new Registration();
     private Tenancy tenancy = new Tenancy();
     private Duration offlineTimeout = Duration.ofMinutes(5);
@@ -315,6 +324,24 @@ public class ConsoleProperties {
 
         public void setZoneId(String zoneId) {
             this.zoneId = zoneId;
+        }
+    }
+
+    public static class Ingest {
+        /**
+         * 单条 0x0704 批量定位报文最多处理的点数，超出部分丢弃并记日志。
+         *
+         * <p>整个投递是一个事务，而 SQLite 只有一把写锁：一条异常报文携带数万个点会让这个事务
+         * 长时间独占写锁，阻塞所有其他投递与业务写入。宁可丢掉超出的点也不能卡死通道。
+         */
+        private int maxBatchPoints = 1000;
+
+        public int getMaxBatchPoints() {
+            return maxBatchPoints;
+        }
+
+        public void setMaxBatchPoints(int maxBatchPoints) {
+            this.maxBatchPoints = maxBatchPoints;
         }
     }
 

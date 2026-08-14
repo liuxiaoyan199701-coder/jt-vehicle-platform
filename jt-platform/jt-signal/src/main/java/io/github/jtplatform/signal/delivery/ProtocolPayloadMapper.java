@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0801;
 
 public final class ProtocolPayloadMapper {
@@ -69,8 +70,43 @@ public final class ProtocolPayloadMapper {
             enrichLocation(payload, location);
         } else if (message instanceof T0801 multimedia) {
             enrichMultimedia(payload, multimedia);
+        } else if (message instanceof T0704 batch) {
+            enrichBatchLocations(payload, batch);
         }
         return payload;
+    }
+
+    /**
+     * 批量定位数据的每一项都是完整的位置汇报，必须与顶层 0x0200 拥有<b>完全相同</b>的字段形态。
+     *
+     * <p>通用的 bean 反射只会给出原始值——1e-6 度的整数经纬度、位域形式的报警与状态。若把位域到
+     * 名称的翻译交给下游，那张 32 项的名称表就要在协议侧与业务侧各存一份；名称表随苏标、粤标持续
+     * 扩展，两份副本必然漂移，届时补传数据会静默地少掉某几种报警。位域的含义属于协议知识，
+     * 只应有一处权威。
+     */
+    private static void enrichBatchLocations(Map<String, Object> payload, T0704 batch) {
+        List<T0200> items = batch.getItems();
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Object mapped = payload.get("items");
+        if (!(mapped instanceof List<?> mappedItems) || mappedItems.size() != items.size()) {
+            // 反射结果与源对象对不上时宁可不动：错位的增强比不增强更难排查。
+            return;
+        }
+        List<Object> enriched = new ArrayList<>(items.size());
+        for (int index = 0; index < items.size(); index++) {
+            Object item = mappedItems.get(index);
+            if (item instanceof Map<?, ?> values) {
+                LinkedHashMap<String, Object> itemPayload = new LinkedHashMap<>();
+                values.forEach((key, value) -> itemPayload.put(String.valueOf(key), value));
+                enrichLocation(itemPayload, items.get(index));
+                enriched.add(itemPayload);
+            } else {
+                enriched.add(item);
+            }
+        }
+        payload.put("items", enriched);
     }
 
     private void enrichMultimedia(Map<String, Object> payload, T0801 multimedia) {

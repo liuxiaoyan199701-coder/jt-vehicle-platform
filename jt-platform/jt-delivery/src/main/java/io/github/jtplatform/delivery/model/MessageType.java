@@ -2,6 +2,14 @@ package io.github.jtplatform.delivery.model;
 
 public enum MessageType {
     LOCATION("location", DeliveryReliability.BEST_EFFORT),
+    /**
+     * 0x0704 定位数据批量上传。
+     *
+     * <p>与实时位置相反，必须可靠投递：批量补传是那段轨迹的<b>唯一</b>一份副本，丢了就永远补不回来，
+     * 而实时位置几十秒后就有下一个。更要命的是它到达的时机——设备刚恢复联通时集中上传，正是
+     * 整条投递通道最拥挤的时刻，尽力而为的报文恰好在这时被优先丢弃。
+     */
+    BATCH_LOCATION("batch-location", DeliveryReliability.AT_LEAST_ONCE),
     HEARTBEAT("heartbeat", DeliveryReliability.BEST_EFFORT),
     REGISTER("register", DeliveryReliability.AT_LEAST_ONCE),
     AUTHENTICATION("authentication", DeliveryReliability.AT_LEAST_ONCE),
