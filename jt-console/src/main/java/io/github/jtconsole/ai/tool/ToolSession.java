@@ -1,5 +1,6 @@
 package io.github.jtconsole.ai.tool;
 
+import io.github.jtconsole.ai.action.ConfirmationPolicy;
 import io.github.jtconsole.ai.agent.AgentEventSink;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.DataScope;
@@ -18,7 +19,8 @@ public record ToolSession(
         AuthorizedPrincipal principal,
         DataScope scope,
         ZoneId zone,
-        AgentEventSink events) {
+        AgentEventSink events,
+        ConfirmationPolicy confirmationPolicy) {
 
     private static final String KEY = "jt.tool.session";
 
