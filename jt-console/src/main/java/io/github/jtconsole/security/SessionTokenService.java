@@ -28,23 +28,31 @@ public final class SessionTokenService {
     private final Clock clock;
     private final SecureRandom random;
     private final List<SessionRevocationListener> revocationListeners;
+    private final SessionStore store;
+    /**
+     * 按令牌的 SHA-256 摘要索引，而不是令牌原文。
+     *
+     * <p>这样会话才能落库：存原文等于把可直接冒充使用者的钥匙写进磁盘，比密码哈希危险得多。
+     * 校验时对传入令牌做同样的摘要再查表，对外行为完全不变。
+     */
     private final Map<String, Session> accessTokens = new HashMap<>();
     private final Map<String, Session> refreshTokens = new HashMap<>();
     private final Map<String, Session> activeSessionsById = new HashMap<>();
 
     public SessionTokenService(ConsoleProperties properties) {
-        this(properties, Clock.systemUTC(), new SecureRandom(), List.of());
+        this(properties, Clock.systemUTC(), new SecureRandom(), List.of(), SessionStore.inMemory());
     }
 
     @Autowired
     public SessionTokenService(
             ConsoleProperties properties,
-            List<SessionRevocationListener> revocationListeners) {
-        this(properties, Clock.systemUTC(), new SecureRandom(), revocationListeners);
+            List<SessionRevocationListener> revocationListeners,
+            SessionStore store) {
+        this(properties, Clock.systemUTC(), new SecureRandom(), revocationListeners, store);
     }
 
     SessionTokenService(ConsoleProperties properties, Clock clock, SecureRandom random) {
-        this(properties, clock, random, List.of());
+        this(properties, clock, random, List.of(), SessionStore.inMemory());
     }
 
     SessionTokenService(
@@ -52,6 +60,15 @@ public final class SessionTokenService {
             Clock clock,
             SecureRandom random,
             List<SessionRevocationListener> revocationListeners) {
+        this(properties, clock, random, revocationListeners, SessionStore.inMemory());
+    }
+
+    SessionTokenService(
+            ConsoleProperties properties,
+            Clock clock,
+            SecureRandom random,
+            List<SessionRevocationListener> revocationListeners,
+            SessionStore store) {
         this.accessTokenTtl = requirePositive(
                 properties.getSecurity().getAccessTokenTtl(), "访问 token 有效期");
         this.refreshTokenTtl = requirePositive(
@@ -59,6 +76,39 @@ public final class SessionTokenService {
         this.clock = clock;
         this.random = random;
         this.revocationListeners = List.copyOf(revocationListeners);
+        this.store = store;
+        restore();
+    }
+
+    /**
+     * 从库里重建会话索引。
+     *
+     * <p>这一步是「发版后不必重新登录」的全部所在：访问令牌配了 7 天有效期，却因为一次几秒的
+     * 重启而失效，与配置的意图完全相悖。
+     *
+     * <p>{@code accessCredential} 不恢复而是重新生成：它只用于在会话被撤销时踢掉对应的 WebSocket，
+     * 而 WebSocket 本来就随进程一起断了，没有需要延续的东西。
+     */
+    private void restore() {
+        Instant now = clock.instant();
+        int restored = 0;
+        for (SessionStore.Record row : store.loadLive(now)) {
+            Session session = new Session(
+                    row.sessionId(), row.accountId(), row.username(), row.tenantId(),
+                    row.issuedAt());
+            session.accessToken = row.accessTokenHash();
+            session.refreshToken = row.refreshTokenHash();
+            session.accessCredential = new AccessCredential(randomToken());
+            session.accessExpiresAt = row.accessExpiresAt();
+            session.refreshExpiresAt = row.refreshExpiresAt();
+            activeSessionsById.put(session.sessionId, session);
+            accessTokens.put(session.accessToken, session);
+            refreshTokens.put(session.refreshToken, session);
+            restored++;
+        }
+        if (restored > 0) {
+            LOGGER.info("恢复了 {} 个登录会话，用户无需因本次重启重新登录", restored);
+        }
     }
 
     /**
@@ -86,12 +136,13 @@ public final class SessionTokenService {
         if (accessToken == null || accessToken.isBlank()) {
             return Optional.empty();
         }
-        Session session = accessTokens.get(accessToken);
-        if (session == null || session.revoked.get() || !accessToken.equals(session.accessToken)) {
+        String hashed = digest(accessToken);
+        Session session = accessTokens.get(hashed);
+        if (session == null || session.revoked.get() || !hashed.equals(session.accessToken)) {
             return Optional.empty();
         }
         if (!clock.instant().isBefore(session.accessExpiresAt)) {
-            accessTokens.remove(accessToken);
+            accessTokens.remove(hashed);
             revokeAccessCredential(session);
             return Optional.empty();
         }
@@ -106,11 +157,12 @@ public final class SessionTokenService {
         if (refreshToken == null || refreshToken.isBlank()) {
             return Optional.empty();
         }
-        Session session = refreshTokens.get(refreshToken);
+        String hashed = digest(refreshToken);
+        Session session = refreshTokens.get(hashed);
         Instant now = clock.instant();
         if (session == null
                 || session.revoked.get()
-                || !refreshToken.equals(session.refreshToken)
+                || !hashed.equals(session.refreshToken)
                 || !now.isBefore(session.refreshExpiresAt)) {
             if (session != null) {
                 revoke(session);
@@ -148,7 +200,10 @@ public final class SessionTokenService {
     }
 
     public synchronized boolean revokeSessionForAccessToken(String accessToken) {
-        Session session = accessTokens.get(accessToken);
+        if (accessToken == null || accessToken.isBlank()) {
+            return false;
+        }
+        Session session = accessTokens.get(digest(accessToken));
         if (session == null || session.revoked.get()) {
             return false;
         }
@@ -195,14 +250,45 @@ public final class SessionTokenService {
         return targets.size();
     }
 
+    /**
+     * 换发一对新令牌。原文只在返回值里出现一次，内部与库里一律只留摘要。
+     */
     private void rotate(Session session, Instant now) {
-        session.accessToken = randomToken();
+        String accessToken = randomToken();
+        String refreshToken = randomToken();
+        session.accessToken = digest(accessToken);
+        session.refreshToken = digest(refreshToken);
+        session.plainAccessToken = accessToken;
+        session.plainRefreshToken = refreshToken;
         session.accessCredential = new AccessCredential(randomToken());
-        session.refreshToken = randomToken();
         session.accessExpiresAt = now.plus(accessTokenTtl);
         session.refreshExpiresAt = now.plus(refreshTokenTtl);
         accessTokens.put(session.accessToken, session);
         refreshTokens.put(session.refreshToken, session);
+        persist(session);
+    }
+
+    private void persist(Session session) {
+        try {
+            store.save(new SessionStore.Record(
+                    session.sessionId, session.accountId, session.username, session.tenantId,
+                    session.accessToken, session.refreshToken,
+                    session.issuedAt, session.accessExpiresAt, session.refreshExpiresAt));
+        } catch (RuntimeException failure) {
+            // 落库失败不该让用户登不进来：会话在内存里仍然有效，只是撑不过下次重启。
+            LOGGER.warn("会话落库失败，本次登录状态将无法跨重启存活", failure);
+        }
+    }
+
+    /** 令牌摘要。用于索引与落库，使原文不出现在内存索引键与磁盘上。 */
+    private static String digest(String token) {
+        try {
+            byte[] hash = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(hash);
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("运行环境缺少 SHA-256", impossible);
+        }
     }
 
     private void revoke(Session session) {
@@ -214,11 +300,20 @@ public final class SessionTokenService {
         markRevokedAndNotify(session);
     }
 
+    /**
+     * 所有撤销路径最终都汇到这里，因此删库放在这一处就够——放在各个调用点反而容易漏掉一条，
+     * 而漏掉的后果是「登出了，重启后又活过来」。
+     */
     private void markRevokedAndNotify(Session session) {
         if (!session.revoked.compareAndSet(false, true)) {
             return;
         }
         activeSessionsById.remove(session.sessionId, session);
+        try {
+            store.delete(session.sessionId);
+        } catch (RuntimeException failure) {
+            LOGGER.warn("会话删除落库失败：{}", session.sessionId, failure);
+        }
         if (session.accessCredential != null) {
             session.accessCredential.active.set(false);
         }
@@ -350,9 +445,12 @@ public final class SessionTokenService {
         private final String username;
         private final Long tenantId;
         private final Instant issuedAt;
+        /** 摘要，不是原文。 */
         private String accessToken;
-        private AccessCredential accessCredential;
         private String refreshToken;
+        private String plainAccessToken;
+        private String plainRefreshToken;
+        private AccessCredential accessCredential;
         private Instant accessExpiresAt;
         private Instant refreshExpiresAt;
         private final AtomicBoolean revoked = new AtomicBoolean();
@@ -366,9 +464,10 @@ public final class SessionTokenService {
             this.issuedAt = issuedAt;
         }
 
+        /** 只在签发与轮换的那一刻返回原文；之后对象里留下的都是摘要。 */
         private TokenPair tokenPair() {
             return new TokenPair(
-                    accessToken, refreshToken, accessExpiresAt, refreshExpiresAt);
+                    plainAccessToken, plainRefreshToken, accessExpiresAt, refreshExpiresAt);
         }
     }
 }

@@ -106,9 +106,29 @@ public enum ActionType {
      *
      * <p>必须把字段名明确告诉模型：它不知道接口长什么样时会自己发明一套（把 plateNo 写成 plate、
      * channelCount 写成 cameraCount），生成的确认卡片看着没问题，用户一点就失败。
+     *
+     * <p>只给名字还不够——它会把 tenantId 填成用户名「admin」、把 plateColor 填成英文 "blue"。
+     * 所以 {@link #fieldHint(String)} 另外给出类型与取值范围。
      */
     public List<String> requiredFields() {
         return requiredFields;
+    }
+
+    /** 字段的类型与取值说明，拼进提示词。没有特别说明的字段返回空串。 */
+    public static String fieldHint(String field) {
+        return switch (field) {
+            case "tenantId" -> "（数字 id，不是租户名；不确定就省略，平台会按当前用户归属处理）";
+            case "departmentId", "planId", "id" -> "（数字 id，必须来自查询结果）";
+            case "plateColor" -> "（中文：蓝色/黄色/白色/绿色/黑色）";
+            case "channelCount" -> "（数字，摄像头路数，默认 1）";
+            case "alarmId" -> "（数字，来自告警查询结果）";
+            case "deviceIds", "vehicleIds" -> "（设备号字符串数组）";
+            case "centerGcjLat", "centerGcjLng" -> "（数字，GCJ-02 坐标）";
+            case "radiusMeters", "speedLimitKph" -> "（数字）";
+            case "enabled", "alertOnEnter", "alertOnExit" -> "（true/false）";
+            case "code" -> "（英文或数字编码，全局唯一）";
+            default -> "";
+        };
     }
 
     public List<String> optionalFields() {

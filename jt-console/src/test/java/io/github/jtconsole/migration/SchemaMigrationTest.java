@@ -134,14 +134,15 @@ class SchemaMigrationTest {
         SchemaMigrationRunner runner = new SchemaMigrationRunner(
                 jdbc, transactions,
                 List.of(new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
-                        new V3TrackPointUniquenessMigration(), new V4AiSchemaMigration(), failing));
+                        new V3TrackPointUniquenessMigration(), new V4AiSchemaMigration(),
+                        new V5SessionPersistenceMigration(), failing));
 
         assertThatThrownBy(runner::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("v99");
 
         // 前几步已提交，失败的那一步整体回滚且版本号停在最后一个成功的版本。
-        assertThat(userVersion()).isEqualTo(4L);
+        assertThat(userVersion()).isEqualTo(5L);
         assertThat(scalar("""
                 SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'half_applied'
                 """)).isZero();
@@ -159,7 +160,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(4L);
+        assertThat(userVersion()).isEqualTo(5L);
         for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
             assertThat(scalar("""
                     SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
@@ -177,7 +178,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(4L);
+        assertThat(userVersion()).isEqualTo(5L);
     }
 
     /** 把库推进到加 AI 表之前的状态，用来模拟真实的升级起点。 */

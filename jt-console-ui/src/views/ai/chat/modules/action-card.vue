@@ -14,6 +14,10 @@ defineOptions({ name: 'ActionCard' });
 
 const props = defineProps<{ action: AiActionEvent }>();
 
+// 把执行结果回报给页面，页面会在下一轮告诉模型。
+// 不回报的话会陷入死循环：用户说「确认失败了」，模型不知道发生过什么，只会再让他去确认一次。
+const emit = defineEmits<{ settled: [outcome: string] }>();
+
 const authStore = useAuthStore();
 const state = ref<'pending' | 'running' | 'done' | 'failed' | 'cancelled'>('pending');
 const message = ref('');
@@ -54,13 +58,16 @@ async function execute() {
     if (error) {
       state.value = 'failed';
       message.value = describe(error);
+      emit('settled', `${props.action.label}执行失败：${message.value}`);
       return;
     }
     state.value = 'done';
     message.value = '已执行';
+    emit('settled', `${props.action.label}执行成功`);
   } catch (failure) {
     state.value = 'failed';
     message.value = describe(failure);
+    emit('settled', `${props.action.label}执行失败：${message.value}`);
   }
 }
 
@@ -82,6 +89,7 @@ function describe(failure: unknown): string {
 function cancel() {
   state.value = 'cancelled';
   message.value = '已取消';
+  emit('settled', `${props.action.label}被用户取消`);
 }
 </script>
 

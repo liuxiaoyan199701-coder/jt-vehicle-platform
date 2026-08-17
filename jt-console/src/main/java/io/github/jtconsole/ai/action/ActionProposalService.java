@@ -104,12 +104,15 @@ public class ActionProposalService {
             }
         }
         List<String> unknown = new ArrayList<>();
-        for (String field : params.keySet()) {
-            if (!type.knows(field)) {
-                unknown.add(field);
+        List<String> badType = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : params.entrySet()) {
+            if (!type.knows(entry.getKey())) {
+                unknown.add(entry.getKey());
+            } else if (!typeOk(entry.getKey(), entry.getValue())) {
+                badType.add(entry.getKey() + ActionType.fieldHint(entry.getKey()));
             }
         }
-        if (missing.isEmpty() && unknown.isEmpty()) {
+        if (missing.isEmpty() && unknown.isEmpty() && badType.isEmpty()) {
             return null;
         }
         StringBuilder problem = new StringBuilder("参数不符合「").append(type.label()).append("」的要求：");
@@ -119,12 +122,37 @@ public class ActionProposalService {
         if (!unknown.isEmpty()) {
             problem.append("不认识的字段 ").append(String.join("、", unknown)).append("；");
         }
+        if (!badType.isEmpty()) {
+            problem.append("类型不对的字段 ").append(String.join("、", badType)).append("；");
+        }
         problem.append("请严格使用这些字段名重新提议——必填：")
                 .append(String.join("、", type.requiredFields()));
         if (!type.optionalFields().isEmpty()) {
             problem.append("；可选：").append(String.join("、", type.optionalFields()));
         }
         return problem.toString();
+    }
+
+    /**
+     * 值的类型是否对得上。
+     *
+     * <p>只给字段名不校验类型，模型会把 tenantId 填成用户名「admin」——名字是对的，值是错的，
+     * 一路放行到用户点确认才炸出一句「服务器内部错误」。在这里拦下并回告，它当轮就能改对。
+     */
+    private static boolean typeOk(String field, Object value) {
+        if (value == null) {
+            return true;
+        }
+        return switch (field) {
+            case "tenantId", "departmentId", "planId", "id", "alarmId", "channelCount",
+                 "maxVehicles", "maxAccounts", "maxAiCallsMonthly", "priceCents", "periodMonths" ->
+                    value instanceof Number;
+            case "centerGcjLat", "centerGcjLng", "radiusMeters", "speedLimitKph" ->
+                    value instanceof Number;
+            case "enabled", "alertOnEnter", "alertOnExit" -> value instanceof Boolean;
+            case "deviceIds", "vehicleIds" -> value instanceof List<?>;
+            default -> true;
+        };
     }
 
     /**

@@ -237,7 +237,8 @@ class LiveUpdatesTest {
     void sessionRevokedAfterHandshakeButBeforeRegistrationNeverEntersSubscriberSet() throws Exception {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
-                new ConsoleProperties(), List.of(broadcaster));
+                new ConsoleProperties(), List.of(broadcaster),
+                io.github.jtconsole.security.SessionStore.inMemory());
         SessionTokenService.TokenPair credentials = tokens.issue(1L, "admin", null);
         Map<String, Object> attributes = authenticatedAttributes(tokens, credentials.token());
 
@@ -257,7 +258,8 @@ class LiveUpdatesTest {
     void accessRotatedAfterHandshakeButBeforeRegistrationRejectsOnlyOldCredential() throws Exception {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
-                new ConsoleProperties(), List.of(broadcaster));
+                new ConsoleProperties(), List.of(broadcaster),
+                io.github.jtconsole.security.SessionStore.inMemory());
         SessionTokenService.TokenPair original = tokens.issue(1L, "admin", null);
         Map<String, Object> originalAttributes = authenticatedAttributes(tokens, original.token());
         SessionTokenService.TokenPair rotated = tokens
@@ -396,7 +398,8 @@ class LiveUpdatesTest {
     void revokingAuthenticationSessionClosesOnlyItsEstablishedWebSocket() throws Exception {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
-                new ConsoleProperties(), List.of(broadcaster));
+                new ConsoleProperties(), List.of(broadcaster),
+                io.github.jtconsole.security.SessionStore.inMemory());
         SessionTokenService.TokenPair revokedCredentials = tokens.issue(1L, "admin", null);
         SessionTokenService.TokenPair activeCredentials = tokens.issue(1L, "admin", null);
         LiveWebSocketHandshakeInterceptor interceptor =
@@ -437,7 +440,8 @@ class LiveUpdatesTest {
     void rotatingRefreshTokenClosesSocketUsingTheRevokedAccessCredential() throws Exception {
         LiveBroadcaster broadcaster = broadcaster(4);
         SessionTokenService tokens = new SessionTokenService(
-                new ConsoleProperties(), List.of(broadcaster));
+                new ConsoleProperties(), List.of(broadcaster),
+                io.github.jtconsole.security.SessionStore.inMemory());
         SessionTokenService.TokenPair original = tokens.issue(1L, "admin", null);
         LiveWebSocketHandshakeInterceptor interceptor =
                 new LiveWebSocketHandshakeInterceptor(tokens, Set.of(ALLOWED_ORIGIN));

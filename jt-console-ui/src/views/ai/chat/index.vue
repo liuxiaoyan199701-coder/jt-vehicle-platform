@@ -41,7 +41,18 @@ const loading = ref(false);
 const usage = ref<AiUsageEvent | null>(null);
 const errorText = ref('');
 const listRef = ref<HTMLElement | null>(null);
+/**
+ * 待回报给模型的动作执行结果。
+ *
+ * 模型自己看不到卡片被点了没有、成没成功。不把结果带回去的话会陷入死循环：
+ * 用户说「确认失败了」，模型不知道发生过什么，只会再让他去确认一次。
+ */
+const pendingOutcomes = ref<string[]>([]);
 let abort: (() => void) | null = null;
+
+function recordOutcome(outcome: string) {
+  pendingOutcomes.value.push(outcome);
+}
 
 const SUGGESTIONS = [
   '现在有多少台车在线？',
@@ -137,6 +148,13 @@ function send(text?: string) {
   const history: AiChatMessage[] = bubbles.value
     .filter(b => b.content || b.role === 'user')
     .map(b => ({ role: b.role, content: b.content }));
+
+  // 把上一轮卡片的执行结果插在用户这句话之前，模型才知道刚才那步到底成没成。
+  if (pendingOutcomes.value.length) {
+    const note = `[系统] 动作执行结果：${pendingOutcomes.value.join('；')}`;
+    history.splice(history.length - 1, 0, { role: 'user', content: note });
+    pendingOutcomes.value = [];
+  }
 
   abort = streamChat(
     history,
@@ -303,7 +321,12 @@ onBeforeUnmount(() => abort?.());
                   <NSpin v-if="streaming && index === bubbles.length - 1 && !bubble.content" size="small" />
                 </div>
 
-                <ActionCard v-for="action in bubble.actions" :key="action.proposalId" :action="action" />
+                <ActionCard
+                  v-for="action in bubble.actions"
+                  :key="action.proposalId"
+                  :action="action"
+                  @settled="recordOutcome"
+                />
               </div>
             </div>
           </div>
