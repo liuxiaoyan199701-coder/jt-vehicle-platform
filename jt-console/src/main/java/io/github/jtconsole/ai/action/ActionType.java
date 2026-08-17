@@ -2,6 +2,7 @@ package io.github.jtconsole.ai.action;
 
 import io.github.jtconsole.security.Permissions;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -21,45 +22,101 @@ public enum ActionType {
 
     // ---- 可逆的创建与修改：允许配置为免确认 ----
 
-    VEHICLE_CREATE("vehicle_create", "车辆建档", Permissions.VEHICLE_CREATE, false),
-    VEHICLE_UPDATE("vehicle_update", "修改车辆档案", Permissions.VEHICLE_UPDATE, false),
-    FLEET_CREATE("fleet_create", "创建车队", Permissions.FLEET_MANAGE, false),
-    FLEET_UPDATE("fleet_update", "修改车队", Permissions.FLEET_MANAGE, false),
-    FLEET_MEMBERS("fleet_members", "调整车队成员", Permissions.FLEET_MANAGE, false),
-    GEOFENCE_CREATE("geofence_create", "创建电子围栏", Permissions.GEOFENCE_MANAGE, false),
-    GEOFENCE_UPDATE("geofence_update", "修改电子围栏", Permissions.GEOFENCE_MANAGE, false),
-    ALARM_ACKNOWLEDGE("alarm_acknowledge", "确认告警", Permissions.ALARM_HANDLE, false),
-    ALARM_CLOSE("alarm_close", "关闭告警", Permissions.ALARM_HANDLE, false),
+    VEHICLE_CREATE("vehicle_create", "车辆建档", Permissions.VEHICLE_CREATE, false,
+            List.of("deviceId", "plateNo"),
+            List.of("plateColor", "brand", "channelCount", "remark", "tenantId", "departmentId")),
+    VEHICLE_UPDATE("vehicle_update", "修改车辆档案", Permissions.VEHICLE_UPDATE, false,
+            List.of("deviceId"),
+            List.of("plateNo", "plateColor", "brand", "channelCount", "remark", "departmentId")),
+    FLEET_CREATE("fleet_create", "创建车队", Permissions.FLEET_MANAGE, false,
+            List.of("code", "name"),
+            List.of("manager", "contactPhone", "remark", "tenantId")),
+    FLEET_UPDATE("fleet_update", "修改车队", Permissions.FLEET_MANAGE, false,
+            List.of("id"),
+            List.of("code", "name", "manager", "contactPhone", "remark")),
+    FLEET_MEMBERS("fleet_members", "调整车队成员", Permissions.FLEET_MANAGE, false,
+            List.of("id", "deviceIds"), List.of()),
+    GEOFENCE_CREATE("geofence_create", "创建电子围栏", Permissions.GEOFENCE_MANAGE, false,
+            List.of("name", "centerGcjLat", "centerGcjLng", "radiusMeters"),
+            List.of("color", "enabled", "alertOnEnter", "alertOnExit", "speedLimitKph",
+                    "vehicleIds", "tenantId")),
+    GEOFENCE_UPDATE("geofence_update", "修改电子围栏", Permissions.GEOFENCE_MANAGE, false,
+            List.of("id"),
+            List.of("name", "centerGcjLat", "centerGcjLng", "radiusMeters", "color", "enabled",
+                    "alertOnEnter", "alertOnExit", "speedLimitKph", "vehicleIds")),
+    ALARM_ACKNOWLEDGE("alarm_acknowledge", "确认告警", Permissions.ALARM_HANDLE, false,
+            List.of("alarmId"), List.of("note")),
+    ALARM_CLOSE("alarm_close", "关闭告警", Permissions.ALARM_HANDLE, false,
+            List.of("alarmId"), List.of("note")),
 
     // ---- 不可逆或影响运行：永远需要确认 ----
 
     /** 删掉的车辆档案要从备份找回，而备份未必有昨天那一份。 */
-    VEHICLE_DELETE("vehicle_delete", "删除车辆档案", Permissions.VEHICLE_DELETE, true),
-    FLEET_DELETE("fleet_delete", "删除车队", Permissions.FLEET_MANAGE, true),
-    GEOFENCE_DELETE("geofence_delete", "删除电子围栏", Permissions.GEOFENCE_MANAGE, true),
+    VEHICLE_DELETE("vehicle_delete", "删除车辆档案", Permissions.VEHICLE_DELETE, true,
+            List.of("deviceId"), List.of()),
+    FLEET_DELETE("fleet_delete", "删除车队", Permissions.FLEET_MANAGE, true,
+            List.of("id"), List.of()),
+    GEOFENCE_DELETE("geofence_delete", "删除电子围栏", Permissions.GEOFENCE_MANAGE, true,
+            List.of("id"), List.of()),
     /** 指令一旦发出就到了路上那台车的屏幕上，撤不回来。 */
-    SEND_TEXT("send_text", "向终端下发文本消息", Permissions.COMMAND_SEND, true),
+    SEND_TEXT("send_text", "向终端下发文本消息", Permissions.COMMAND_SEND, true,
+            List.of("deviceId", "text"), List.of()),
 
     // ---- 平台级：只有平台管理员可见 ----
 
-    TENANT_CREATE("tenant_create", "开通租户", Permissions.PLATFORM_TENANT_MANAGE, false),
-    TENANT_UPDATE("tenant_update", "修改租户信息", Permissions.PLATFORM_TENANT_MANAGE, false),
+    TENANT_CREATE("tenant_create", "开通租户", Permissions.PLATFORM_TENANT_MANAGE, false,
+            List.of("code", "name"),
+            List.of("planId", "contactName", "contactPhone", "remark")),
+    TENANT_UPDATE("tenant_update", "修改租户信息", Permissions.PLATFORM_TENANT_MANAGE, false,
+            List.of("id"),
+            List.of("name", "planId", "contactName", "contactPhone", "remark")),
     /** 停用会让该租户的一整批用户当场登不进来。 */
-    TENANT_DISABLE("tenant_disable", "停用租户", Permissions.PLATFORM_TENANT_MANAGE, true),
-    PLAN_CREATE("plan_create", "创建套餐", Permissions.PLATFORM_PLAN_MANAGE, false),
+    TENANT_DISABLE("tenant_disable", "停用租户", Permissions.PLATFORM_TENANT_MANAGE, true,
+            List.of("id"), List.of()),
+    PLAN_CREATE("plan_create", "创建套餐", Permissions.PLATFORM_PLAN_MANAGE, false,
+            List.of("name"),
+            List.of("maxVehicles", "maxAccounts", "maxAiCallsMonthly", "priceCents",
+                    "periodMonths", "remark")),
     /** 改套餐会立刻改变一批租户的配额上限。 */
-    PLAN_UPDATE("plan_update", "修改套餐", Permissions.PLATFORM_PLAN_MANAGE, true);
+    PLAN_UPDATE("plan_update", "修改套餐", Permissions.PLATFORM_PLAN_MANAGE, true,
+            List.of("id", "name"),
+            List.of("maxVehicles", "maxAccounts", "maxAiCallsMonthly", "priceCents",
+                    "periodMonths", "enabled", "remark"));
 
     private final String wireName;
     private final String label;
     private final String requiredPermission;
     private final boolean alwaysConfirm;
+    private final List<String> requiredFields;
+    private final List<String> optionalFields;
 
-    ActionType(String wireName, String label, String requiredPermission, boolean alwaysConfirm) {
+    ActionType(
+            String wireName, String label, String requiredPermission, boolean alwaysConfirm,
+            List<String> requiredFields, List<String> optionalFields) {
         this.wireName = wireName;
         this.label = label;
         this.requiredPermission = requiredPermission;
         this.alwaysConfirm = alwaysConfirm;
+        this.requiredFields = List.copyOf(requiredFields);
+        this.optionalFields = List.copyOf(optionalFields);
+    }
+
+    /**
+     * 必填字段，字段名与既有 REST 接口完全一致。
+     *
+     * <p>必须把字段名明确告诉模型：它不知道接口长什么样时会自己发明一套（把 plateNo 写成 plate、
+     * channelCount 写成 cameraCount），生成的确认卡片看着没问题，用户一点就失败。
+     */
+    public List<String> requiredFields() {
+        return requiredFields;
+    }
+
+    public List<String> optionalFields() {
+        return optionalFields;
+    }
+
+    public boolean knows(String field) {
+        return requiredFields.contains(field) || optionalFields.contains(field);
     }
 
     public String wireName() {

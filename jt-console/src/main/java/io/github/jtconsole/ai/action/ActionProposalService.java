@@ -73,6 +73,10 @@ public class ActionProposalService {
         }
 
         Map<String, Object> checked = new LinkedHashMap<>(params == null ? Map.of() : params);
+        String fieldProblem = validateFields(type, checked);
+        if (fieldProblem != null) {
+            return Outcome.rejected(fieldProblem);
+        }
         String problem = validateTarget(type, checked, session);
         if (problem != null) {
             return Outcome.rejected(problem);
@@ -83,6 +87,44 @@ public class ActionProposalService {
                 "p_" + UUID.randomUUID(), type, finalTitle,
                 reason == null ? "" : reason.trim(), checked,
                 policy.requiresConfirmation(type)));
+    }
+
+    /**
+     * 字段名必须与既有接口一致，必填项不能缺。
+     *
+     * <p>拒绝未知字段而不是默默丢弃：模型把 plateNo 写成 plate 时，静默丢弃会生成一张缺了车牌的
+     * 确认卡片，用户点了才失败；明确告诉它字段名错了，它这一轮就能改对。
+     */
+    private String validateFields(ActionType type, Map<String, Object> params) {
+        List<String> missing = new ArrayList<>();
+        for (String field : type.requiredFields()) {
+            Object value = params.get(field);
+            if (value == null || (value instanceof String text && text.isBlank())) {
+                missing.add(field);
+            }
+        }
+        List<String> unknown = new ArrayList<>();
+        for (String field : params.keySet()) {
+            if (!type.knows(field)) {
+                unknown.add(field);
+            }
+        }
+        if (missing.isEmpty() && unknown.isEmpty()) {
+            return null;
+        }
+        StringBuilder problem = new StringBuilder("参数不符合「").append(type.label()).append("」的要求：");
+        if (!missing.isEmpty()) {
+            problem.append("缺少必填字段 ").append(String.join("、", missing)).append("；");
+        }
+        if (!unknown.isEmpty()) {
+            problem.append("不认识的字段 ").append(String.join("、", unknown)).append("；");
+        }
+        problem.append("请严格使用这些字段名重新提议——必填：")
+                .append(String.join("、", type.requiredFields()));
+        if (!type.optionalFields().isEmpty()) {
+            problem.append("；可选：").append(String.join("、", type.optionalFields()));
+        }
+        return problem.toString();
     }
 
     /**
