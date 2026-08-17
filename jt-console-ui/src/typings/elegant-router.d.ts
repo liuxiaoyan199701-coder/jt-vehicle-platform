@@ -20,6 +20,8 @@ declare module "@elegant-router/types" {
     "403": "/403";
     "404": "/404";
     "500": "/500";
+    "ai": "/ai";
+    "ai_chat": "/ai/chat";
     "alarm": "/alarm";
     "fleet": "/fleet";
     "geofence": "/geofence";
@@ -75,6 +77,7 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
+    | "ai"
     | "alarm"
     | "fleet"
     | "geofence"
@@ -107,6 +110,7 @@ declare module "@elegant-router/types" {
     | "500"
     | "iframe-page"
     | "login"
+    | "ai_chat"
     | "alarm"
     | "fleet"
     | "geofence"

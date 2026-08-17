@@ -10,7 +10,11 @@ export function setupElegantRouter() {
     geofence: { icon: 'mdi:vector-circle', order: 4 },
     track: { icon: 'mdi:map-marker-path', order: 5 },
     fleet: { icon: 'mdi:garage-variant', order: 6 },
-    vehicle: { icon: 'mdi:car-multiple', order: 7 }
+    vehicle: { icon: 'mdi:car-multiple', order: 7 },
+    // permissions 写在这里而不是手改 src/router/elegant/routes.ts：
+    // 那是生成产物，跑 pnpm gen-route 会被覆盖掉。
+    ai: { icon: 'mdi:robot-outline', order: 8 },
+    ai_chat: { icon: 'mdi:robot-outline', order: 1, permissions: ['ai:chat'] }
   };
 
   return ElegantVueRouter({

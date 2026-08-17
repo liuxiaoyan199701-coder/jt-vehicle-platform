@@ -231,6 +231,8 @@ const local: App.I18n.Schema = {
     fleet: '车队管理',
     geofence: '电子围栏',
     vehicle: '车辆档案',
+    ai: 'AI 助手',
+    ai_chat: 'AI 助手',
     track: '轨迹回放',
     register: '注册',
     system: '系统管理',

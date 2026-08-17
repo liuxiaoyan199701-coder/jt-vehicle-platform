@@ -40,6 +40,31 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'ai',
+    path: '/ai',
+    component: 'layout.base',
+    meta: {
+      title: 'ai',
+      i18nKey: 'route.ai',
+      icon: 'mdi:robot-outline',
+      order: 8
+    },
+    children: [
+      {
+        name: 'ai_chat',
+        path: '/ai/chat',
+        component: 'view.ai_chat',
+        meta: {
+          title: 'ai_chat',
+          i18nKey: 'route.ai_chat',
+          icon: 'mdi:robot-outline',
+          order: 1,
+          permissions: ['ai:chat']
+        }
+      }
+    ]
+  },
+  {
     name: 'alarm',
     path: '/alarm',
     component: 'layout.base$view.alarm',

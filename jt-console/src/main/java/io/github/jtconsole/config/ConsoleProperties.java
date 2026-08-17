@@ -412,6 +412,12 @@ public class ConsoleProperties {
          * 刻意不再另设一个布尔开关：两个必须保持一致的开关只会制造半启用状态。
          */
         private int maxToolRounds = 8;
+        /**
+         * 单次对话的 SSE 存活上限。工具调用循环会发生多轮，加上模型自身的思考时间，
+         * 这个值要比单轮请求宽裕得多。经 nginx 反代时它必须小于 proxy_read_timeout，
+         * 否则连接会被代理先掐断，前端只看到流莫名其妙地停了。
+         */
+        private Duration streamTimeout = Duration.ofMinutes(5);
         private int maxOutputTokens = 2048;
         /** 历史裁剪预算，按字符近似。超出时从最旧的一问一答成对丢弃。 */
         private int historyCharBudget = 24_000;
@@ -428,6 +434,14 @@ public class ConsoleProperties {
         private String reportCron = "0 23 6 * * *";
         /** 对话留痕清理时间，同样错峰。 */
         private String cleanupCron = "0 41 3 * * *";
+
+        public Duration getStreamTimeout() {
+            return streamTimeout;
+        }
+
+        public void setStreamTimeout(Duration streamTimeout) {
+            this.streamTimeout = streamTimeout;
+        }
 
         public int getMaxToolRounds() {
             return maxToolRounds;
