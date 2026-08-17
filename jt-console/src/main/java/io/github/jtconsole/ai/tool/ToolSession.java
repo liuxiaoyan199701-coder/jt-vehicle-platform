@@ -1,0 +1,42 @@
+package io.github.jtconsole.ai.tool;
+
+import io.github.jtconsole.ai.agent.AgentEventSink;
+import io.github.jtconsole.security.AuthorizedPrincipal;
+import io.github.jtconsole.security.DataScope;
+import java.time.ZoneId;
+import java.util.Map;
+import org.springframework.ai.chat.model.ToolContext;
+
+/**
+ * 一次对话的工具执行上下文。
+ *
+ * <p>经 Spring AI 的 {@link ToolContext} 传递，**不经过模型**——这是本变更最重要的安全不变量：
+ * 模型输出天生不可信，但只要数据范围不来自模型，越权就不可能发生。工具的入参 schema 里
+ * 因此不存在租户、部门这类字段。
+ */
+public record ToolSession(
+        AuthorizedPrincipal principal,
+        DataScope scope,
+        ZoneId zone,
+        AgentEventSink events) {
+
+    private static final String KEY = "jt.tool.session";
+
+    public Map<String, Object> asContext() {
+        return Map.of(KEY, this);
+    }
+
+    /**
+     * 从框架传来的上下文中取回本会话。
+     *
+     * @throws IllegalStateException 上下文缺失时。这不是可以降级处理的情况——拿不到数据范围就
+     *                               只能失败，绝不能退化成「不加范围条件地查」
+     */
+    public static ToolSession from(ToolContext context) {
+        Object value = context == null ? null : context.getContext().get(KEY);
+        if (value instanceof ToolSession session) {
+            return session;
+        }
+        throw new IllegalStateException("工具上下文缺少会话信息，拒绝在没有数据范围的情况下查询");
+    }
+}

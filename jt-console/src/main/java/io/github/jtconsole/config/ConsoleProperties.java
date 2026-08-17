@@ -15,6 +15,7 @@ public class ConsoleProperties {
     private Operations operations = new Operations();
     private Ingest ingest = new Ingest();
     private Ai ai = new Ai();
+    private Geo geo = new Geo();
     private Audit audit = new Audit();
     private Registration registration = new Registration();
     private Tenancy tenancy = new Tenancy();
@@ -35,6 +36,14 @@ public class ConsoleProperties {
 
     public void setAi(Ai ai) {
         this.ai = ai;
+    }
+
+    public Geo getGeo() {
+        return geo;
+    }
+
+    public void setGeo(Geo geo) {
+        this.geo = geo;
     }
 
     public Audit getAudit() {
@@ -351,6 +360,46 @@ public class ConsoleProperties {
 
         public void setMaxBatchPoints(int maxBatchPoints) {
             this.maxBatchPoints = maxBatchPoints;
+        }
+    }
+
+    public static class Geo {
+        /**
+         * 高德「Web服务」类型的 key，用于服务端逆地理编码。
+         *
+         * <p>**不能**复用 {@code tenancy.amapKey}——那是 JS API 类型的 key，配合安全密钥在浏览器里
+         * 用；拿它调 {@code restapi.amap.com} 会返回 {@code USERKEY_PLAT_NOMATCH}。两者是高德控制台里
+         * 两种不同的 key 类型，必须分别申请。
+         *
+         * <p>留空表示不启用逆地理：坐标照常返回，只是不带地址，功能降级而不是报错。
+         */
+        private String amapWebServiceKey = "";
+        /** 地址缓存条数。同一个停车点会被反复查询，缓存能大幅减少对高德配额的消耗。 */
+        private int addressCacheSize = 5_000;
+        private Duration requestTimeout = Duration.ofSeconds(4);
+
+        public String getAmapWebServiceKey() {
+            return amapWebServiceKey;
+        }
+
+        public void setAmapWebServiceKey(String amapWebServiceKey) {
+            this.amapWebServiceKey = amapWebServiceKey;
+        }
+
+        public int getAddressCacheSize() {
+            return addressCacheSize;
+        }
+
+        public void setAddressCacheSize(int addressCacheSize) {
+            this.addressCacheSize = addressCacheSize;
+        }
+
+        public Duration getRequestTimeout() {
+            return requestTimeout;
+        }
+
+        public void setRequestTimeout(Duration requestTimeout) {
+            this.requestTimeout = requestTimeout;
         }
     }
 

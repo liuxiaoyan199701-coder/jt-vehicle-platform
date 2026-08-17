@@ -60,6 +60,11 @@ jt:
     operations:
       # 运营自然日、七日趋势和位置日汇总不依赖服务器默认时区。
       zone-id: ${JT_CONSOLE_OPERATIONS_ZONE_ID:Asia/Shanghai}
+    geo:
+      # 高德「Web服务」类型 key，用于服务端逆地理编码（坐标转地址）。
+      # 与 tenancy.amap-key 不是同一个：那是浏览器里用的 JS API key，
+      # 拿它调 restapi.amap.com 会返回 USERKEY_PLAT_NOMATCH。留空则不带地址，功能降级不报错。
+      amap-web-service-key: ${JT_CONSOLE_AMAP_WEB_KEY:}
     ai:
       # 是否启用由「有没有装配出模型 bean」决定，见文件末尾的 spring.ai.model.chat。
       # 这里只放平台自己的策略参数。
