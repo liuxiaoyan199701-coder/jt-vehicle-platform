@@ -42,16 +42,28 @@ const usage = ref<AiUsageEvent | null>(null);
 const errorText = ref('');
 const listRef = ref<HTMLElement | null>(null);
 /**
- * 待回报给模型的动作执行结果。
+ * 尚未回报给模型的动作执行结果。
  *
  * 模型自己看不到卡片被点了没有、成没成功。不把结果带回去的话会陷入死循环：
  * 用户说「确认失败了」，模型不知道发生过什么，只会再让他去确认一次。
  */
 const pendingOutcomes = ref<string[]>([]);
 let abort: (() => void) | null = null;
+let followUpTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * 卡片执行完就自动续一轮，不必等用户再打一句话。
+ *
+ * 点完确认看到「已执行」却没有下文，会让人以为流程断了。攒 300 毫秒再发是因为一条消息里
+ * 可能有多张卡片，用户会连点几下——那应该合成一轮，而不是每点一次就烧一次调用额度。
+ */
 function recordOutcome(outcome: string) {
   pendingOutcomes.value.push(outcome);
+  if (followUpTimer) clearTimeout(followUpTimer);
+  followUpTimer = setTimeout(() => {
+    followUpTimer = null;
+    if (!streaming.value && pendingOutcomes.value.length) runTurn(null);
+  }, 300);
 }
 
 const SUGGESTIONS = [
@@ -135,10 +147,23 @@ function removeConversation(item: AiConversation) {
 function send(text?: string) {
   const question = (text ?? input.value).trim();
   if (!question || streaming.value) return;
+  input.value = '';
+  runTurn(question);
+}
+
+/**
+ * 跑一轮对话。
+ *
+ * @param question 用户这句话；为 null 表示这是动作执行后的自动续轮，不显示用户气泡——
+ *                 用户没说话，凭空多出一条「[系统] …」的用户消息只会让对话看起来很怪
+ */
+function runTurn(question: string | null) {
+  if (streaming.value) return;
 
   errorText.value = '';
-  input.value = '';
-  bubbles.value.push({ role: 'user', content: question, tools: [], actions: [] });
+  if (question) {
+    bubbles.value.push({ role: 'user', content: question, tools: [], actions: [] });
+  }
   const reply: Bubble = { role: 'assistant', content: '', tools: [], actions: [] };
   bubbles.value.push(reply);
   streaming.value = true;
@@ -146,15 +171,18 @@ function send(text?: string) {
 
   // 只送最终文本，不送工具调用记录——那些只在当轮循环内存在。
   const history: AiChatMessage[] = bubbles.value
-    .filter(b => b.content || b.role === 'user')
+    .filter(b => b.role === 'user' || b.content)
     .map(b => ({ role: b.role, content: b.content }));
 
-  // 把上一轮卡片的执行结果插在用户这句话之前，模型才知道刚才那步到底成没成。
+  // 卡片的执行结果作为一条系统口吻的消息带给模型；它不进 bubbles，因此界面上看不到。
   if (pendingOutcomes.value.length) {
-    const note = `[系统] 动作执行结果：${pendingOutcomes.value.join('；')}`;
-    history.splice(history.length - 1, 0, { role: 'user', content: note });
+    const note = `[系统] 动作执行结果：${pendingOutcomes.value.join('；')}。`
+      + '请据此简短告知用户结果；若失败，说明原因并给出下一步建议。';
+    history.push({ role: 'user', content: note });
     pendingOutcomes.value = [];
   }
+  // 末条必须是用户消息，否则模型会接着自己上一句往下说。
+  if (!history.length || history[history.length - 1].role !== 'user') return;
 
   abort = streamChat(
     history,
@@ -214,7 +242,10 @@ onMounted(async () => {
   if (conversations.value.length) await openConversation(conversations.value[0].id);
 });
 
-onBeforeUnmount(() => abort?.());
+onBeforeUnmount(() => {
+  if (followUpTimer) clearTimeout(followUpTimer);
+  abort?.();
+});
 </script>
 
 <template>
