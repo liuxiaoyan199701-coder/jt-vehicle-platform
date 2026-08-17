@@ -53,15 +53,30 @@ async function execute() {
     const { error } = await request({ url, method, data: body });
     if (error) {
       state.value = 'failed';
-      message.value = (error as any)?.message ?? '执行失败';
+      message.value = describe(error);
       return;
     }
     state.value = 'done';
     message.value = '已执行';
-  } catch (failure: any) {
+  } catch (failure) {
     state.value = 'failed';
-    message.value = failure?.message ?? '执行失败';
+    message.value = describe(failure);
   }
+}
+
+/**
+ * 取出后端真正的失败原因。
+ *
+ * axios 封装把所有业务失败统一包成 'the backend request error'，直接显示它等于告诉用户
+ * 「出错了」——而后端其实明确说了「车队编码已存在」这类可以据此行动的原因。业务码在
+ * response.data.msg 里，必须优先取它。
+ */
+function describe(failure: unknown): string {
+  const payload = (failure as any)?.response?.data;
+  if (payload?.msg && String(payload.msg).trim()) return String(payload.msg);
+  const raw = (failure as any)?.message;
+  if (raw && raw !== 'the backend request error') return String(raw);
+  return '执行失败，请稍后重试';
 }
 
 function cancel() {

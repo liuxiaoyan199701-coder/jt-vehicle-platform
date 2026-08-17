@@ -110,7 +110,7 @@ spring.ai:
     base-url: ${JT_AI_BASE_URL:https://api.deepseek.com}
     chat:
       options:
-        model: ${JT_AI_MODEL:deepseek-chat}
+        model: ${JT_AI_MODEL:deepseek-v4-flash}
         temperature: ${JT_AI_TEMPERATURE:0.3}
 
 management:

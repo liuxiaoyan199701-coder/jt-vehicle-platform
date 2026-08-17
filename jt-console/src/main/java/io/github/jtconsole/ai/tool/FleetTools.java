@@ -173,8 +173,9 @@ public class FleetTools {
     }
 
     @Tool(name = "list_fleets",
-            description = "列出车队及其车辆数、在线数、今日里程与未处理告警数。"
-                    + "回答「有哪些车队」「某车队跑得怎么样」时用它。")
+            description = "列出车队的编码、名称、车辆数、在线数、今日里程与未处理告警数。"
+                    + "回答「有哪些车队」「某车队跑得怎么样」时用它；"
+                    + "**新建车队前也应先调用它**，看看已有哪些编码，避免编码重复导致创建失败。")
     String listFleets(
             @ToolParam(description = "车队名称关键字；留空返回全部", required = false) String keyword,
             ToolContext context) {
@@ -300,6 +301,9 @@ public class FleetTools {
 
     private static Map<String, Object> fleetBrief(FleetSummary summary) {
         Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", summary.fleet().id());
+        // 带上 code：车队编码全局唯一，模型要新建车队时得先看得见已有的才能避开重复。
+        row.put("code", summary.fleet().code());
         row.put("name", summary.fleet().name());
         row.put("totalVehicles", summary.totalVehicles());
         row.put("online", summary.online());
