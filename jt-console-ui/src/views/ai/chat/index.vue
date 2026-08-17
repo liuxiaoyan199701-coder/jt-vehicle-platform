@@ -164,8 +164,10 @@ function runTurn(question: string | null) {
   if (question) {
     bubbles.value.push({ role: 'user', content: question, tools: [], actions: [] });
   }
-  const reply: Bubble = { role: 'assistant', content: '', tools: [], actions: [] };
-  bubbles.value.push(reply);
+  bubbles.value.push({ role: 'assistant', content: '', tools: [], actions: [] });
+  // 必须取回数组里的那一份而不是继续用刚才那个字面量：ref 数组存的是响应式代理，
+  // 改原始对象虽然数据也变了，却不会通知视图——表现就是「没有流式效果，全文最后一次性冒出来」。
+  const reply = bubbles.value[bubbles.value.length - 1];
   streaming.value = true;
   void scrollToBottom();
 

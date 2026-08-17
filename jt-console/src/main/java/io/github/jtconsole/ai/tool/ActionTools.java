@@ -56,7 +56,8 @@ public class ActionTools {
 
             Map<String, Object> reply = new LinkedHashMap<>();
             reply.put("status", "proposed");
-            reply.put("proposalId", proposal.proposalId());
+            // 刻意不回传 proposalId：给了它就会在回答里复述，而复述过几次之后它就学会了
+            // 「凭空编一个编号说已提交」——实际根本没调用本工具，用户那边一张卡片也没有。
             reply.put("note", proposal.requiresConfirmation()
                     ? "已把操作交给用户确认。你无法得知用户是否确认，也无法得知执行结果，"
                             + "请不要声称操作已完成。"
