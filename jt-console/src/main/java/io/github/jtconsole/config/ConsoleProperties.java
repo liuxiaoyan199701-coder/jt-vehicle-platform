@@ -14,7 +14,12 @@ public class ConsoleProperties {
     private Broadcast broadcast = new Broadcast();
     private Operations operations = new Operations();
     private Ingest ingest = new Ingest();
+    private Ai ai = new Ai();
     private Audit audit = new Audit();
+    private Registration registration = new Registration();
+    private Tenancy tenancy = new Tenancy();
+    private Duration offlineTimeout = Duration.ofMinutes(5);
+    private Duration eventRetention = Duration.ofHours(24);
 
     public Ingest getIngest() {
         return ingest;
@@ -23,10 +28,14 @@ public class ConsoleProperties {
     public void setIngest(Ingest ingest) {
         this.ingest = ingest;
     }
-    private Registration registration = new Registration();
-    private Tenancy tenancy = new Tenancy();
-    private Duration offlineTimeout = Duration.ofMinutes(5);
-    private Duration eventRetention = Duration.ofHours(24);
+
+    public Ai getAi() {
+        return ai;
+    }
+
+    public void setAi(Ai ai) {
+        this.ai = ai;
+    }
 
     public Audit getAudit() {
         return audit;
@@ -342,6 +351,105 @@ public class ConsoleProperties {
 
         public void setMaxBatchPoints(int maxBatchPoints) {
             this.maxBatchPoints = maxBatchPoints;
+        }
+    }
+
+    public static class Ai {
+        /**
+         * 工具调用轮数上限。
+         *
+         * <p>模型服务的地址、密钥与模型名不在这里——它们由 Spring AI 的 {@code spring.ai.deepseek.*}
+         * 承载，功能是否启用则由 {@code spring.ai.model.chat} 决定（默认 {@code none} 即不装配模型）。
+         * 刻意不再另设一个布尔开关：两个必须保持一致的开关只会制造半启用状态。
+         */
+        private int maxToolRounds = 8;
+        private int maxOutputTokens = 2048;
+        /** 历史裁剪预算，按字符近似。超出时从最旧的一问一答成对丢弃。 */
+        private int historyCharBudget = 24_000;
+        /**
+         * 单个工具结果的字符上限。轨迹这类工具能轻易返回上千个点，不裁剪既烧钱又撑爆上下文，
+         * 而模型本来也答不出「第 437 个点在哪」。
+         */
+        private int toolResultCharLimit = 4_000;
+        /** 同时进行的对话数上限。满了直接拒绝而不是排队，避免请求堆在池里超时。 */
+        private int concurrentChats = 4;
+        private Duration conversationRetention = Duration.ofDays(90);
+        private Duration reportRetention = Duration.ofDays(365);
+        /** 简报生成时间。避开整点，且晚于昨日统计固化、错开审计清理。 */
+        private String reportCron = "0 23 6 * * *";
+        /** 对话留痕清理时间，同样错峰。 */
+        private String cleanupCron = "0 41 3 * * *";
+
+        public int getMaxToolRounds() {
+            return maxToolRounds;
+        }
+
+        public void setMaxToolRounds(int maxToolRounds) {
+            this.maxToolRounds = maxToolRounds;
+        }
+
+        public int getMaxOutputTokens() {
+            return maxOutputTokens;
+        }
+
+        public void setMaxOutputTokens(int maxOutputTokens) {
+            this.maxOutputTokens = maxOutputTokens;
+        }
+
+        public int getHistoryCharBudget() {
+            return historyCharBudget;
+        }
+
+        public void setHistoryCharBudget(int historyCharBudget) {
+            this.historyCharBudget = historyCharBudget;
+        }
+
+        public int getToolResultCharLimit() {
+            return toolResultCharLimit;
+        }
+
+        public void setToolResultCharLimit(int toolResultCharLimit) {
+            this.toolResultCharLimit = toolResultCharLimit;
+        }
+
+        public int getConcurrentChats() {
+            return concurrentChats;
+        }
+
+        public void setConcurrentChats(int concurrentChats) {
+            this.concurrentChats = concurrentChats;
+        }
+
+        public Duration getConversationRetention() {
+            return conversationRetention;
+        }
+
+        public void setConversationRetention(Duration conversationRetention) {
+            this.conversationRetention = conversationRetention;
+        }
+
+        public Duration getReportRetention() {
+            return reportRetention;
+        }
+
+        public void setReportRetention(Duration reportRetention) {
+            this.reportRetention = reportRetention;
+        }
+
+        public String getReportCron() {
+            return reportCron;
+        }
+
+        public void setReportCron(String reportCron) {
+            this.reportCron = reportCron;
+        }
+
+        public String getCleanupCron() {
+            return cleanupCron;
+        }
+
+        public void setCleanupCron(String cleanupCron) {
+            this.cleanupCron = cleanupCron;
         }
     }
 

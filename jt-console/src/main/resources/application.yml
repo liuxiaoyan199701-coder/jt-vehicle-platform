@@ -60,6 +60,11 @@ jt:
     operations:
       # 运营自然日、七日趋势和位置日汇总不依赖服务器默认时区。
       zone-id: ${JT_CONSOLE_OPERATIONS_ZONE_ID:Asia/Shanghai}
+    ai:
+      # 是否启用由「有没有装配出模型 bean」决定，见文件末尾的 spring.ai.model.chat。
+      # 这里只放平台自己的策略参数。
+      max-tool-rounds: ${JT_AI_MAX_TOOL_ROUNDS:8}
+      concurrent-chats: ${JT_AI_CONCURRENT_CHATS:4}
     audit:
       # 审计写入永不阻塞业务：队列满时丢弃并计数，可在 /api/diagnostics 观察积压。
       queue-capacity: ${JT_CONSOLE_AUDIT_QUEUE_CAPACITY:4096}
@@ -83,6 +88,25 @@ jt:
       platform-name: ${JT_CONSOLE_PLATFORM_NAME:车联网监控平台}
       amap-key: ${JT_CONSOLE_AMAP_KEY:}
       amap-security-code: ${JT_CONSOLE_AMAP_SECURITY_CODE:}
+
+# Spring AI 的模型配置。
+#
+# AI 功能的总开关就是 model.chat：默认 none 表示不装配任何模型，平台据此判定功能未启用、
+# 不暴露相关接口与菜单。刻意不再另设一个 jt.console.ai.enabled 布尔——两个必须保持一致的
+# 开关，迟早会有人只改其中一个，得到一个「菜单在但一点就报错」的半启用状态。
+# 启用 AI 需要同时给出 JT_AI_CHAT_MODEL=deepseek 与 JT_AI_API_KEY，两者都不冗余：
+# 一个选服务商，一个做鉴权。
+spring.ai:
+  model:
+    chat: ${JT_AI_CHAT_MODEL:none}
+  deepseek:
+    # 密钥只从部署环境文件来，绝不写进仓库或数据库。
+    api-key: ${JT_AI_API_KEY:}
+    base-url: ${JT_AI_BASE_URL:https://api.deepseek.com}
+    chat:
+      options:
+        model: ${JT_AI_MODEL:deepseek-chat}
+        temperature: ${JT_AI_TEMPERATURE:0.3}
 
 management:
   endpoints:

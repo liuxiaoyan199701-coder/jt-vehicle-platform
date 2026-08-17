@@ -14,8 +14,8 @@ import org.springframework.stereotype.Repository;
 public class PlanRepository {
 
     private static final String COLUMNS = """
-            id, name, max_vehicles, max_accounts, price_cents, period_months, enabled,
-            remark, created_at, updated_at
+            id, name, max_vehicles, max_accounts, max_ai_calls_monthly, price_cents,
+            period_months, enabled, remark, created_at, updated_at
             """;
 
     private final JdbcClient jdbc;
@@ -49,12 +49,14 @@ public class PlanRepository {
     public long insert(Plan plan) {
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.sql("""
-                        INSERT INTO plan (name, max_vehicles, max_accounts, price_cents,
-                                          period_months, enabled, remark, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO plan (name, max_vehicles, max_accounts, max_ai_calls_monthly,
+                                          price_cents, period_months, enabled, remark,
+                                          created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """)
                 .param(plan.name()).param(plan.maxVehicles()).param(plan.maxAccounts())
-                .param(plan.priceCents()).param(plan.periodMonths()).param(plan.enabled() ? 1 : 0)
+                .param(plan.maxAiCallsMonthly()).param(plan.priceCents())
+                .param(plan.periodMonths()).param(plan.enabled() ? 1 : 0)
                 .param(plan.remark()).param(plan.createdAt()).param(plan.updatedAt())
                 .update(key);
         Number value = key.getKey();
@@ -67,12 +69,13 @@ public class PlanRepository {
     public int update(Plan plan) {
         return jdbc.sql("""
                         UPDATE plan SET name = ?, max_vehicles = ?, max_accounts = ?,
-                            price_cents = ?, period_months = ?, enabled = ?, remark = ?,
-                            updated_at = ?
+                            max_ai_calls_monthly = ?, price_cents = ?, period_months = ?,
+                            enabled = ?, remark = ?, updated_at = ?
                         WHERE id = ?
                         """)
                 .param(plan.name()).param(plan.maxVehicles()).param(plan.maxAccounts())
-                .param(plan.priceCents()).param(plan.periodMonths()).param(plan.enabled() ? 1 : 0)
+                .param(plan.maxAiCallsMonthly()).param(plan.priceCents())
+                .param(plan.periodMonths()).param(plan.enabled() ? 1 : 0)
                 .param(plan.remark()).param(Instant.now().toString()).param(plan.id())
                 .update();
     }
@@ -93,6 +96,7 @@ public class PlanRepository {
                 rs.getString("name"),
                 rs.getInt("max_vehicles"),
                 rs.getInt("max_accounts"),
+                rs.getInt("max_ai_calls_monthly"),
                 rs.getLong("price_cents"),
                 rs.getInt("period_months"),
                 RowValues.flag(rs, "enabled"),

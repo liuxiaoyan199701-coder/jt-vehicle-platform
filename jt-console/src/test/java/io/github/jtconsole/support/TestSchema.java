@@ -5,6 +5,7 @@ import io.github.jtconsole.migration.SchemaMigrationRunner;
 import io.github.jtconsole.migration.V1TenancySchemaMigration;
 import io.github.jtconsole.migration.V2DefaultTenantMigration;
 import io.github.jtconsole.migration.V3TrackPointUniquenessMigration;
+import io.github.jtconsole.migration.V4AiSchemaMigration;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -26,7 +27,7 @@ public final class TestSchema {
     public static void migrate(JdbcClient jdbc, PlatformTransactionManager transactionManager) {
         List<SchemaMigration> migrations = List.of(
                 new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
-                new V3TrackPointUniquenessMigration());
+                new V3TrackPointUniquenessMigration(), new V4AiSchemaMigration());
         new SchemaMigrationRunner(jdbc, transactionManager, migrations).afterPropertiesSet();
     }
 

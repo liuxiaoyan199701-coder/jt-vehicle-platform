@@ -16,6 +16,8 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-boot.version>4.1.0</spring-boot.version>
+        <!-- 2.x 是对齐 Spring Boot 4 / Jackson 3 的产品线；1.x 仍用 Jackson 2，不能用在本仓 -->
+        <spring-ai.version>2.0.0</spring-ai.version>
         <sqlite-jdbc.version>3.49.1.0</sqlite-jdbc.version>
         <maven-compiler-plugin.version>3.14.1</maven-compiler-plugin.version>
         <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
@@ -30,6 +32,13 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -37,6 +46,27 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+            Spring AI 2.0 对齐 Spring Boot 4 与 Jackson 3。DeepSeek 提供 OpenAI 兼容接口，
+            官方 starter 直接覆盖，省掉手写流式协议与 tool_calls 分片聚合这类易错逻辑。
+        -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-deepseek</artifactId>
+            <exclusions>
+                <!--
+                    流式响应走 WebClient，而 WebClient 默认挑 Reactor Netty 做连接器。排掉它之后
+                    自动配置回落到 JDK HttpClient——控制台此前没有 Netty，不该为了一个流式接口把
+                    整套 Netty 传输与 DNS 解析器引进运行时。顺带绕开了 netty-resolver-dns 在部分
+                    Windows 环境解析不出主机名的问题。
+                -->
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty-http</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

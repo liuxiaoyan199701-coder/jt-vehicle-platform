@@ -65,6 +65,7 @@ public class PlanService {
         long id = plans.insert(new Plan(
                 0L, name, nonNegative(request.maxVehicles(), "车辆数上限"),
                 nonNegative(request.maxAccounts(), "账号数上限"),
+                nonNegative(request.aiCalls(), "AI 调用上限"),
                 nonNegative(request.priceCents(), "价格"),
                 request.periodMonths() <= 0 ? 12 : request.periodMonths(),
                 true, optionalText(request.remark(), "备注", MAX_REMARK_LENGTH), now, now));
@@ -81,6 +82,7 @@ public class PlanService {
         plans.update(new Plan(
                 existing.id(), name, nonNegative(request.maxVehicles(), "车辆数上限"),
                 nonNegative(request.maxAccounts(), "账号数上限"),
+                nonNegative(request.aiCalls(), "AI 调用上限"),
                 nonNegative(request.priceCents(), "价格"),
                 request.periodMonths() <= 0 ? 12 : request.periodMonths(),
                 request.enabled(), optionalText(request.remark(), "备注", MAX_REMARK_LENGTH),
@@ -199,14 +201,25 @@ public class PlanService {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    /**
+     * @param maxAiCallsMonthly 每月 AI 调用上限，0 或缺省表示不限量。装箱而非 {@code int}：
+     *                          Jackson 3 默认拒绝把缺失字段映射成基本类型，用 {@code int} 会让
+     *                          不带该字段的既有客户端直接报错
+     */
     public record PlanRequest(
             String name,
             int maxVehicles,
             int maxAccounts,
+            Integer maxAiCallsMonthly,
             long priceCents,
             int periodMonths,
             boolean enabled,
-            String remark) {}
+            String remark) {
+
+        public int aiCalls() {
+            return maxAiCallsMonthly == null ? 0 : maxAiCallsMonthly;
+        }
+    }
 
     /** 续费录入。{@code months} 允许为负，用于红冲纠错。 */
     public record RenewRequest(

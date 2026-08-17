@@ -38,6 +38,13 @@ public final class Permissions {
     public static final String COMMAND_SEND = "command:send";
     public static final String VIDEO_PLAY = "video:play";
 
+    /**
+     * 使用 AI 助手。刻意登记为写权限：对话会消耗租户的月度调用配额，是一种状态变更；
+     * 连带的后果是只读账号（全局禁非 GET）用不了对话——这是有意的，见 {@link #TENANT_VIEWER_PERMISSIONS}。
+     */
+    public static final String AI_CHAT = "ai:chat";
+    public static final String AI_REPORT_VIEW = "ai:report:view";
+
     public static final String SYSTEM_ACCOUNT_LIST = "system:account:list";
     public static final String SYSTEM_ACCOUNT_MANAGE = "system:account:manage";
     public static final String SYSTEM_ROLE_LIST = "system:role:list";
@@ -78,6 +85,9 @@ public final class Permissions {
             write("command", COMMAND_SEND, "下发终端指令", 1),
             write("video", VIDEO_PLAY, "播放实时视频", 1),
 
+            write("ai", AI_CHAT, "使用 AI 助手", 1),
+            read("ai", AI_REPORT_VIEW, "查看运营简报", 2),
+
             read("system", SYSTEM_ACCOUNT_LIST, "查看账号", 1),
             write("system", SYSTEM_ACCOUNT_MANAGE, "管理账号", 2),
             read("system", SYSTEM_ROLE_LIST, "查看角色", 3),
@@ -110,12 +120,19 @@ public final class Permissions {
             FLEET_LIST, FLEET_MANAGE,
             GEOFENCE_LIST, GEOFENCE_MANAGE,
             ALARM_LIST, ALARM_HANDLE,
-            MEDIA_LIST, COMMAND_SEND, VIDEO_PLAY);
+            MEDIA_LIST, COMMAND_SEND, VIDEO_PLAY,
+            AI_CHAT, AI_REPORT_VIEW);
 
-    /** 租户只读：仅查看。不含 {@link #VIDEO_PLAY}——开流是 POST 且会驱动设备推流，不属于「查看」。 */
+    /**
+     * 租户只读：仅查看。不含 {@link #VIDEO_PLAY}——开流是 POST 且会驱动设备推流，不属于「查看」。
+     *
+     * <p>同理不含 {@link #AI_CHAT}：对话是 POST 且消耗租户配额，而只读账号被全局禁非 GET，
+     * 给了也用不了；简报是纯查询，正常开放。
+     */
     public static final Set<String> TENANT_VIEWER_PERMISSIONS = Set.of(
             DASHBOARD_VIEW, MONITOR_VIEW, TRACK_VIEW,
-            VEHICLE_LIST, FLEET_LIST, GEOFENCE_LIST, ALARM_LIST, MEDIA_LIST);
+            VEHICLE_LIST, FLEET_LIST, GEOFENCE_LIST, ALARM_LIST, MEDIA_LIST,
+            AI_REPORT_VIEW);
 
     private Permissions() {
     }

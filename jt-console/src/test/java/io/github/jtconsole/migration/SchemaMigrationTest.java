@@ -134,17 +134,80 @@ class SchemaMigrationTest {
         SchemaMigrationRunner runner = new SchemaMigrationRunner(
                 jdbc, transactions,
                 List.of(new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
-                        new V3TrackPointUniquenessMigration(), failing));
+                        new V3TrackPointUniquenessMigration(), new V4AiSchemaMigration(), failing));
 
         assertThatThrownBy(runner::afterPropertiesSet)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("v99");
 
         // 前几步已提交，失败的那一步整体回滚且版本号停在最后一个成功的版本。
-        assertThat(userVersion()).isEqualTo(3L);
+        assertThat(userVersion()).isEqualTo(4L);
         assertThat(scalar("""
                 SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'half_applied'
                 """)).isZero();
+    }
+
+    @Test
+    void aiTablesArriveAndExistingPlansStayUnlimited() {
+        migrateThroughV3();
+        String now = Instant.now().toString();
+        jdbc.sql("""
+                        INSERT INTO plan (name, max_vehicles, max_accounts, price_cents,
+                                          period_months, enabled, remark, created_at, updated_at)
+                        VALUES ('存量套餐', 10, 5, 0, 1, 1, NULL, ?, ?)
+                        """).param(now).param(now).update();
+
+        TestSchema.migrate(jdbc, transactions);
+
+        assertThat(userVersion()).isEqualTo(4L);
+        for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
+            assertThat(scalar("""
+                    SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
+                    """.formatted(table))).as(table).isEqualTo(1L);
+        }
+        // 0 = 不限量：升级本身不能让任何租户的 AI 用量突然受限。
+        assertThat(scalar("SELECT max_ai_calls_monthly FROM plan WHERE name = '存量套餐'")).isZero();
+    }
+
+    @Test
+    void theAiMigrationToleratesAColumnSomeoneAddedByHand() {
+        migrateThroughV3();
+        jdbc.sql("ALTER TABLE plan ADD COLUMN max_ai_calls_monthly INTEGER NOT NULL DEFAULT 0")
+                .update();
+
+        TestSchema.migrate(jdbc, transactions);
+
+        assertThat(userVersion()).isEqualTo(4L);
+    }
+
+    /** 把库推进到加 AI 表之前的状态，用来模拟真实的升级起点。 */
+    private void migrateThroughV3() {
+        new SchemaMigrationRunner(jdbc, transactions,
+                List.of(new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
+                        new V3TrackPointUniquenessMigration()))
+                .afterPropertiesSet();
+    }
+
+    @Test
+    void aReportIsUniquePerTenantAndDate() {
+        TestSchema.migrate(jdbc, transactions);
+        String now = Instant.now().toString();
+        insertReport(1L, "2026-08-14", now);
+
+        // 幂等靠这条唯一约束兜底，而不是靠生成任务自觉。
+        assertThatThrownBy(() -> insertReport(1L, "2026-08-14", now))
+                .hasMessageContaining("UNIQUE");
+        assertThat(scalar("SELECT COUNT(*) FROM ai_report")).isEqualTo(1L);
+    }
+
+    private void insertReport(long tenantId, String date, String now) {
+        jdbc.sql("""
+                        INSERT INTO ai_report (tenant_id, report_date, status, content_md,
+                                               created_at, updated_at)
+                        VALUES (?, ?, 'ok', '# 简报', ?, ?)
+                        """)
+                .param(tenantId).param(date).param(now).param(now)
+                .update();
     }
 
     @Test
