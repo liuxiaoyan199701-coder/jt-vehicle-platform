@@ -1,4 +1,6 @@
 import { localStg } from '@/utils/storage';
+import { getServiceBaseURL } from '@/utils/service';
+import { fetchRefreshToken } from '@/service/api/auth';
 
 /**
  * AI 对话的流式读取。
@@ -33,7 +35,13 @@ export interface AiUsageEvent {
   monthlyLimit: number;
 }
 
+export interface AiMetaEvent {
+  conversationId: number | null;
+  model: string;
+}
+
 export interface AiStreamHandlers {
+  onMeta?: (event: AiMetaEvent) => void;
   onDelta?: (text: string) => void;
   onTool?: (event: AiToolEvent) => void;
   onAction?: (event: AiActionEvent) => void;
@@ -54,34 +62,36 @@ export interface AiChatMessage {
  */
 export function streamChat(
   messages: AiChatMessage[],
-  handlers: AiStreamHandlers
+  handlers: AiStreamHandlers,
+  conversationId?: number | null
 ): () => void {
   const controller = new AbortController();
-  const baseURL = import.meta.env.VITE_SERVICE_BASE_URL ?? '';
+  // 用与 axios 实例同一个 baseURL 解析：VITE_SERVICE_BASE_URL 生产环境是 "/api"，
+  // 本身已含前缀。这里再拼一次 /api 会打到 /api/api/ai/chat 直接 404。
+  // 开发模式还要走代理前缀，getServiceBaseURL 一并处理了。
+  const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
+  const { baseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
 
   void (async () => {
     try {
-      const response = await fetch(`${baseURL}/api/ai/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          Authorization: `Bearer ${localStg.get('token') ?? ''}`
-        },
-        body: JSON.stringify({ messages }),
-        signal: controller.signal
-      });
+      let response = await post(baseURL, messages, controller.signal, conversationId);
+
+      // 令牌过期时先续期再重试一次。走裸 fetch 就绕开了 axios 那套自动刷新，
+      // 不补上的话会出现「别的页面都好好的，唯独 AI 说你登录过期了」。
+      if (response.status === 401 && (await refreshAccessToken())) {
+        response = await post(baseURL, messages, controller.signal, conversationId);
+      }
 
       if (!response.ok || !response.body) {
-        handlers.onError?.(
-          response.status === 401 ? 'AI_UNAUTHORIZED' : 'AI_HTTP_ERROR',
-          response.status === 401 ? '登录已过期，请重新登录' : '无法连接 AI 服务'
-        );
+        // 把状态码分开报：一句笼统的「无法连接」会让人去查网络和后端进程，
+        // 而 404 其实是地址拼错了、403 是权限没配到，方向完全不同。
+        const [code, message] = describeFailure(response.status);
+        handlers.onError?.(code, message);
         return;
       }
 
       await readEvents(response.body, handlers);
-    } catch (error) {
+    } catch {
       // 用户主动中止不是错误，不该弹提示。
       if (controller.signal.aborted) return;
       handlers.onError?.('AI_NETWORK_ERROR', '网络中断，请重试');
@@ -89,6 +99,47 @@ export function streamChat(
   })();
 
   return () => controller.abort();
+}
+
+function post(
+  baseURL: string,
+  messages: AiChatMessage[],
+  signal: AbortSignal,
+  conversationId?: number | null
+) {
+  return fetch(`${baseURL}/ai/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      Authorization: `Bearer ${localStg.get('token') ?? ''}`
+    },
+    body: JSON.stringify({ conversationId: conversationId ?? null, messages }),
+    signal
+  });
+}
+
+/** 用刷新令牌换一张新的访问令牌，成功后写回本地存储。失败即认定确实需要重新登录。 */
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = localStg.get('refreshToken');
+  if (!refreshToken) return false;
+  try {
+    const { data } = await fetchRefreshToken(refreshToken);
+    if (!data?.token) return false;
+    localStg.set('token', data.token);
+    localStg.set('refreshToken', data.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function describeFailure(status: number): [string, string] {
+  if (status === 401) return ['AI_UNAUTHORIZED', '登录已过期，请重新登录'];
+  if (status === 403) return ['AI_FORBIDDEN', '当前账号没有使用 AI 助手的权限'];
+  if (status === 404) return ['AI_NOT_FOUND', 'AI 接口不存在（404），可能是前后端版本不一致'];
+  if (status >= 500) return ['AI_SERVER_ERROR', `AI 服务异常（${status}）`];
+  return ['AI_HTTP_ERROR', `无法连接 AI 服务（HTTP ${status}）`];
 }
 
 async function readEvents(body: ReadableStream<Uint8Array>, handlers: AiStreamHandlers) {
@@ -135,6 +186,9 @@ function dispatch(frame: string, handlers: AiStreamHandlers) {
   }
 
   switch (eventName) {
+    case 'meta':
+      handlers.onMeta?.(payload as AiMetaEvent);
+      break;
     case 'delta':
       handlers.onDelta?.(payload.text ?? '');
       break;

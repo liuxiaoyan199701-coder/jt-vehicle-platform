@@ -7,6 +7,7 @@ import io.github.jtconsole.ai.agent.AgentService;
 import io.github.jtconsole.ai.agent.AiEvent;
 import io.github.jtconsole.ai.quota.AiQuotaService;
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.repository.AiConversationRepository;
 import io.github.jtconsole.repository.AiUsageRepository;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.Permissions;
@@ -14,13 +15,16 @@ import io.github.jtconsole.security.RequirePermission;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -46,6 +50,7 @@ public class AiChatController {
     private final AgentService agent;
     private final AiQuotaService quotas;
     private final AiUsageRepository usage;
+    private final AiConversationRepository conversations;
     private final ConsoleProperties properties;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
@@ -54,12 +59,14 @@ public class AiChatController {
             AgentService agent,
             AiQuotaService quotas,
             AiUsageRepository usage,
+            AiConversationRepository conversations,
             ConsoleProperties properties,
             ObjectMapper objectMapper,
             ExecutorService aiExecutor) {
         this.agent = agent;
         this.quotas = quotas;
         this.usage = usage;
+        this.conversations = conversations;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.executor = aiExecutor;
@@ -102,9 +109,10 @@ public class AiChatController {
         emitter.onTimeout(() -> cancelled.set(true));
         emitter.onError(failure -> cancelled.set(true));
 
+        long conversationId = resolveConversation(request, principal, history);
         SseSink sink = new SseSink(emitter, cancelled);
         try {
-            executor.execute(() -> run(principal, history, snapshot, sink, emitter));
+            executor.execute(() -> run(principal, conversationId, history, snapshot, sink, emitter));
         } catch (RejectedExecutionException full) {
             // 池满即拒而不是排队：排队只会让请求在队列里坐到超时，用户对着转圈等更久。
             finishWith(emitter, AiEvent.error("AI_BUSY", "当前对话较多，请稍后再试"));
@@ -112,8 +120,56 @@ public class AiChatController {
         return emitter;
     }
 
+    /** 复用前端带回的会话，带不回来（新开对话）就建一个，标题取首问前 30 字。 */
+    private long resolveConversation(
+            ChatRequest request, AuthorizedPrincipal principal, List<AgentService.Turn> history) {
+        Long existing = request.conversationId();
+        if (existing != null && conversations.belongsTo(existing, principal.accountId())) {
+            return existing;
+        }
+        String first = history.getLast().content();
+        String title = first.length() > 30 ? first.substring(0, 30) : first;
+        return conversations.create(principal.tenantId(), principal.accountId(), title);
+    }
+
+    /** 某账号最近的会话，用于刷新页面后接着聊。 */
+    @GetMapping("/conversations")
+    @RequirePermission(Permissions.AI_CHAT)
+    public ApiResponse<List<Map<String, Object>>> conversations(AuthorizedPrincipal principal) {
+        return ApiResponse.ok(conversations.findRecent(principal.accountId(), 20));
+    }
+
+    @GetMapping("/conversations/{id}")
+    @RequirePermission(Permissions.AI_CHAT)
+    public ApiResponse<List<Map<String, Object>>> messages(
+            @PathVariable long id, AuthorizedPrincipal principal) {
+        if (!conversations.belongsTo(id, principal.accountId())) {
+            // 与「不存在」同一句话：区分二者会泄露别人有这么一段对话。
+            return ApiResponse.error("4004", "会话不存在");
+        }
+        return ApiResponse.ok(conversations.findMessages(id, 200));
+    }
+
+    @DeleteMapping("/conversations/{id}")
+    @RequirePermission(Permissions.AI_CHAT)
+    public ApiResponse<Void> deleteConversation(
+            @PathVariable long id, AuthorizedPrincipal principal) {
+        conversations.delete(id, principal.accountId());
+        return ApiResponse.ok(null);
+    }
+
+    /** 清空某个会话的消息，会话保留。用于「这段聊歪了，从头再来」。 */
+    @DeleteMapping("/conversations/{id}/messages")
+    @RequirePermission(Permissions.AI_CHAT)
+    public ApiResponse<Void> clearMessages(
+            @PathVariable long id, AuthorizedPrincipal principal) {
+        conversations.clearMessages(id, principal.accountId());
+        return ApiResponse.ok(null);
+    }
+
     private void run(
             AuthorizedPrincipal principal,
+            long conversationId,
             List<AgentService.Turn> history,
             AiQuotaService.Snapshot snapshot,
             SseSink sink,
@@ -122,11 +178,12 @@ public class AiChatController {
         int prompt = 0;
         int completion = 0;
         try {
-            sink.emit(AiEvent.meta(null, model));
+            sink.emit(AiEvent.meta(conversationId, model));
             AgentService.Result result = agent.chat(
                     principal, ConfirmationPolicy.confirmEverything(), history, sink);
             prompt = result.promptTokens();
             completion = result.completionTokens();
+            persist(conversationId, history, result, prompt, completion);
             if (!result.cancelled()) {
                 sink.emit(AiEvent.usage(prompt, completion, snapshot.used() + 1, snapshot.limit()));
                 sink.emit(AiEvent.done("stop"));
@@ -141,6 +198,26 @@ public class AiChatController {
             if (prompt > 0 || completion > 0) {
                 recordUsage(principal, model, prompt, completion);
             }
+        }
+    }
+
+    /**
+     * 落一轮对话。中途被用户中止时也要落——已经产生的部分回答仍然是发生过的事，
+     * 刷新页面后不该凭空消失。
+     */
+    private void persist(
+            long conversationId, List<AgentService.Turn> history,
+            AgentService.Result result, int prompt, int completion) {
+        try {
+            conversations.appendMessage(
+                    conversationId, "user", history.getLast().content(), null, 0, 0);
+            if (!result.answer().isBlank()) {
+                conversations.appendMessage(
+                        conversationId, "assistant", result.answer(), null, prompt, completion);
+            }
+        } catch (RuntimeException failure) {
+            // 留痕失败不该连累已经给出的回答，但要留告警——用户会发现刷新后少了一段。
+            LOGGER.warn("AI 对话留痕失败，本轮未入库", failure);
         }
     }
 

@@ -12,10 +12,12 @@ import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.repository.StatusRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.springframework.ai.chat.model.ToolContext;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -108,25 +110,37 @@ public class FleetTools {
             ToolContext context) {
         ToolSession session = ToolSession.from(context);
         return runner.run(session, "get_vehicle_status", "查询车辆 " + vehicle, () -> {
-            Optional<Vehicle> found = resolve(vehicle, session);
-            if (found.isEmpty()) {
-                return ToolResults.error("在你的可见范围内未找到车辆：" + vehicle);
-            }
-            Vehicle profile = found.get();
+            String trimmed = vehicle == null ? "" : vehicle.trim();
+            Optional<Vehicle> found = resolve(trimmed, session);
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("profile", profileBrief(profile));
-            statuses.findLiveByDevice(profile.deviceId(), session.scope())
+
+            // 已建档的走档案，未建档的直接按设备号查实时状态。
+            // 实时监控页展示的是 device_status，里面包含只上报、未建档的设备；如果这里只查
+            // 车辆档案，就会出现「监控页看得见、问 AI 却说没有」——用户看到的两个事实互相矛盾。
+            String deviceId = found.map(Vehicle::deviceId).orElse(trimmed);
+            found.ifPresent(profile -> result.put("profile", profileBrief(profile)));
+
+            statuses.findLiveByDevice(deviceId, session.scope())
                     .ifPresent(status -> {
                         Map<String, Object> row = brief(status);
                         describeLocations(List.of(row));
                         result.put("status", row);
                     });
+
+            if (result.isEmpty()) {
+                return ToolResults.error("在你的可见范围内未找到设备或车辆：" + vehicle);
+            }
+            if (!result.containsKey("profile")) {
+                result.put("registered", false);
+                result.put("note", "该设备正在上报数据，但尚未在平台建档，因此没有车牌等档案信息。");
+            }
             return result;
         });
     }
 
     @Tool(name = "search_vehicles",
-            description = "按车牌号或设备号模糊检索车辆档案。用户只说了部分车牌，或想知道有哪些车时用它。")
+            description = "按车牌号或设备号模糊检索。返回已建档车辆，也包含正在上报但尚未建档的设备"
+                    + "（这类只有设备号、没有车牌）。用户只说了部分车牌或设备号时用它。")
     String searchVehicles(
             @ToolParam(description = "车牌或设备号的一部分；留空返回全部", required = false) String keyword,
             ToolContext context) {
@@ -134,10 +148,26 @@ public class FleetTools {
         String label = keyword == null || keyword.isBlank() ? "检索车辆" : "检索车辆：" + keyword;
         return runner.run(session, "search_vehicles", label, () -> {
             String needle = keyword == null ? "" : keyword.trim().toLowerCase(Locale.ROOT);
-            List<Map<String, Object>> rows = vehicles.list(session.scope()).stream()
-                    .filter(v -> needle.isEmpty() || matches(v, needle))
-                    .map(FleetTools::profileBrief)
-                    .toList();
+            List<Map<String, Object>> rows = new ArrayList<>();
+            Set<String> archived = new LinkedHashSet<>();
+            for (Vehicle v : vehicles.list(session.scope())) {
+                archived.add(v.deviceId());
+                if (needle.isEmpty() || matches(v, needle)) {
+                    rows.add(profileBrief(v));
+                }
+            }
+            // 未建档但在上报的设备也要能被搜到，否则「监控页有、搜不到」会让人以为数据丢了。
+            for (LiveStatus status : statuses.findAllLive(session.scope())) {
+                if (archived.contains(status.deviceId())
+                        || !(needle.isEmpty() || contains(status.deviceId(), needle))) {
+                    continue;
+                }
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("deviceId", status.deviceId());
+                row.put("registered", false);
+                row.put("online", status.online());
+                rows.add(row);
+            }
             return ToolResults.page("vehicles", rows, MAX_LIST, rows.size());
         });
     }
