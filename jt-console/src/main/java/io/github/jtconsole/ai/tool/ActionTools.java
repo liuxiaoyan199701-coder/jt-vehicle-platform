@@ -73,6 +73,14 @@ public class ActionTools {
      * 然后拿到一句「不支持的动作类型」，白费一轮。
      */
     public String describeAvailableActions(List<ActionType> available) {
+        return describeAvailableActions(available, true);
+    }
+
+    /**
+     * @param platform 平台管理员。非平台用户看不到 tenantId 字段——后端本来就按登录态取，
+     *                 让它出现在清单里只会诱使模型去填，然后填成用户名之类的东西
+     */
+    public String describeAvailableActions(List<ActionType> available, boolean platform) {
         if (available.isEmpty()) {
             return "当前用户没有任何可执行的操作权限，不要提议任何动作，遇到操作请求时请说明其权限不足。";
         }

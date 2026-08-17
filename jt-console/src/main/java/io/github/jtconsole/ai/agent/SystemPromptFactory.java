@@ -68,6 +68,6 @@ public class SystemPromptFactory {
                 principal.platform() ? "（平台管理员，可运维全平台数据）"
                         : "（租户「%s」，只能运维本租户数据）".formatted(
                                 principal.tenantName() == null ? "未知" : principal.tenantName()),
-                actionTools.describeAvailableActions(available));
+                actionTools.describeAvailableActions(available, principal.platform()));
     }
 }

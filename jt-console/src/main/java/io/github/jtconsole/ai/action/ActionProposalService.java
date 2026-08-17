@@ -73,7 +73,7 @@ public class ActionProposalService {
         }
 
         Map<String, Object> checked = new LinkedHashMap<>(params == null ? Map.of() : params);
-        String fieldProblem = validateFields(type, checked);
+        String fieldProblem = validateFields(type, checked, session.principal().platform());
         if (fieldProblem != null) {
             return Outcome.rejected(fieldProblem);
         }
@@ -95,8 +95,14 @@ public class ActionProposalService {
      * <p>拒绝未知字段而不是默默丢弃：模型把 plateNo 写成 plate 时，静默丢弃会生成一张缺了车牌的
      * 确认卡片，用户点了才失败；明确告诉它字段名错了，它这一轮就能改对。
      */
-    private String validateFields(ActionType type, Map<String, Object> params) {
+    private String validateFields(ActionType type, Map<String, Object> params, boolean platform) {
         List<String> missing = new ArrayList<>();
+        // 平台管理员不属于任何租户，新建租户内的对象时必须显式指定归属，后端也是这么要求的。
+        // 放到这里拦，而不是等用户点了确认再由后端抛「请先选择车辆所属租户」——那时候已经晚了。
+        if (platform && type.optionalFields().contains("tenantId")
+                && !(params.get("tenantId") instanceof Number)) {
+            missing.add("tenantId（平台管理员必填；先用 list_tenants 查到数字 id）");
+        }
         for (String field : type.requiredFields()) {
             Object value = params.get(field);
             if (value == null || (value instanceof String text && text.isBlank())) {

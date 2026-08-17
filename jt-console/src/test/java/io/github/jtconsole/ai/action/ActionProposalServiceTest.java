@@ -151,6 +151,58 @@ class ActionProposalServiceTest {
     }
 
     @Test
+    void aTenantUserNeedNotSupplyTheTenantBecauseItComesFromTheirLogin() {
+        // 租户用户建档时后端按登录态取归属，传了也忽略——所以这里不能反过来要求他必须填。
+        ActionProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.tenantAdmin(7L, 42L)),
+                "vehicle_create", "建档", null,
+                Map.of("deviceId", "13800138000", "plateNo", "粤B12345"),
+                ConfirmationPolicy.confirmEverything());
+
+        assertThat(outcome.accepted()).isTrue();
+        assertThat(outcome.proposal().params()).doesNotContainKey("tenantId");
+    }
+
+    @Test
+    void aPlatformAdminMustPickATenantBeforeTheCardIsEverShown() {
+        // 平台管理员不属于任何租户，后端会拒绝无归属的建档。必须在提议阶段就拦下来——
+        // 否则用户点了确认才收到「请先选择车辆所属租户」，那时候已经晚了。
+        ActionProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.platform()),
+                "vehicle_create", "建档", null,
+                Map.of("deviceId", "13800138000", "plateNo", "粤B12345"),
+                ConfirmationPolicy.confirmEverything());
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(outcome.message()).contains("tenantId").contains("list_tenants");
+    }
+
+    @Test
+    void aTenantNameIsNotAcceptedWhereANumericIdIsRequired() {
+        // 模型实测把 tenantId 填成过用户名 "admin"：名字对、值错，一路放行到点确认才炸。
+        ActionProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.platform()),
+                "vehicle_create", "建档", null,
+                Map.of("deviceId", "13800138000", "plateNo", "粤B12345", "tenantId", "admin"),
+                ConfirmationPolicy.confirmEverything());
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(outcome.message()).contains("tenantId");
+    }
+
+    @Test
+    void aPlatformAdminWithANumericTenantPassesValidation() {
+        ActionProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.platform()),
+                "vehicle_create", "建档", null,
+                Map.of("deviceId", "13800138000", "plateNo", "粤B12345", "tenantId", 1),
+                ConfirmationPolicy.confirmEverything());
+
+        assertThat(outcome.accepted()).isTrue();
+        assertThat(outcome.proposal().params()).containsEntry("tenantId", 1);
+    }
+
+    @Test
     void theActionCatalogIsTrimmedToWhatTheCallerCanActuallyDo() {
         List<ActionType> platformActions = service.availableTo(TestPrincipals.platform());
         List<ActionType> tenantActions = service.availableTo(TestPrincipals.tenantAdmin(7L, 42L));

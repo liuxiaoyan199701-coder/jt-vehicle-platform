@@ -3,6 +3,7 @@ package io.github.jtconsole.ai.tool;
 import io.github.jtconsole.domain.FleetSummary;
 import io.github.jtconsole.domain.Geofence;
 import io.github.jtconsole.domain.LiveStatus;
+import io.github.jtconsole.domain.Tenant;
 import io.github.jtconsole.domain.Vehicle;
 import io.github.jtconsole.geo.ReverseGeocoder;
 import io.github.jtconsole.operations.DashboardService;
@@ -10,6 +11,7 @@ import io.github.jtconsole.operations.FleetService;
 import io.github.jtconsole.operations.GeofenceService;
 import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.repository.StatusRepository;
+import io.github.jtconsole.repository.TenantRepository;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -43,6 +45,7 @@ public class FleetTools {
     private final VehicleService vehicles;
     private final FleetService fleets;
     private final GeofenceService geofences;
+    private final TenantRepository tenants;
 
     public FleetTools(
             ToolRunner runner,
@@ -51,7 +54,8 @@ public class FleetTools {
             StatusRepository statuses,
             VehicleService vehicles,
             FleetService fleets,
-            GeofenceService geofences) {
+            GeofenceService geofences,
+            TenantRepository tenants) {
         this.runner = runner;
         this.geocoder = geocoder;
         this.dashboard = dashboard;
@@ -59,6 +63,7 @@ public class FleetTools {
         this.vehicles = vehicles;
         this.fleets = fleets;
         this.geofences = geofences;
+        this.tenants = tenants;
     }
 
     @Tool(name = "get_dashboard_overview",
@@ -199,6 +204,37 @@ public class FleetTools {
                     .map(FleetTools::geofenceBrief)
                     .toList();
             return ToolResults.page("geofences", rows, MAX_LIST, rows.size());
+        });
+    }
+
+    @Tool(name = "list_tenants",
+            description = "列出租户及其数字 id。**建档车辆、创建车队或围栏需要填 tenantId 时必须先调用它**"
+                    + "拿到真实的数字 id——租户名不能当 id 用。租户用户调用它只会看到自己所属的租户。")
+    String listTenants(ToolContext context) {
+        ToolSession session = ToolSession.from(context);
+        return runner.run(session, "list_tenants", "查询租户", () -> {
+            // 租户用户只看得到自己那一个：他本来也只能往自己租户里建东西，
+            // 列出别人的租户既没用，又泄露了平台上有哪些客户。
+            List<Tenant> visible = session.principal().platform()
+                    ? tenants.findAll()
+                    : session.principal().tenantId() == null
+                            ? List.of()
+                            : tenants.findById(session.principal().tenantId())
+                                    .map(List::of).orElseGet(List::of);
+            List<Map<String, Object>> rows = visible.stream()
+                    .map(tenant -> {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("tenantId", tenant.id());
+                        row.put("code", tenant.code());
+                        row.put("name", tenant.name());
+                        row.put("status", tenant.status());
+                        return row;
+                    })
+                    .toList();
+            if (rows.isEmpty()) {
+                return ToolResults.error("当前账号不属于任何租户，也没有可选租户。");
+            }
+            return ToolResults.page("tenants", rows, MAX_LIST, rows.size());
         });
     }
 
