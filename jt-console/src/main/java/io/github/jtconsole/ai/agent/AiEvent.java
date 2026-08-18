@@ -13,7 +13,7 @@ import java.util.Map;
 public record AiEvent(Kind kind, Map<String, Object> data) {
 
     public enum Kind {
-        META, DELTA, TOOL, ACTION, USAGE, DONE, ERROR;
+        META, DELTA, TOOL, ACTION, VIEW, USAGE, DONE, ERROR;
 
         public String wireName() {
             return name().toLowerCase(java.util.Locale.ROOT);
@@ -50,25 +50,10 @@ public record AiEvent(Kind kind, Map<String, Object> data) {
         return new AiEvent(Kind.TOOL, of("phase", "end", "name", name, "ok", ok, "brief", brief));
     }
 
-    /**
-     * 一条待用户确认的动作提议。前端据 {@code type} 在**自己持有的**白名单里查对应接口，
-     * 不使用服务端下发的路径——模型不该有能力指定调用哪个 URL。
-     */
-    public static AiEvent action(
-            String proposalId,
-            String type,
-            String title,
-            String reason,
-            Map<String, Object> params,
-            String requiredPermission) {
-        return new AiEvent(Kind.ACTION, of(
-                "proposalId", proposalId,
-                "type", type,
-                "title", title,
-                "reason", reason,
-                "params", params,
-                "requiredPermission", requiredPermission));
-    }
+    // 这里曾经有一个 action(...) 工厂，已删除：它从未被调用，而且形状与实际推送的
+    // ActionProposal.asEventData() 不一致（缺 label 与 requiresConfirmation）。
+    // ACTION 与 VIEW 的 payload 都由各自的提议对象自行组装——那里才是字段定义的唯一出处，
+    // 这里再放一个平行的工厂只会让后来者照着错的那份写。
 
     public static AiEvent usage(int promptTokens, int completionTokens, long used, int limit) {
         return new AiEvent(Kind.USAGE, of(

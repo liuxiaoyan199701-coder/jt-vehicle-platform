@@ -1,11 +1,11 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Geofence;
 import io.github.jtconsole.domain.GeofenceCandidate;
 import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.RowMapper;
@@ -52,7 +52,7 @@ public class GeofenceRepository {
     }
 
     public long insert(Geofence value) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.sql("""
                         INSERT INTO geofence (
@@ -81,12 +81,12 @@ public class GeofenceRepository {
                 .param(value.name()).param(value.centerGcjLat()).param(value.centerGcjLng())
                 .param(value.radiusMeters()).param(value.color()).param(value.enabled() ? 1 : 0)
                 .param(value.alertOnEnter() ? 1 : 0).param(value.alertOnExit() ? 1 : 0)
-                .param(value.speedLimitKph()).param(Instant.now().toString()).param(id).update();
+                .param(value.speedLimitKph()).param(Timestamps.now()).param(id).update();
     }
 
     public int setEnabled(long id, boolean enabled) {
         return jdbc.sql("UPDATE geofence SET enabled = ?, updated_at = ? WHERE id = ?")
-                .param(enabled ? 1 : 0).param(Instant.now().toString()).param(id).update();
+                .param(enabled ? 1 : 0).param(Timestamps.now()).param(id).update();
     }
 
     public int delete(long id) {
@@ -100,7 +100,7 @@ public class GeofenceRepository {
 
     public void replaceVehicles(long geofenceId, List<String> deviceIds) {
         List<String> current = assignedVehicleIds(geofenceId);
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         for (String deviceId : current) {
             if (deviceIds.contains(deviceId)) continue;
             jdbc.sql("DELETE FROM geofence_vehicle WHERE geofence_id = ? AND device_id = ?")

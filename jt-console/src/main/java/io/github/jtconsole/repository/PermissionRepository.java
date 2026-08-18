@@ -1,7 +1,7 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.PermissionDefinition;
-import java.time.Instant;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -22,7 +22,7 @@ public class PermissionRepository {
      */
     @Transactional
     public void synchronize(List<PermissionDefinition> definitions) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         jdbc.sql("UPDATE permission SET active = 0, updated_at = ? WHERE active = 1")
                 .param(now).update();
         for (PermissionDefinition definition : definitions) {

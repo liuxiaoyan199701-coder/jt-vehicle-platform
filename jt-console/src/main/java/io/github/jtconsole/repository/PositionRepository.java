@@ -1,7 +1,7 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Position;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -72,7 +72,7 @@ public class PositionRepository {
                         WHERE id = ?
                         """)
                 .param(name).param(sortOrder).param(remark)
-                .param(Instant.now().toString()).param(id)
+                .param(Timestamps.now()).param(id)
                 .update();
     }
 

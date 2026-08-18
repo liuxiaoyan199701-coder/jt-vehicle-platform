@@ -287,8 +287,29 @@
     -fx-border-width: 1px 0 0 0;
 }
 
-.ffmpeg-status {
+.ffmpeg-status,
+.trip-status {
     -fx-font-weight: 600;
+}
+
+/*
+ * 行程状态色。底色是状态栏的 #ffffff，不是窗口的 #f4f6f7——两者对比度差一截，
+ * 把这两个颜色搬到 #f4f6f7 上会掉到 4.5:1 以下。
+ * 实测：运行中 4.97:1，未运行 4.83:1。
+ * 颜色只作强化，状态本身由文案表达（「行程 运行中 · 3.2 km · 第 2 圈」）。
+ */
+.trip-running {
+    -fx-text-fill: #147d76;
+}
+
+.trip-idle {
+    -fx-text-fill: #6b7280;
+}
+
+/* 表单内的说明文字。#59666e 在白底 5.86:1、在 #f4f6f7 底 5.41:1，两处都够。 */
+.field-hint {
+    -fx-font-size: 11px;
+    -fx-text-fill: #59666e;
 }
 
 .activity-label {

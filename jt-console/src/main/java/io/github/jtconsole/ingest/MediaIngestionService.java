@@ -1,5 +1,6 @@
 package io.github.jtconsole.ingest;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.MediaFile;
 import io.github.jtconsole.repository.MediaRepository;
 import java.util.Map;
@@ -63,7 +64,7 @@ public class MediaIngestionService {
                 asString(payload.get("accessAddress"), null),
                 asInteger(payload.get("channelId")),
                 asInteger(payload.get("event")),
-                envelope.receivedAt() == null ? java.time.Instant.now().toString() : envelope.receivedAt());
+                envelope.receivedAt() == null ? Timestamps.now() : envelope.receivedAt());
 
         media.insertIgnore(file);
         LOGGER.info("Stored media metadata for {}: fileId={} type={} format={}",

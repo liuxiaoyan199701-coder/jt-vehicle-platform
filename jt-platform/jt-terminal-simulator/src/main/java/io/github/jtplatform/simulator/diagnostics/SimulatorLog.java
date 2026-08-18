@@ -1,5 +1,6 @@
 package io.github.jtplatform.simulator.diagnostics;
 
+import io.github.jtplatform.simulator.config.TerminalTime;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -10,7 +11,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayDeque;
 import java.util.List;
@@ -25,7 +25,7 @@ public final class SimulatorLog implements AutoCloseable {
     private static final int MAX_RECENT_ENTRIES = 500;
     private static final DateTimeFormatter LINE_TIME = DateTimeFormatter
             .ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
-            .withZone(ZoneId.systemDefault());
+            .withZone(TerminalTime.ZONE);
     private static final Pattern JSON_TOKEN = Pattern.compile(
             "(?i)(\\\"(?:token|authorization)\\\"\\s*:\\s*\\\")[^\\\"]*(\\\")");
     private static final Pattern PLAIN_TOKEN = Pattern.compile(

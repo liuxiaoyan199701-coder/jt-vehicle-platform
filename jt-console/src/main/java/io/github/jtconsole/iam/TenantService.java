@@ -1,5 +1,6 @@
 package io.github.jtconsole.iam;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Plan;
 import io.github.jtconsole.domain.Tenant;
 import io.github.jtconsole.domain.TenantStatus;
@@ -80,7 +81,7 @@ public class TenantService {
             throw IamException.conflict("租户编码已被占用");
         }
         Long planId = validatePlan(request.planId());
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long id = tenants.insert(new Tenant(
                 0L, code, name, TenantStatus.ACTIVE.name(), planId,
                 normalizedExpiry(request.expiresAt()),
@@ -106,7 +107,7 @@ public class TenantService {
                 optionalText(request.contactName(), "联系人", MAX_CONTACT_LENGTH),
                 optionalText(request.contactPhone(), "联系电话", MAX_CONTACT_LENGTH),
                 optionalText(request.remark(), "备注", MAX_REMARK_LENGTH),
-                existing.createdAt(), Instant.now().toString()));
+                existing.createdAt(), Timestamps.now()));
         Tenant updated = require(tenantId);
         // 编辑可能把有效期改到过去，等同于立刻到期。
         if (!updated.active(clock.instant())) {
@@ -192,7 +193,7 @@ public class TenantService {
             return null;
         }
         try {
-            return Instant.parse(expiresAt.trim()).toString();
+            return Timestamps.of(Instant.parse(expiresAt.trim()));
         } catch (RuntimeException unparsable) {
             throw IamException.invalid("有效期格式不正确，应为 ISO-8601 时间");
         }

@@ -82,6 +82,7 @@ class SimulatorRuntimeFfmpegTest {
                 source.signalHost(), source.signalPort(), source.version(), source.mobileNo(),
                 source.deviceId(), source.channel(), source.registration(), ffmpegPath, camera,
                 microphone, source.mainProfile(), source.subProfile(), source.previewWidth(),
-                source.previewHeight(), source.previewFps(), source.maxPayloadBytes());
+                source.previewHeight(), source.previewFps(), source.maxPayloadBytes(),
+                source.trip());
     }
 }

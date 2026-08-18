@@ -1,5 +1,6 @@
 package io.github.jtconsole.operations;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.VehicleDailyStat;
 import io.github.jtconsole.geo.CoordTransform;
 import io.github.jtconsole.repository.DailyStatRepository;
@@ -51,7 +52,7 @@ public class DailyStatService {
             byDate.computeIfAbsent(dates.resolve(point.deviceTime(), point.receivedAt()),
                     ignored -> new ArrayList<>()).add(point);
         }
-        String updatedAt = dates.now().toString();
+        String updatedAt = Timestamps.of(dates.now());
         byDate.forEach((date, dayPoints) -> {
             VehicleDailyStat stat = stats.find(deviceId, date.toString())
                     .orElse(VehicleDailyStat.empty(deviceId, date.toString()));
@@ -115,7 +116,7 @@ public class DailyStatService {
     private static Optional<LocalDateTime> parseDeviceTime(String value) {
         if (value == null || value.isBlank()) return Optional.empty();
         try {
-            return Optional.of(LocalDateTime.parse(value.trim()));
+            return Timestamps.toLocalDateTime(value);
         } catch (DateTimeParseException ignored) {
             return Optional.empty();
         }

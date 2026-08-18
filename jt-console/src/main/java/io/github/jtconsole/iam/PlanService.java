@@ -1,5 +1,6 @@
 package io.github.jtconsole.iam;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Plan;
 import io.github.jtconsole.domain.Tenant;
 import io.github.jtconsole.domain.TenantOrder;
@@ -61,7 +62,7 @@ public class PlanService {
         if (plans.nameExists(name, null)) {
             throw IamException.conflict("套餐名称已存在");
         }
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long id = plans.insert(new Plan(
                 0L, name, nonNegative(request.maxVehicles(), "车辆数上限"),
                 nonNegative(request.maxAccounts(), "账号数上限"),
@@ -86,7 +87,7 @@ public class PlanService {
                 nonNegative(request.priceCents(), "价格"),
                 request.periodMonths() <= 0 ? 12 : request.periodMonths(),
                 request.enabled(), optionalText(request.remark(), "备注", MAX_REMARK_LENGTH),
-                existing.createdAt(), Instant.now().toString()));
+                existing.createdAt(), Timestamps.now()));
         return plans.findById(planId).orElseThrow();
     }
 

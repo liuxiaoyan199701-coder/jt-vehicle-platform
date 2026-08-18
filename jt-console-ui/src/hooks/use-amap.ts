@@ -73,7 +73,23 @@ export interface UseAMapOptions {
   /** 初始中心点（GCJ-02），默认北京 */
   center?: [number, number];
   zoom?: number;
+  /**
+   * 是否显示比例尺与工具条。默认 true，保证既有三个全页地图零改动。
+   *
+   * 小尺寸容器里必须关掉：工具条固定在右下角，在 200px 高的对话内嵌地图上会盖住相当一部分画面。
+   */
+  controls?: boolean;
+  /**
+   * `setFitView` 的四周留白（像素），默认 60。
+   *
+   * 同样是给小容器用的：60px 在 200px 高的地图里上下就吃掉 120px，车永远是正中间一个点，
+   * 看不出周围环境。
+   */
+  fitPadding?: number;
 }
+
+/** 默认留白。导出是为了让调用方在自己调 `setFitView` 时能取到同一个值，而不是各写各的。 */
+export const DEFAULT_FIT_PADDING = 60;
 
 export function useAMap(options: UseAMapOptions = {}) {
   const map = shallowRef<any>(null);
@@ -90,8 +106,10 @@ export function useAMap(options: UseAMapOptions = {}) {
         center: options.center ?? [116.397428, 39.90923],
         viewMode: '2D'
       });
-      map.value.addControl(new AMap.Scale());
-      map.value.addControl(new AMap.ToolBar({ position: 'RB' }));
+      if (options.controls ?? true) {
+        map.value.addControl(new AMap.Scale());
+        map.value.addControl(new AMap.ToolBar({ position: 'RB' }));
+      }
       ready.value = true;
     } catch (loadError) {
       error.value = loadError instanceof Error ? loadError.message : String(loadError);
@@ -107,7 +125,19 @@ export function useAMap(options: UseAMapOptions = {}) {
     ready.value = false;
   }
 
+  /**
+   * 按本实例配置的留白做一次视野自适应。
+   *
+   * <p>提供它是为了让留白只在一处定义：调用方各自写 `[60,60,60,60]` 的话，
+   * `fitPadding` 这个选项就形同虚设。
+   */
+  function fitView(overlays?: any[]) {
+    if (!map.value) return;
+    const padding = options.fitPadding ?? DEFAULT_FIT_PADDING;
+    map.value.setFitView(overlays ?? null, false, [padding, padding, padding, padding]);
+  }
+
   onBeforeUnmount(destroy);
 
-  return { map, AMap: AMapRef, ready, error, init, destroy };
+  return { map, AMap: AMapRef, ready, error, init, destroy, fitView };
 }

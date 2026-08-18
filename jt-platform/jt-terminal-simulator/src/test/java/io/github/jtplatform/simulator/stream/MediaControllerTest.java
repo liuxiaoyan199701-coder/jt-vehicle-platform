@@ -321,7 +321,8 @@ class MediaControllerTest {
                 source.previewWidth(),
                 source.previewHeight(),
                 source.previewFps(),
-                source.maxPayloadBytes());
+                source.maxPayloadBytes(),
+                source.trip());
     }
 
     private static final class RecordingCaptureBackend implements CaptureBackend {

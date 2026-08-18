@@ -12,6 +12,7 @@ import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -27,17 +28,20 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.commons.JT1078;
 import org.yzh.protocol.commons.JT808;
+import org.yzh.protocol.commons.transform.AttributeKey;
 import org.yzh.protocol.t1078.T9101;
 import org.yzh.protocol.t1078.T9102;
 import org.yzh.protocol.t808.T0001;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
+import org.yzh.protocol.t808.T0200;
 import org.yzh.protocol.t808.T8100;
 
 class SignalClientTest {
     private static final SignalClient.Timing FAST_TIMING = new SignalClient.Timing(
             Duration.ofSeconds(2),
             Duration.ofSeconds(2),
+            Duration.ofMillis(50),
             Duration.ofMillis(50),
             Duration.ofMillis(100),
             Duration.ofMillis(300));
@@ -104,7 +108,7 @@ class SignalClientTest {
                     corrupt, T0001.MessageError);
         })) {
             SimulatorConfig config = config(version, server.port());
-            try (SignalClient client = new SignalClient(config, commands, listener, FAST_TIMING, () -> 0.5d)) {
+            try (SignalClient client = new SignalClient(config, commands, listener, LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
                 client.connect();
                 server.await(Duration.ofSeconds(5));
                 assertTrue(listener.online.await(2, TimeUnit.SECONDS));
@@ -126,10 +130,10 @@ class SignalClientTest {
         })) {
             SignalClient.Timing timing = new SignalClient.Timing(
                     Duration.ofSeconds(2), Duration.ofSeconds(2), Duration.ofSeconds(1),
-                    Duration.ofSeconds(2), Duration.ofSeconds(2));
+                    Duration.ofSeconds(1), Duration.ofSeconds(2), Duration.ofSeconds(2));
             try (SignalClient client = new SignalClient(
                     config(Jt808Version.V2013, server.port()),
-                    new RecordingCommandHandler(), listener, timing, () -> 0.5d)) {
+                    new RecordingCommandHandler(), listener, LocationSource.NONE, timing, () -> 0.5d)) {
                 client.connect();
                 server.await(Duration.ofSeconds(3));
                 assertTrue(listener.error.await(2, TimeUnit.SECONDS));
@@ -154,7 +158,7 @@ class SignalClientTest {
         try (FakeSignalServer server = new FakeSignalServer(authenticateAndClose, authenticateAndWait);
                 SignalClient client = new SignalClient(
                         config(Jt808Version.V2013, server.port()), commands, listener,
-                        FAST_TIMING, () -> 0.5d)) {
+                        LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
             client.connect();
 
             assertTrue(listener.online.await(5, TimeUnit.SECONDS));
@@ -178,7 +182,7 @@ class SignalClientTest {
             }
         }); SignalClient client = new SignalClient(
                 config(Jt808Version.V2013, server.port()), commands, listener,
-                FAST_TIMING, () -> 0.5d)) {
+                LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
             client.connect();
             assertTrue(listener.online.await(3, TimeUnit.SECONDS));
 
@@ -210,7 +214,7 @@ class SignalClientTest {
         try (FakeSignalServer server = new FakeSignalServer(failBeforeAuthentication, authenticateAndClose);
                 SignalClient client = new SignalClient(
                         config(Jt808Version.V2013, server.port()), commands, listener,
-                        FAST_TIMING, () -> 0.5d)) {
+                        LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
             client.connect();
 
             server.await(Duration.ofSeconds(5));
@@ -229,6 +233,161 @@ class SignalClientTest {
         assertEquals(Duration.ofSeconds(30), timing.backoffMaximum());
     }
 
+    /**
+     * 位置汇报的字段单位与标志位。
+     *
+     * <p>其中**定位标志（bit1）是整个行程功能的生死线**：平台对未定位的位置直接丢弃，
+     * 车会「在跑」但平台上什么都不会出现，而且不报任何错。
+     */
+    @ParameterizedTest
+    @EnumSource(Jt808Version.class)
+    void reportsLocationWithTheUnitsAndFlagsThePlatformRequires(Jt808Version version)
+            throws Exception {
+        RecordingListener listener = new RecordingListener();
+        CompletableFuture<T0200> reported = new CompletableFuture<>();
+        LocationSource source = now -> new LocationFix(
+                31.230416D, 121.473701D, 12, 60.0D, 87, 3_456.0D,
+                LocalDateTime.of(2026, 8, 17, 10, 30, 0));
+
+        try (FakeSignalServer server = new FakeSignalServer(peer -> {
+            authenticate(peer);
+            reported.complete(assertInstanceOf(T0200.class,
+                    peer.readUntil(message -> message instanceof T0200)));
+        }); SignalClient client = new SignalClient(
+                config(version, server.port()), new RecordingCommandHandler(), listener,
+                source, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+
+            T0200 location = reported.get(5, TimeUnit.SECONDS);
+
+            assertTrue((location.getStatusBit() & 0b10) != 0, "定位标志未置位，平台会丢弃这条位置");
+            // 加密标志必须为 0：上报的是原始坐标系。
+            assertEquals(0, location.getStatusBit() & (1 << 5));
+            assertEquals(31_230_416, location.getLatitude());
+            assertEquals(121_473_701, location.getLongitude());
+            assertEquals(12, location.getAltitude());
+            assertEquals(600, location.getSpeed(), "速度单位是 1/10 km/h");
+            assertEquals(87, location.getDirection());
+            assertEquals(LocalDateTime.of(2026, 8, 17, 10, 30, 0), location.getDeviceTime());
+            // 里程按 1/10 km 编码，且必须是 Long——放 Integer 会在编码时强转失败。
+            Object mileage = location.getAttributes().get(AttributeKey.Mileage);
+            assertInstanceOf(Long.class, mileage);
+            assertEquals(35L, mileage);
+        }
+    }
+
+    /** 南纬西经由状态标志位表达，经纬度字段本身是无符号的。 */
+    @Test
+    void encodesSouthernAndWesternCoordinatesWithFlagsRatherThanNegativeNumbers() throws Exception {
+        CompletableFuture<T0200> reported = new CompletableFuture<>();
+        LocationSource source = now -> new LocationFix(
+                -33.8688D, -151.2093D, 0, 10.0D, 180, 0.0D,
+                LocalDateTime.of(2026, 8, 17, 10, 30, 0));
+
+        try (FakeSignalServer server = new FakeSignalServer(peer -> {
+            authenticate(peer);
+            reported.complete(assertInstanceOf(T0200.class,
+                    peer.readUntil(message -> message instanceof T0200)));
+        }); SignalClient client = new SignalClient(
+                config(Jt808Version.V2013, server.port()), new RecordingCommandHandler(),
+                new RecordingListener(), source, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+
+            T0200 location = reported.get(5, TimeUnit.SECONDS);
+
+            assertTrue(location.getLatitude() > 0, "纬度字段是无符号的");
+            assertTrue(location.getLongitude() > 0, "经度字段是无符号的");
+            assertEquals(33_868_800, location.getLatitude());
+            assertEquals(151_209_300, location.getLongitude());
+            assertTrue((location.getStatusBit() & (1 << 2)) != 0, "南纬标志位未置位");
+            assertTrue((location.getStatusBit() & (1 << 3)) != 0, "西经标志位未置位");
+        }
+    }
+
+    @Test
+    void sendsNothingWhileTheLocationSourceHasNothingToReport() throws Exception {
+        // 行程未开启时来源一直返回 null，终端表现得和从前完全一样。
+        CompletableFuture<JTMessage> unexpected = new CompletableFuture<>();
+        CountDownLatch heartbeats = new CountDownLatch(3);
+
+        try (FakeSignalServer server = new FakeSignalServer(peer -> {
+            authenticate(peer);
+            while (heartbeats.getCount() > 0) {
+                JTMessage message = peer.read();
+                if (message instanceof T0200) {
+                    unexpected.complete(message);
+                    return;
+                }
+                if (message.getMessageId() == JT808.终端心跳) {
+                    heartbeats.countDown();
+                }
+            }
+        }); SignalClient client = new SignalClient(
+                config(Jt808Version.V2013, server.port()), new RecordingCommandHandler(),
+                new RecordingListener(), LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+
+            assertTrue(heartbeats.await(5, TimeUnit.SECONDS), "心跳应当照常发送");
+            assertFalse(unexpected.isDone(), "来源返回空时不该发出位置汇报");
+        }
+    }
+
+    /**
+     * 来源抛出运行时异常时，上报**必须继续**。
+     *
+     * <p>周期调度器的任务一旦抛出异常就会静默取消后续所有调度——不吞掉的话，一次偶发异常就会让
+     * 位置上报永久停止，而日志里什么都看不到。
+     */
+    @Test
+    void keepsReportingAfterTheLocationSourceThrows() throws Exception {
+        AtomicInteger samples = new AtomicInteger();
+        LocationSource flaky = now -> {
+            if (samples.incrementAndGet() <= 2) {
+                throw new IllegalStateException("模拟来源故障");
+            }
+            return new LocationFix(31.0D, 121.0D, 0, 60.0D, 90, 100.0D,
+                    LocalDateTime.of(2026, 8, 17, 10, 30, 0));
+        };
+        CompletableFuture<T0200> recovered = new CompletableFuture<>();
+
+        try (FakeSignalServer server = new FakeSignalServer(peer -> {
+            authenticate(peer);
+            recovered.complete(assertInstanceOf(T0200.class,
+                    peer.readUntil(message -> message instanceof T0200)));
+        }); SignalClient client = new SignalClient(
+                config(Jt808Version.V2013, server.port()), new RecordingCommandHandler(),
+                new RecordingListener(), flaky, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+
+            assertEquals(31_000_000, recovered.get(5, TimeUnit.SECONDS).getLatitude());
+            assertTrue(samples.get() > 2);
+        }
+    }
+
+    /** 行程状态挂在连接之外，因此断线重连后位置上报自动恢复。 */
+    @Test
+    void resumesLocationReportingAfterReconnecting() throws Exception {
+        CountDownLatch locations = new CountDownLatch(2);
+        LocationSource source = now -> new LocationFix(31.0D, 121.0D, 0, 60.0D, 90, 100.0D,
+                LocalDateTime.of(2026, 8, 17, 10, 30, 0));
+        Consumer<FakePeer> reportThenClose = peer -> {
+            authenticate(peer);
+            peer.readUntil(message -> message instanceof T0200);
+            locations.countDown();
+            peer.close();
+        };
+
+        try (FakeSignalServer server = new FakeSignalServer(reportThenClose, reportThenClose);
+                SignalClient client = new SignalClient(
+                        config(Jt808Version.V2013, server.port()), new RecordingCommandHandler(),
+                        new RecordingListener(2), source, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+
+            assertTrue(locations.await(10, TimeUnit.SECONDS),
+                    "重连后应当继续上报位置，而不是就此停住");
+        }
+    }
+
     private static void authenticate(FakePeer peer) {
         T0100 registration = assertInstanceOf(T0100.class, peer.read());
         peer.write(registrationResponse(registration, "token"));
@@ -243,7 +402,7 @@ class SignalClientTest {
                 "127.0.0.1", port, version, mobile, "1380000", 1,
                 source.registration(), source.ffmpegPath(), source.cameraName(), source.microphoneName(),
                 source.mainProfile(), source.subProfile(), source.previewWidth(), source.previewHeight(),
-                source.previewFps(), source.maxPayloadBytes());
+                source.previewFps(), source.maxPayloadBytes(), source.trip());
     }
 
     private static T8100 registrationResponse(T0100 request, String token) {

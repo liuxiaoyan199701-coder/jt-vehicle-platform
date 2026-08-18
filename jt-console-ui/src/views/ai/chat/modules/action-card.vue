@@ -46,7 +46,57 @@ const ROUTES: Record<string, (params: any) => { url: string; method: 'post' | 'p
 
 const supported = computed(() => Boolean(ROUTES[props.action.type]));
 const allowed = computed(() => authStore.userInfo.buttons?.includes(props.action.requiredPermission) ?? false);
-const paramRows = computed(() => Object.entries(props.action.params ?? {}));
+
+/**
+ * 字段名到中文标签。
+ *
+ * 确认这一步的价值在于让用户一眼看出「车牌被听错了一个字」，而 `plateNo`、`deviceId` 这种
+ * 原始字段名会让人先花几秒去认字段——认字段的注意力就是从核对数据里挪走的。
+ * 表里没有的键原样显示，好过显示不出来。
+ */
+const FIELD_LABELS: Record<string, string> = {
+  deviceId: '设备号',
+  plateNo: '车牌号',
+  plateColor: '车牌颜色',
+  tenantId: '所属租户',
+  departmentId: '所属部门',
+  name: '名称',
+  code: '编码',
+  id: '标识',
+  remark: '备注',
+  note: '备注',
+  alarmId: '告警',
+  fleetId: '车队',
+  vehicleIds: '车辆',
+  geofenceId: '围栏',
+  shape: '形状',
+  points: '边界点',
+  radius: '半径（米）',
+  centerLat: '中心纬度',
+  centerLng: '中心经度',
+  text: '下发内容',
+  expiresAt: '有效期',
+  planId: '套餐',
+  maxVehicles: '车辆上限',
+  maxAccounts: '账号上限',
+  status: '状态'
+};
+
+const paramRows = computed(() =>
+  Object.entries(props.action.params ?? {}).map(([key, value]) => ({
+    key,
+    label: FIELD_LABELS[key] ?? key,
+    text: format(value)
+  }))
+);
+
+/** 空值显示成占位符而不是 "null"——后者会让人以为真的要把这个字段写成 null。 */
+function format(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) return value.length ? value.join('、') : '—';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  return String(value);
+}
 
 async function execute() {
   const route = ROUTES[props.action.type];
@@ -102,18 +152,19 @@ function cancel() {
       </div>
     </template>
 
-    <p v-if="action.reason" class="mb-2 text-13px text-gray-500">{{ action.reason }}</p>
+    <p v-if="action.reason" class="mb-2 text-13px text-gray-600 dark:text-gray-300">{{ action.reason }}</p>
 
     <!-- 参数必须完整展示：确认这一步的价值有一半在于让用户看见车牌被听错了一个字 -->
     <NDescriptions v-if="paramRows.length" :column="1" size="small" bordered label-placement="left">
-      <NDescriptionsItem v-for="[key, value] in paramRows" :key="key" :label="key">
-        <span class="break-all">{{ value === null || value === undefined ? '—' : String(value) }}</span>
+      <NDescriptionsItem v-for="row in paramRows" :key="row.key" :label="row.label">
+        <span class="break-all">{{ row.text }}</span>
       </NDescriptionsItem>
     </NDescriptions>
 
     <template #action>
       <div class="flex items-center gap-2">
         <template v-if="state === 'pending'">
+          <!-- 禁用态必须说明原因：光是灰掉一个「确认执行」，用户只会反复点然后以为坏了 -->
           <NButton v-if="!supported" size="small" disabled>该动作暂不支持</NButton>
           <NButton v-else-if="!allowed" size="small" disabled>
             缺少权限：{{ action.requiredPermission }}
@@ -123,7 +174,11 @@ function cancel() {
             <NButton size="small" @click="cancel">取消</NButton>
           </template>
         </template>
-        <NSpin v-else-if="state === 'running'" size="small" />
+        <!-- 执行中带上文字：裸的转圈圈说不清是在执行还是在加载，而这一步是有副作用的 -->
+        <div v-else-if="state === 'running'" class="flex items-center gap-6px text-13px text-gray-600 dark:text-gray-300">
+          <NSpin size="small" />
+          <span>正在执行…</span>
+        </div>
         <NTag v-else-if="state === 'done'" size="small" type="success">{{ message }}</NTag>
         <NTag v-else-if="state === 'failed'" size="small" type="error">{{ message }}</NTag>
         <NTag v-else size="small">{{ message }}</NTag>

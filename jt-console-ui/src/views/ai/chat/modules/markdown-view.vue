@@ -27,8 +27,21 @@ const html = computed(() => {
 
 <style scoped>
 .markdown-view {
+  /*
+   * 代码块与表格边框的底色。原本写死成黑色低透明度，在深色模式下等于压在深色背景上的深色——
+   * 代码块和表格线整个消失，回答里凡是带表格的部分看起来就像没渲染。
+   * 拆成变量后按主题翻转，两种模式下都看得见。
+   */
+  --md-surface: rgb(0 0 0 / 6%);
+  --md-border: rgb(0 0 0 / 12%);
+
   line-height: 1.7;
   word-break: break-word;
+}
+
+:global(html.dark) .markdown-view {
+  --md-surface: rgb(255 255 255 / 10%);
+  --md-border: rgb(255 255 255 / 18%);
 }
 
 .markdown-view :deep(p) {
@@ -48,7 +61,7 @@ const html = computed(() => {
 .markdown-view :deep(code) {
   padding: 1px 5px;
   border-radius: 3px;
-  background: rgb(0 0 0 / 6%);
+  background: var(--md-surface);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.92em;
 }
@@ -58,7 +71,7 @@ const html = computed(() => {
   margin: 8px 0;
   padding: 10px 12px;
   border-radius: 6px;
-  background: rgb(0 0 0 / 6%);
+  background: var(--md-surface);
 }
 
 .markdown-view :deep(pre code) {
@@ -77,7 +90,7 @@ const html = computed(() => {
 .markdown-view :deep(th),
 .markdown-view :deep(td) {
   padding: 4px 10px;
-  border: 1px solid rgb(0 0 0 / 12%);
+  border: 1px solid var(--md-border);
   white-space: nowrap;
 }
 

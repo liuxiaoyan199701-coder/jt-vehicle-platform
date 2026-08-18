@@ -7,6 +7,9 @@ import io.github.jtconsole.domain.AlarmSource;
 import io.github.jtconsole.domain.AlarmStatus;
 import io.github.jtconsole.domain.TrackPoint;
 import io.github.jtconsole.domain.VehicleDailyStat;
+import io.github.jtconsole.ai.agent.AiEvent;
+import io.github.jtconsole.ai.view.ChartSpec;
+import io.github.jtconsole.ai.view.ViewProposalService;
 import io.github.jtconsole.geo.ReverseGeocoder;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.operations.TrackSummary;
@@ -44,6 +47,7 @@ public class OperationsTools {
     private final TrackRepository tracks;
     private final DailyStatRepository dailyStats;
     private final BusinessDateService dates;
+    private final ViewProposalService views;
 
     public OperationsTools(
             ToolRunner runner,
@@ -51,13 +55,15 @@ public class OperationsTools {
             AlarmRepository alarms,
             TrackRepository tracks,
             DailyStatRepository dailyStats,
-            BusinessDateService dates) {
+            BusinessDateService dates,
+            ViewProposalService views) {
         this.runner = runner;
         this.geocoder = geocoder;
         this.alarms = alarms;
         this.tracks = tracks;
         this.dailyStats = dailyStats;
         this.dates = dates;
+        this.views = views;
     }
 
     @Tool(name = "get_current_time",
@@ -133,11 +139,15 @@ public class OperationsTools {
                     查询一台车在某个时间段的行驶轨迹汇总：里程、最高速、平均速、起止时间，
                     并附少量沿途抽样点。回答「跑了多少公里」「开多快」「去过哪」时用它。
                     注意它返回的是抽样点而不是完整轨迹——完整轨迹请让用户去轨迹回放页看。
-                    时间跨度不要超过一天；查一周的里程请改用 get_daily_stats。""")
+                    时间跨度不要超过一天；查一周的里程请改用 get_daily_stats。
+                    用户想「看看」轨迹、问「走的什么路线」时把 showMap 设为 true，平台会同时画出轨迹地图。""")
     String queryTrack(
             @ToolParam(description = "设备号") String deviceId,
-            @ToolParam(description = "开始时间，格式 yyyy-MM-dd HH:mm:ss") String start,
+            @ToolParam(description = "开始时间，格式 yyyy-MM-ddTHH:mm:ss，如 2026-08-17T00:00:00")
+            String start,
             @ToolParam(description = "结束时间，格式同上") String end,
+            @ToolParam(description = "为 true 时同时在对话里展示轨迹地图", required = false)
+            Boolean showMap,
             ToolContext context) {
         ToolSession session = ToolSession.from(context);
         return runner.run(session, "query_track", "查询轨迹 " + deviceId, () -> {
@@ -170,6 +180,9 @@ public class OperationsTools {
             result.put("sampledPoints", sampled);
             result.put("note", "sampledPoints 是等距抽样，不是完整轨迹；里程与速度取自全部 "
                     + points.size() + " 个点。");
+            // 轨迹图保持引用型：事件里只带设备号与时间窗，前端自己去取完整轨迹——
+            // 那边能拿到两万个点，比这里的 40 个抽样点有用得多。
+            maybeTrackMap(session, showMap, deviceId.trim(), start, end);
             return result;
         });
     }
@@ -179,12 +192,16 @@ public class OperationsTools {
                     按自然日查询里程与活跃度。给了设备号就查这台车逐日的里程、点数与最高速；
                     不给设备号则查全部可见车辆的逐日汇总（里程、活跃车辆数、新增告警数）。
                     回答「这周跑了多少」「哪天跑得最多」时用它——比逐日调 query_track 省得多。
-                    时间跨度最多 31 天。""")
+                    时间跨度最多 31 天。
+                    用户问「趋势」「哪天最多」「这周怎么样」时把 showChart 设为 true，平台会同时画一张趋势图；
+                    只问一个总数时不要设。""")
     String dailyStats(
             @ToolParam(description = "设备号；留空则查全部可见车辆的汇总", required = false)
             String deviceId,
             @ToolParam(description = "开始日期 yyyy-MM-dd") String start,
             @ToolParam(description = "结束日期 yyyy-MM-dd") String end,
+            @ToolParam(description = "为 true 时同时在对话里展示一张趋势图", required = false)
+            Boolean showChart,
             ToolContext context) {
         ToolSession session = ToolSession.from(context);
         return runner.run(session, "get_daily_stats", "查询日统计", () -> {
@@ -197,6 +214,9 @@ public class OperationsTools {
                 List<Map<String, Object>> rows = stats.stream()
                         .map(OperationsTools::dailyBrief)
                         .toList();
+                maybeChart(session, showChart, rows, "里程", "km", "distanceKm",
+                        "get_daily_stats " + deviceId.trim() + " " + start.trim() + "~" + end.trim(),
+                        deviceId.trim() + " 逐日里程");
                 return ToolResults.page("days", rows, MAX_DAYS, rows.size());
             }
             List<Map<String, Object>> rows =
@@ -210,8 +230,62 @@ public class OperationsTools {
                                 return row;
                             })
                             .toList();
+            maybeChart(session, showChart, rows, "里程", "km", "distanceKm",
+                    "get_daily_stats 全部车辆 " + start.trim() + "~" + end.trim(),
+                    "全部车辆逐日里程");
             return ToolResults.page("days", rows, MAX_DAYS, rows.size());
         });
+    }
+
+    /** 触发一张轨迹图。校验（含跨度上限）由提议服务负责，这里只管把参数递过去。 */
+    private void maybeTrackMap(
+            ToolSession session, Boolean showMap, String deviceId, String start, String end) {
+        if (!Boolean.TRUE.equals(showMap)) {
+            return;
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("deviceId", deviceId);
+        params.put("start", start == null ? null : start.trim());
+        params.put("end", end == null ? null : end.trim());
+        ViewProposalService.Outcome outcome =
+                views.propose(session, "track_map", deviceId + " 行驶轨迹", params);
+        if (outcome.accepted()) {
+            session.events().emit(
+                    new AiEvent(AiEvent.Kind.VIEW, outcome.proposal().asEventData()));
+        }
+    }
+
+    /**
+     * 用服务端**自己刚查到的行**组装图表。
+     *
+     * <p>这是图表的默认路径，也是准确的那条：让模型把这 7~31 行数字再抄一遍进 show_chart 的参数，
+     * 等于把一份准确数据经过一次幻觉信道再拿回来，还多烧一遍输出 token（输出通常比输入贵）。
+     * 决定点因此从「查完后想起来再调一次」前移到「查的时候一起说」——顺带消除了
+     * 「模型忘记调第二个工具」这个失败模式。
+     *
+     * <p>出图失败不影响查询结果：图是附加价值，不该因为它没画成就让用户连数字都拿不到。
+     */
+    private void maybeChart(
+            ToolSession session, Boolean showChart, List<Map<String, Object>> rows,
+            String seriesName, String unit, String valueKey, String source, String title) {
+        if (!Boolean.TRUE.equals(showChart) || rows.isEmpty()) {
+            return;
+        }
+        List<String> categories = rows.stream()
+                .map(row -> String.valueOf(row.get("date")))
+                .toList();
+        List<Double> data = rows.stream()
+                .map(row -> row.get(valueKey))
+                // 缺测保持为空——那天没上报是「断线」，填 0 会被读成「跑了 0 公里」。
+                .map(value -> value instanceof Number number ? number.doubleValue() : null)
+                .toList();
+        ChartSpec spec = new ChartSpec("line", title, source, categories,
+                List.of(new ChartSpec.Series(seriesName, null, unit, data)), false);
+        ViewProposalService.Outcome outcome = views.propose(session, spec);
+        if (outcome.accepted()) {
+            session.events().emit(
+                    new AiEvent(AiEvent.Kind.VIEW, outcome.proposal().asEventData()));
+        }
     }
 
     private void describeAlarmLocations(List<Map<String, Object>> rows) {

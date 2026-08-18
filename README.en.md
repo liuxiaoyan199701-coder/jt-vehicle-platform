@@ -18,6 +18,29 @@ queue and no external business system required**.
 docker compose up -d --build     # then open http://localhost
 ```
 
+### AI assistant: ask in plain language, get the answer drawn
+
+Ask anything about the data, or have it create vehicles, geofences and handle alarms.
+**Answers are not just text** — positions, routes and trends render right inside the conversation,
+and the input box stays usable so you can keep asking while looking.
+
+Ask where a vehicle is, and the map appears under the answer:
+
+![Live position inline in the AI conversation](docs/images/ai-live-map.png)
+
+Ask for yesterday's route, and you get the polyline, endpoints, distance and top speed:
+
+![Driving track inline in the AI conversation](docs/images/ai-track-map.png)
+
+Video gets a card instead of an automatic stream — **opening a stream sends a command to a vehicle
+out on the road, so a human clicks that**. It plays in the side panel while the conversation stays live:
+
+![Live video in the AI conversation](docs/images/ai-live-video.png)
+
+Anything that changes data goes through a confirmation card. The assistant can only **propose**;
+execution happens in the browser with the signed-in user's own token against the existing APIs,
+so permissions, data scope and audit all run through the paths they already did.
+
 ### Track playback
 
 Query historical tracks by vehicle and time range, draw the route on the map and
@@ -72,6 +95,10 @@ Stack: JDK 25 · Spring Boot 4.1 · Netty · Vue 3 · SQLite.
   back-pressure and ordering guarantees per device
 - Fleet dashboard, alarm lifecycle (dedupe / acknowledge / close), GCJ-02 circular
   geofences with enter-exit and in-fence speed limits
+- AI assistant for querying and operating the platform in natural language: streaming replies,
+  conversations that survive a refresh, and data changes always confirmed by the user
+- AI answers embed live position, driving tracks, charts and live video; views with real-world
+  side effects (opening a stream) always require an explicit click
 - One executable JAR runs either `standalone` or split `api` / `signal` / `media` roles
 
 ## Quick start

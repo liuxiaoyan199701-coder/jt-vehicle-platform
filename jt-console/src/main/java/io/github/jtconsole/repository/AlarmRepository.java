@@ -1,5 +1,6 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.AlarmDefinition;
 import io.github.jtconsole.domain.AlarmEvent;
 import io.github.jtconsole.domain.AlarmLevel;
@@ -9,7 +10,6 @@ import io.github.jtconsole.domain.AlarmStatus;
 import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -58,7 +58,7 @@ public class AlarmRepository {
             Double gcjLng,
             Long geofenceId,
             String geofenceName) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.sql("""
                         INSERT INTO alarm_event (
@@ -93,12 +93,12 @@ public class AlarmRepository {
                             last_seen_at = excluded.last_seen_at, updated_at = excluded.updated_at
                         """)
                 .param(deviceId).param(source.name()).param(key).param(alarmEventId)
-                .param(geofenceId).param(occurredAt).param(Instant.now().toString()).update();
+                .param(geofenceId).param(occurredAt).param(Timestamps.now()).update();
     }
 
     public void touchCondition(
             String deviceId, AlarmSource source, String key, long alarmEventId, String occurredAt) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         jdbc.sql("""
                         UPDATE alarm_condition_state
                         SET last_seen_at = CASE
@@ -126,7 +126,7 @@ public class AlarmRepository {
                         UPDATE alarm_condition_state SET active = 0, updated_at = ?
                         WHERE device_id = ? AND source = ? AND alarm_key = ? AND active = 1
                         """)
-                .param(Instant.now().toString()).param(deviceId).param(source.name()).param(key).update();
+                .param(Timestamps.now()).param(deviceId).param(source.name()).param(key).update();
     }
 
     public void deactivateGeofenceConditions(long geofenceId) {
@@ -134,7 +134,7 @@ public class AlarmRepository {
                         UPDATE alarm_condition_state SET active = 0, updated_at = ?
                         WHERE geofence_id = ? AND active = 1
                         """)
-                .param(Instant.now().toString()).param(geofenceId).update();
+                .param(Timestamps.now()).param(geofenceId).update();
     }
 
     public void deleteGeofenceConditions(long geofenceId) {
@@ -286,8 +286,9 @@ public class AlarmRepository {
         add(sql, params, "a.source = ?", filter.source());
         add(sql, params, "a.device_id = ?", filter.deviceId());
         add(sql, params, "a.type = ?", filter.type());
-        add(sql, params, "a.occurred_at >= ?", filter.start());
-        add(sql, params, "a.occurred_at <= ?", filter.end());
+        // 与轨迹查询同一个坑：occurred_at 是字符串，边界写成空格分隔会让同一天的告警一条都查不出来。
+        add(sql, params, "a.occurred_at >= ?", TimeBounds.lower(filter.start()));
+        add(sql, params, "a.occurred_at <= ?", TimeBounds.upper(filter.end()));
         if (hasText(filter.keyword())) {
             sql.append(" AND (a.title LIKE ? OR a.type LIKE ? OR a.device_id LIKE ? OR v.plate_no LIKE ?)");
             String keyword = "%" + filter.keyword().trim() + "%";

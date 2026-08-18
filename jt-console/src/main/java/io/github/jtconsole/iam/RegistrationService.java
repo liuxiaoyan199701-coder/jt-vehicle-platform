@@ -1,5 +1,6 @@
 package io.github.jtconsole.iam;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.domain.Account;
 import io.github.jtconsole.domain.Plan;
@@ -110,7 +111,7 @@ public class RegistrationService {
             throw IamException.conflict("该企业名称或用户名已被占用");
         }
 
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         String code = generateTenantCode(companyName);
         long tenantId = tenants.insert(new Tenant(
                 0L, code, companyName, TenantStatus.PENDING_APPROVAL.name(), null, null,

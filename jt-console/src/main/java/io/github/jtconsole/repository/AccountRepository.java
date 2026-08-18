@@ -1,5 +1,6 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Account;
 import io.github.jtconsole.domain.Role;
 import java.sql.ResultSet;
@@ -107,25 +108,25 @@ public class AccountRepository {
                         WHERE id = ?
                         """)
                 .param(displayName).param(departmentId).param(positionId)
-                .param(Instant.now().toString()).param(id)
+                .param(Timestamps.now()).param(id)
                 .update();
     }
 
     public int updatePasswordHash(long id, String passwordHash) {
         return jdbc.sql("UPDATE account SET password_hash = ?, updated_at = ? WHERE id = ?")
-                .param(passwordHash).param(Instant.now().toString()).param(id)
+                .param(passwordHash).param(Timestamps.now()).param(id)
                 .update();
     }
 
     public int updateStatus(long id, String status) {
         return jdbc.sql("UPDATE account SET status = ?, updated_at = ? WHERE id = ?")
-                .param(status).param(Instant.now().toString()).param(id)
+                .param(status).param(Timestamps.now()).param(id)
                 .update();
     }
 
     public int recordLogin(long id, Instant at) {
         return jdbc.sql("UPDATE account SET last_login_at = ? WHERE id = ?")
-                .param(at.toString()).param(id)
+                .param(Timestamps.of(at)).param(id)
                 .update();
     }
 

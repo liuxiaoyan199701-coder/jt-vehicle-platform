@@ -15,6 +15,9 @@ import io.github.jtplatform.simulator.signal.SignalState;
 import io.github.jtplatform.simulator.stream.MediaController;
 import io.github.jtplatform.simulator.stream.MediaListener;
 import io.github.jtplatform.simulator.stream.MediaSnapshot;
+import io.github.jtplatform.simulator.trip.RoutePlanner;
+import io.github.jtplatform.simulator.trip.TripController;
+import io.github.jtplatform.simulator.trip.TripViewState;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -39,6 +42,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
     private final AtomicReference<Throwable> previewStartFailure = new AtomicReference<>();
     private final Object configLock = new Object();
     private final MediaController mediaController;
+    private final TripController tripController;
     private final AutoCloseable logSubscription;
 
     private volatile RuntimeListener listener = RuntimeListener.NOOP;
@@ -58,6 +62,8 @@ public final class SimulatorRuntime implements SimulatorOperations {
                 Thread.ofVirtual().name("simulator-ui-worker-", 0).factory());
         this.currentConfig = new AtomicReference<>(SimulatorConfig.defaults());
         this.mediaController = new MediaController(currentConfig::get, new RuntimeMediaListener());
+        // 与 MediaController 同构：构造一次，注入每一条连接。行程状态因此跨重连存活。
+        this.tripController = new TripController(new RoutePlanner(), this::onTripState);
         this.logSubscription = log.addListener(entry -> listener.onLog(entry));
     }
 
@@ -79,6 +85,8 @@ public final class SimulatorRuntime implements SimulatorOperations {
             configStore.save(checked);
             currentConfig.set(checked);
         }
+        // 保存后立刻生效，免得「界面上写的」和「行程实际在用的」是两份配置。
+        tripController.configure(checked.trip());
         log.info("config", "Configuration saved to " + configStore.configFile());
     }
 
@@ -97,12 +105,14 @@ public final class SimulatorRuntime implements SimulatorOperations {
             return;
         }
         currentConfig.set(checked);
+        tripController.configure(checked.trip());
         closeSignalClient();
         long generation = ++signalGeneration;
         SignalClient client = new SignalClient(
                 checked,
                 mediaController,
-                new RuntimeSignalListener(generation));
+                new RuntimeSignalListener(generation),
+                tripController);
         signalClient = client;
         log.info("signal", "Connecting to " + checked.signalHost() + ':' + checked.signalPort());
         client.connect();
@@ -110,6 +120,8 @@ public final class SimulatorRuntime implements SimulatorOperations {
 
     @Override
     public synchronized void disconnect() {
+        // 主动断开是明确的用户意图，行程随之停止；网络抖动导致的断线走另一条路径，行程要撑过去。
+        tripController.onSessionClosed();
         SignalClient current = signalClient;
         if (current != null) {
             current.disconnect();
@@ -144,6 +156,31 @@ public final class SimulatorRuntime implements SimulatorOperations {
             return CompletableFuture.completedFuture(null);
         }
         return mediaController.stopPreview();
+    }
+
+    @Override
+    public void startTrip() {
+        ensureOpen();
+        tripController.start();
+    }
+
+    @Override
+    public void stopTrip() {
+        if (!closed) {
+            tripController.stop();
+        }
+    }
+
+    @Override
+    public TripViewState tripState() {
+        return tripController.state();
+    }
+
+    private void onTripState(TripViewState state) {
+        if (closed) {
+            return;
+        }
+        listener.onTripState(state);
     }
 
     @Override
@@ -370,6 +407,12 @@ public final class SimulatorRuntime implements SimulatorOperations {
             }
             log.info("signal", previous + " -> " + current
                     + (detail == null || detail.isBlank() ? "" : ": " + detail));
+            // 会话建立后行程才有意义——它唯一的可观测副作用就是通过会话上报位置。
+            if (current == SignalState.ONLINE) {
+                tripController.onSessionEstablished();
+            } else if (previous == SignalState.ONLINE) {
+                tripController.onSessionLost();
+            }
             listener.onSignalState(current, detail == null ? "" : detail);
         }
 

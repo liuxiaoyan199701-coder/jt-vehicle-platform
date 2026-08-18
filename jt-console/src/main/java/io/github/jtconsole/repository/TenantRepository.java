@@ -1,10 +1,10 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Tenant;
 import io.github.jtconsole.domain.TenantStatus;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -93,19 +93,19 @@ public class TenantRepository {
                 .param(tenant.code()).param(tenant.name()).param(tenant.planId())
                 .param(tenant.expiresAt()).param(tenant.contactName())
                 .param(tenant.contactPhone()).param(tenant.remark())
-                .param(Instant.now().toString()).param(tenant.id())
+                .param(Timestamps.now()).param(tenant.id())
                 .update();
     }
 
     public int updateStatus(long tenantId, TenantStatus status) {
         return jdbc.sql("UPDATE tenant SET status = ?, updated_at = ? WHERE id = ?")
-                .param(status.name()).param(Instant.now().toString()).param(tenantId)
+                .param(status.name()).param(Timestamps.now()).param(tenantId)
                 .update();
     }
 
     public int updateExpiry(long tenantId, Long planId, String expiresAt) {
         return jdbc.sql("UPDATE tenant SET plan_id = ?, expires_at = ?, updated_at = ? WHERE id = ?")
-                .param(planId).param(expiresAt).param(Instant.now().toString()).param(tenantId)
+                .param(planId).param(expiresAt).param(Timestamps.now()).param(tenantId)
                 .update();
     }
 

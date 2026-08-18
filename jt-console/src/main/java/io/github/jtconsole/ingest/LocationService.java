@@ -1,5 +1,6 @@
 package io.github.jtconsole.ingest;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.operations.AlarmService;
 import io.github.jtconsole.operations.GeofenceService;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
@@ -126,11 +127,11 @@ public class LocationService {
     private static String normalizeReceivedAt(String value) {
         if (value != null && !value.isBlank()) {
             try {
-                return Instant.parse(value.trim()).toString();
+                return Timestamps.of(Instant.parse(value.trim()));
             } catch (DateTimeParseException ignored) {
                 // 非法接收时间不拒绝投递，使用平台当前时间维持稳定排序。
             }
         }
-        return Instant.now().toString();
+        return Timestamps.now();
     }
 }

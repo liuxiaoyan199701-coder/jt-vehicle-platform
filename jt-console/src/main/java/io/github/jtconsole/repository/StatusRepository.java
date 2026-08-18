@@ -1,5 +1,6 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.security.DataScope;
 import java.time.Instant;
@@ -104,7 +105,7 @@ public class StatusRepository {
                 .param(positioned == null ? null : (positioned ? 1 : 0))
                 .param(alarmJson)
                 .param(statusJson)
-                .param(Instant.now().toString())
+                .param(Timestamps.now())
                 .param(CLOCK_AHEAD_TOLERANCE_DAYS)
                 .param(CLOCK_AHEAD_TOLERANCE_DAYS)
                 .update();
@@ -134,7 +135,7 @@ public class StatusRepository {
                         """)
                 .param(deviceId)
                 .param(lastSeenAt)
-                .param(Instant.now().toString())
+                .param(Timestamps.now())
                 .update();
         return updated > 0;
     }
@@ -239,7 +240,7 @@ public class StatusRepository {
                         UPDATE device_status SET online = 0
                         WHERE online = 1 AND julianday(last_seen_at) < julianday(?)
                         """)
-                .param(cutoff.toString())
+                .param(Timestamps.of(cutoff))
                 .update();
     }
 

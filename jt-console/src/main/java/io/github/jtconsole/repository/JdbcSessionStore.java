@@ -1,5 +1,6 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.security.SessionStore;
 import java.time.Instant;
 import java.util.List;
@@ -32,9 +33,9 @@ public class JdbcSessionStore implements SessionStore {
                         """)
                 .param(session.sessionId()).param(session.accountId()).param(session.username())
                 .param(session.tenantId()).param(session.accessTokenHash())
-                .param(session.refreshTokenHash()).param(session.issuedAt().toString())
-                .param(session.accessExpiresAt().toString())
-                .param(session.refreshExpiresAt().toString())
+                .param(session.refreshTokenHash()).param(Timestamps.of(session.issuedAt()))
+                .param(Timestamps.of(session.accessExpiresAt()))
+                .param(Timestamps.of(session.refreshExpiresAt()))
                 .update();
     }
 
@@ -47,7 +48,7 @@ public class JdbcSessionStore implements SessionStore {
     public List<Record> loadLive(Instant now) {
         // 以刷新令牌的有效期为准：访问令牌过期但刷新令牌还在的会话仍然有效，
         // 前端会用它换一张新的访问令牌，此时不该要求重新登录。
-        String cutoff = now.toString();
+        String cutoff = Timestamps.of(now);
         jdbc.sql("DELETE FROM user_session WHERE refresh_expires_at <= ?").param(cutoff).update();
         return jdbc.sql("""
                         SELECT session_id, account_id, username, tenant_id,

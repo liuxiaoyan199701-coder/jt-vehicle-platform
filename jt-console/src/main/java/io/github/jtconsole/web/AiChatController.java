@@ -5,6 +5,7 @@ import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.ai.agent.AgentEventSink;
 import io.github.jtconsole.ai.agent.AgentService;
 import io.github.jtconsole.ai.agent.AiEvent;
+import io.github.jtconsole.ai.agent.RecordingEventSink;
 import io.github.jtconsole.ai.quota.AiQuotaService;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.repository.AiConversationRepository;
@@ -110,7 +111,7 @@ public class AiChatController {
         emitter.onError(failure -> cancelled.set(true));
 
         long conversationId = resolveConversation(request, principal, history);
-        SseSink sink = new SseSink(emitter, cancelled);
+        SseSink sink = new SseSink(emitter, cancelled, objectMapper);
         try {
             executor.execute(() -> run(principal, conversationId, history, snapshot, sink, emitter));
         } catch (RejectedExecutionException full) {
@@ -179,11 +180,14 @@ public class AiChatController {
         int completion = 0;
         try {
             sink.emit(AiEvent.meta(conversationId, model));
+            // 包一层收集器：视图与动作卡片要随消息留痕，否则刷新页面后它们全部消失。
+            RecordingEventSink recorder = new RecordingEventSink(sink);
             AgentService.Result result = agent.chat(
-                    principal, ConfirmationPolicy.confirmEverything(), history, sink);
+                    principal, ConfirmationPolicy.confirmEverything(), history, recorder);
             prompt = result.promptTokens();
             completion = result.completionTokens();
-            persist(conversationId, history, result, prompt, completion);
+            persist(conversationId, history, result, recorder.toJson(objectMapper),
+                    prompt, completion);
             if (!result.cancelled()) {
                 sink.emit(AiEvent.usage(prompt, completion, snapshot.used() + 1, snapshot.limit()));
                 sink.emit(AiEvent.done("stop"));
@@ -207,13 +211,15 @@ public class AiChatController {
      */
     private void persist(
             long conversationId, List<AgentService.Turn> history,
-            AgentService.Result result, int prompt, int completion) {
+            AgentService.Result result, String toolTrace, int prompt, int completion) {
         try {
             conversations.appendMessage(
                     conversationId, "user", history.getLast().content(), null, 0, 0);
-            if (!result.answer().isBlank()) {
+            // 回答为空但有视图时**仍然要落一条**：模型完全可能只出图不说话，
+            // 只判 isBlank 的话那张图会永久消失，而且日志里什么都没有。
+            if (!result.answer().isBlank() || toolTrace != null) {
                 conversations.appendMessage(
-                        conversationId, "assistant", result.answer(), null, prompt, completion);
+                        conversationId, "assistant", result.answer(), toolTrace, prompt, completion);
             }
         } catch (RuntimeException failure) {
             // 留痕失败不该连累已经给出的回答，但要留告警——用户会发现刷新后少了一段。
@@ -273,18 +279,36 @@ public class AiChatController {
     }
 
     /** 把事件写进 SSE 流。发送失败即视为客户端断开，后续调用静默丢弃。 */
-    private final class SseSink implements AgentEventSink {
+    /**
+     * 把事件写进 SSE 连接。
+     *
+     * <p>做成静态嵌套类而不是内部类，是为了能被单测直接构造——它需要的只有一个映射器，
+     * 与控制器实例本身无关。
+     */
+    static final class SseSink implements AgentEventSink {
 
         private final SseEmitter emitter;
         private final AtomicBoolean cancelled;
+        private final ObjectMapper objectMapper;
 
-        private SseSink(SseEmitter emitter, AtomicBoolean cancelled) {
+        SseSink(SseEmitter emitter, AtomicBoolean cancelled, ObjectMapper objectMapper) {
             this.emitter = emitter;
             this.cancelled = cancelled;
+            this.objectMapper = objectMapper;
         }
 
+        /**
+         * 推送一个事件。
+         *
+         * <p><b>必须同步</b>：本方法被两个线程调用——文本增量来自跑模型的工作线程，而工具事件
+         * （查询进度、动作提议、视图提议）来自框架执行工具回调的线程。底层的 {@code send} 不是
+         * 线程安全的，并发写会让两个事件的字节交错，前端按 {@code \n\n} 分帧就会解出半个 JSON。
+         *
+         * <p>此前没炸只是因为「工具执行期间模型不产 token」这个时序巧合——那不是保证，
+         * 而且视图提议同样从工具线程推，撞上的概率只会更高。
+         */
         @Override
-        public void emit(AiEvent event) {
+        public synchronized void emit(AiEvent event) {
             if (cancelled.get()) {
                 return;
             }

@@ -1,9 +1,9 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Role;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -136,7 +136,7 @@ public class RoleRepository {
                         WHERE id = ?
                         """)
                 .param(role.name()).param(role.dataScope()).param(role.remark())
-                .param(Instant.now().toString()).param(role.id())
+                .param(Timestamps.now()).param(role.id())
                 .update();
     }
 

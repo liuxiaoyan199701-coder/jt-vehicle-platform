@@ -83,7 +83,7 @@ class BatchLocationIngestionTest {
         assertThat(result.result()).isEqualTo("committed");
         assertThat(result.outcome()).isEqualTo("batch-located stored=3/3");
         assertThat(count("track_point")).isEqualTo(3);
-        assertThat(deviceTime()).isEqualTo("2026-08-11T08:01:00");
+        assertThat(deviceTime()).isEqualTo("2026-08-11T08:01:00.000+08:00");
     }
 
     @Test
@@ -196,7 +196,7 @@ class BatchLocationIngestionTest {
                 point("2026-08-11T08:00:00", 39.90, 116.40),
                 point("2026-08-11T08:00:30", 39.91, 116.41)));
 
-        assertThat(deviceTime()).isEqualTo("2026-08-11T12:00:00");
+        assertThat(deviceTime()).isEqualTo("2026-08-11T12:00:00.000+08:00");
         assertThat(scalar("SELECT lat FROM device_status WHERE device_id = ?", Double.class))
                 .isEqualTo(39.99);
         assertThat(count("track_point")).isEqualTo(3);
@@ -228,12 +228,12 @@ class BatchLocationIngestionTest {
         assertThat(result.outcome()).isEqualTo("batch-located stored=3/5 truncated=2");
         assertThat(count("track_point")).isEqualTo(3);
         // 保留的是最近的一段，当前位置必须是批次里最新的那个点。
-        assertThat(deviceTime()).isEqualTo("2026-08-11T08:02:00");
-        assertThat(earliestTrackTime()).isEqualTo("2026-08-11T08:01:00");
+        assertThat(deviceTime()).isEqualTo("2026-08-11T08:02:00.000+08:00");
+        assertThat(earliestTrackTime()).isEqualTo("2026-08-11T08:01:00.000+08:00");
 
         // 截断不影响后续报文。
         ingestion.ingest(single("after-truncate", "2026-08-11T08:03:00", 39.99, 116.49, false));
-        assertThat(deviceTime()).isEqualTo("2026-08-11T08:03:00");
+        assertThat(deviceTime()).isEqualTo("2026-08-11T08:03:00.000+08:00");
     }
 
     @Test

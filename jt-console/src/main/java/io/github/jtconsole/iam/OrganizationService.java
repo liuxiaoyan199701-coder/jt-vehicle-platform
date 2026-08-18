@@ -1,5 +1,6 @@
 package io.github.jtconsole.iam;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Department;
 import io.github.jtconsole.domain.Position;
 import io.github.jtconsole.repository.AccountRepository;
@@ -7,7 +8,6 @@ import io.github.jtconsole.repository.DepartmentRepository;
 import io.github.jtconsole.repository.PositionRepository;
 import io.github.jtconsole.security.AuthorizationResolver;
 import io.github.jtconsole.security.AuthorizedPrincipal;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,7 +70,7 @@ public class OrganizationService {
         if (departments.nameExistsUnderParent(tenantId, parentId, name, null)) {
             throw IamException.conflict("同级下已存在同名部门");
         }
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long id = departments.insert(new Department(
                 0L, tenantId, parentId, name, request.order(), request.active(), now, now));
         authorizations.invalidateTenant(tenantId);
@@ -121,7 +121,7 @@ public class OrganizationService {
         if (positions.nameExists(tenantId, name, null)) {
             throw IamException.conflict("岗位名称已存在");
         }
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long id = positions.insert(new Position(
                 0L, tenantId, name, request.order(),
                 optionalText(request.remark(), "备注", MAX_REMARK), now, now));

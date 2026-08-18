@@ -1,6 +1,6 @@
 package io.github.jtconsole.repository;
 
-import java.time.Instant;
+import io.github.jtconsole.config.Timestamps;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -50,7 +50,7 @@ public class TenantConfigRepository {
                             config_value = excluded.config_value,
                             updated_at = excluded.updated_at
                         """)
-                .param(scopeId).param(key).param(value).param(Instant.now().toString())
+                .param(scopeId).param(key).param(value).param(Timestamps.now())
                 .update();
     }
 

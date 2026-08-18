@@ -28,6 +28,23 @@ export interface AiActionEvent {
   requiresConfirmation: boolean;
 }
 
+/**
+ * 一条视图提议。
+ *
+ * <p>只描述「看什么」——**永远不含接口地址与渲染配置**。前端按自己持有的白名单决定调哪个接口、
+ * 怎么画；模型控制看什么，不控制怎么取、怎么画。
+ */
+export interface AiViewEvent {
+  viewId: string;
+  type: string;
+  label: string;
+  title: string;
+  /** inline 直接渲染在气泡里；reference_card 先给一张卡、用户点了才加载。 */
+  presentation: 'inline' | 'reference_card';
+  params: Record<string, unknown>;
+  requiredPermission: string;
+}
+
 export interface AiUsageEvent {
   promptTokens: number;
   completionTokens: number;
@@ -45,6 +62,7 @@ export interface AiStreamHandlers {
   onDelta?: (text: string) => void;
   onTool?: (event: AiToolEvent) => void;
   onAction?: (event: AiActionEvent) => void;
+  onView?: (event: AiViewEvent) => void;
   onUsage?: (event: AiUsageEvent) => void;
   onDone?: () => void;
   onError?: (code: string, message: string) => void;
@@ -197,6 +215,9 @@ function dispatch(frame: string, handlers: AiStreamHandlers) {
       break;
     case 'action':
       handlers.onAction?.(payload as AiActionEvent);
+      break;
+    case 'view':
+      handlers.onView?.(payload as AiViewEvent);
       break;
     case 'usage':
       handlers.onUsage?.(payload as AiUsageEvent);

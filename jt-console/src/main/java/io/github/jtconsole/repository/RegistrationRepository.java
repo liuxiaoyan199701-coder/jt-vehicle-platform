@@ -1,7 +1,7 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.TenantRegistration;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -63,7 +63,7 @@ public class RegistrationRepository {
     }
 
     public int updateReview(long id, String status, String reviewedBy, String note) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         return jdbc.sql("""
                         UPDATE tenant_registration
                         SET status = ?, reviewed_by = ?, reviewed_at = ?, review_note = ?,
@@ -77,7 +77,7 @@ public class RegistrationRepository {
 
     /** 把超过时限仍未处理的申请标记为过期，返回受影响行数。 */
     public int expirePendingBefore(String cutoff) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         return jdbc.sql("""
                         UPDATE tenant_registration
                         SET status = ?, updated_at = ?

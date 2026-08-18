@@ -1,5 +1,6 @@
 package io.github.jtconsole.iam;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Account;
 import io.github.jtconsole.domain.AccountView;
 import io.github.jtconsole.domain.Department;
@@ -17,7 +18,6 @@ import io.github.jtconsole.security.AccountAuthenticationService;
 import io.github.jtconsole.security.AuthorizationResolver;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.SessionTokenService;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -103,7 +103,7 @@ public class AccountService {
             enforceAccountQuota(tenantId);
         }
 
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long accountId = accounts.insert(new Account(
                 0L,
                 username,

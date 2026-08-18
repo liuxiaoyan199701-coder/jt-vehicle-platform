@@ -1,6 +1,6 @@
 package io.github.jtconsole.ingest;
 
-import java.time.Instant;
+import io.github.jtconsole.config.Timestamps;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -27,7 +27,7 @@ public class RecentEventLog {
             entries.removeFirst();
         }
         entries.addLast(new Entry(
-                Instant.now().toString(),
+                Timestamps.now(),
                 envelope == null ? null : trimToNull(envelope.eventId()),
                 envelope == null ? null : trimToNull(envelope.deviceId()),
                 envelope == null ? null : envelope.messageId(),

@@ -1,6 +1,6 @@
 package io.github.jtconsole.repository;
 
-import java.time.Instant;
+import io.github.jtconsole.config.Timestamps;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -31,7 +31,7 @@ public class DeviceAttributeRepository {
                         """)
                 .param(deviceId)
                 .param(protocolVersion)
-                .param(Instant.now().toString())
+                .param(Timestamps.now())
                 .update();
     }
 

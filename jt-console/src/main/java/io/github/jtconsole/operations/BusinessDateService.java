@@ -1,6 +1,7 @@
 package io.github.jtconsole.operations;
 
 import io.github.jtconsole.config.ConsoleProperties;
+import io.github.jtconsole.config.Timestamps;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -33,11 +34,11 @@ public class BusinessDateService {
 
     public LocalDate resolve(String deviceTime, String receivedAt) {
         if (deviceTime != null && !deviceTime.isBlank()) {
-            try {
-                return LocalDateTime.parse(deviceTime.trim()).toLocalDate();
-            } catch (DateTimeParseException ignored) {
-                // 设备时间不可信时退回平台接收时间。
+            LocalDate fromDevice = toLocalDate(deviceTime.trim());
+            if (fromDevice != null) {
+                return fromDevice;
             }
+            // 设备时间不可信时退回平台接收时间。
         }
         if (receivedAt != null && !receivedAt.isBlank()) {
             try {
@@ -51,6 +52,21 @@ public class BusinessDateService {
 
     public LocalDate today() {
         return LocalDate.now(clock.withZone(zoneId));
+    }
+
+    /**
+     * 取设备时间的日历日。
+     *
+     * <p>两种写法都要认：带偏移的（{@code …T08:01:00+08:00}，现行口径）与无偏移的
+     * （{@code …T08:01:00}，历史数据与部分外部来源）。**只认一种是不够的**——
+     * {@link LocalDateTime#parse} 遇到带偏移的值会抛异常，而这里的失败是静默回落到接收时间，
+     * 于是跨零点的补传会整批被归到同一天，日里程随之算错，且不报任何错。
+     *
+     * <p>带偏移时取其自身偏移下的日历日，而不是换算到运营时区：设备时间表达的就是终端所在地的
+     * 墙上时间，「这一天」按终端的一天算才对得上司机的认知。
+     */
+    private static LocalDate toLocalDate(String deviceTime) {
+        return Timestamps.toLocalDateTime(deviceTime).map(LocalDateTime::toLocalDate).orElse(null);
     }
 
     public Instant now() {

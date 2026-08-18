@@ -1,5 +1,6 @@
 package io.github.jtconsole.ingest;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.AlarmDefinition;
 import io.github.jtconsole.geo.CoordTransform;
 import java.util.ArrayList;
@@ -63,8 +64,10 @@ public record LocationSample(
 
         return new LocationSample(
                 deviceId,
-                asString(payload.get("deviceTime")),
-                receivedAt,
+                // 终端上报的时间不带时区（协议层面就是 BCD 的 YYMMDDHHMMSS），按标准即终端本地
+                // 时间。这里补上 +08:00，把一直以来的隐含约定写明确，也让它能与库里其它时间列直接比较。
+                Timestamps.ofDeviceLocal(asString(payload.get("deviceTime"))),
+                Timestamps.normalize(receivedAt),
                 usable,
                 usable ? lat : 0,
                 usable ? lng : 0,

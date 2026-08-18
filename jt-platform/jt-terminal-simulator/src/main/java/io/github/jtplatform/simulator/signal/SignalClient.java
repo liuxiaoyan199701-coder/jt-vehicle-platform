@@ -3,11 +3,14 @@ package io.github.jtplatform.simulator.signal;
 import io.github.jtplatform.simulator.config.Jt808Version;
 import io.github.jtplatform.simulator.config.RegistrationConfig;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.TripConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.commons.JT808;
+import org.yzh.protocol.commons.transform.AttributeKey;
 import org.yzh.protocol.t1078.T9101;
 import org.yzh.protocol.t1078.T9102;
 import org.yzh.protocol.t808.T0001;
@@ -31,9 +35,22 @@ import org.yzh.protocol.t808.T8100;
 import org.yzh.protocol.t808.T8801;
 
 public final class SignalClient implements AutoCloseable {
+
+    /**
+     * 行驶中的状态标志位：ACC 开、已定位、GPS 定位、车辆运动。
+     *
+     * <p>其中**已定位（bit1）是硬性要求**，缺了它平台会丢弃整条位置。加密标志（bit5）保持为 0：
+     * 上报的是原始坐标系，不是加密坐标系。
+     */
+    private static final int DRIVING_STATUS =
+            (1) | (1 << 1) | (1 << 18) | (1 << 22);
+    private static final int SOUTH_LATITUDE_BIT = 2;
+    private static final int WEST_LONGITUDE_BIT = 3;
+
     private final SimulatorConfig config;
     private final SignalCommandHandler commandHandler;
     private final SignalListener listener;
+    private final LocationSource locationSource;
     private final Timing timing;
     private final DoubleSupplier jitterSource;
     private final SerialNumber serialNumbers = new SerialNumber();
@@ -54,18 +71,31 @@ public final class SignalClient implements AutoCloseable {
             SimulatorConfig config,
             SignalCommandHandler commandHandler,
             SignalListener listener) {
-        this(config, commandHandler, listener, Timing.defaults(), Math::random);
+        this(config, commandHandler, listener, LocationSource.NONE);
+    }
+
+    public SignalClient(
+            SimulatorConfig config,
+            SignalCommandHandler commandHandler,
+            SignalListener listener,
+            LocationSource locationSource) {
+        this(config, commandHandler, listener, locationSource,
+                Timing.defaults().withLocationInterval(
+                        Duration.ofSeconds(config.trip().reportIntervalSeconds())),
+                Math::random);
     }
 
     SignalClient(
             SimulatorConfig config,
             SignalCommandHandler commandHandler,
             SignalListener listener,
+            LocationSource locationSource,
             Timing timing,
             DoubleSupplier jitterSource) {
         this.config = Objects.requireNonNull(config, "config");
         this.commandHandler = Objects.requireNonNull(commandHandler, "commandHandler");
         this.listener = listener == null ? SignalListener.NOOP : listener;
+        this.locationSource = locationSource == null ? LocationSource.NONE : locationSource;
         this.timing = Objects.requireNonNull(timing, "timing");
         this.jitterSource = Objects.requireNonNull(jitterSource, "jitterSource");
         this.photoHandler = new PhotoCaptureHandler(config, this::logDiagnostic);
@@ -215,6 +245,7 @@ public final class SignalClient implements AutoCloseable {
             socket.setSoTimeout(0);
             transition(SignalState.ONLINE, "Authenticated");
             current.startHeartbeat();
+            current.startLocationReporting();
             readOnline(current);
         } finally {
             current.close();
@@ -423,6 +454,47 @@ public final class SignalClient implements AutoCloseable {
         return prepare(response, serialNumbers.next());
     }
 
+    /**
+     * 由一次采样组装 0x0200 位置信息汇报。
+     *
+     * <p>三处不组装对就白跑：
+     *
+     * <ul>
+     *   <li><b>定位标志必须置位。</b>平台对未定位的位置直接判为不可用并跳过入库——车会「在跑」，
+     *       但平台上不会留下任何痕迹，而且没有任何报错。</li>
+     *   <li><b>经纬度字段是无符号的。</b>符号由状态位的南纬位与西经位承载；直接塞负值会按无符号
+     *       解释成一个天文数字。</li>
+     *   <li><b>里程附加项必须是 {@code Long}。</b>该项按 DWORD 编码，放 {@code Integer}
+     *       会在编码时强转失败。</li>
+     * </ul>
+     */
+    private T0200 locationReport(LocationFix fix) {
+        boolean southern = fix.latitude() < 0;
+        boolean western = fix.longitude() < 0;
+        int status = DRIVING_STATUS
+                | (southern ? 1 << SOUTH_LATITUDE_BIT : 0)
+                | (western ? 1 << WEST_LONGITUDE_BIT : 0);
+
+        T0200 report = new T0200()
+                .setWarnBit(0)
+                .setStatusBit(status)
+                .setLatitude(microDegrees(fix.latitude()))
+                .setLongitude(microDegrees(fix.longitude()))
+                .setAltitude(fix.altitudeMeters())
+                .setSpeed((int) Math.round(fix.speedKph() * 10))
+                .setDirection(Math.floorMod(fix.bearingDegrees(), 360))
+                .setDeviceTime(fix.deviceTime());
+        // 显式类型见证不能省：Map.of(Integer, Long) 推导出的是 Map<Integer,Long>，与字段类型不符。
+        report.setAttributes(Map.<Integer, Object>of(
+                AttributeKey.Mileage, Math.round(fix.odometerMeters() / 100.0D)));
+        return prepare(report, serialNumbers.next());
+    }
+
+    /** 十进制度转协议单位（1e-6 度），取绝对值——符号由状态标志位表达。 */
+    private static int microDegrees(double degrees) {
+        return (int) Math.round(Math.abs(degrees) * 1_000_000.0D);
+    }
+
     private JTMessage heartbeat() {
         JTMessage message = new JTMessage();
         message.setMessageId(JT808.终端心跳);
@@ -545,12 +617,14 @@ public final class SignalClient implements AutoCloseable {
             Duration connectTimeout,
             Duration responseTimeout,
             Duration heartbeatInterval,
+            Duration locationInterval,
             Duration backoffInitial,
             Duration backoffMaximum) {
         Timing {
             requirePositive(connectTimeout, "connectTimeout");
             requirePositive(responseTimeout, "responseTimeout");
             requirePositive(heartbeatInterval, "heartbeatInterval");
+            requirePositive(locationInterval, "locationInterval");
             requirePositive(backoffInitial, "backoffInitial");
             requirePositive(backoffMaximum, "backoffMaximum");
             if (backoffMaximum.compareTo(backoffInitial) < 0) {
@@ -563,8 +637,14 @@ public final class SignalClient implements AutoCloseable {
                     Duration.ofSeconds(10),
                     Duration.ofSeconds(10),
                     Duration.ofSeconds(30),
+                    Duration.ofSeconds(TripConfig.DEFAULT_REPORT_INTERVAL_SECONDS),
                     Duration.ofSeconds(1),
                     Duration.ofSeconds(30));
+        }
+
+        Timing withLocationInterval(Duration interval) {
+            return new Timing(connectTimeout, responseTimeout, heartbeatInterval, interval,
+                    backoffInitial, backoffMaximum);
         }
 
         private static void requirePositive(Duration value, String name) {
@@ -586,6 +666,7 @@ public final class SignalClient implements AutoCloseable {
         private final Jt808MessageWriter writer;
         private final AtomicBoolean closed = new AtomicBoolean();
         private ScheduledExecutorService heartbeatExecutor;
+        private ScheduledExecutorService locationExecutor;
 
         private Connection(Socket socket, Jt808MessageCodec codec) throws IOException {
             this.socket = socket;
@@ -614,6 +695,44 @@ public final class SignalClient implements AutoCloseable {
             }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
         }
 
+        /**
+         * 周期性向位置来源要一次数据并上报。与 {@link #startHeartbeat()} 逐行同构：同样的虚拟线程
+         * 调度器、同样的三重存活守卫、同样在 {@link #close()} 里停掉。
+         *
+         * <p><b>来源抛出的运行时异常必须在任务体内吞掉。</b>周期调度器的任务一旦抛出异常，会
+         * **静默取消后续所有调度**——位置上报会毫无征兆地永久停止，日志里也不会有任何线索。心跳
+         * 没有这个风险（它只写 IO，不调用外部代码），位置上报调用了外部实现，风险就出现了。
+         */
+        private void startLocationReporting() {
+            locationExecutor = Executors.newSingleThreadScheduledExecutor(
+                    Thread.ofVirtual().name("jt-simulator-location-", 0).factory());
+            long intervalMillis = Math.max(1, timing.locationInterval().toMillis());
+            locationExecutor.scheduleAtFixedRate(() -> {
+                if (closed.get() || connection != this || !connectionRequested.get()) {
+                    return;
+                }
+                LocationFix fix;
+                try {
+                    fix = locationSource.sample(Instant.now());
+                } catch (RuntimeException sourceFailure) {
+                    reportError("sampling simulated location", sourceFailure);
+                    return;
+                }
+                if (fix == null) {
+                    return;
+                }
+                try {
+                    writer.write(locationReport(fix));
+                } catch (IOException reportFailure) {
+                    reportError("writing T0200 location report", reportFailure);
+                    close();
+                } catch (RuntimeException encodeFailure) {
+                    // 编码失败不该拖垮连接，也不该让后续调度被静默取消。
+                    reportError("encoding T0200 location report", encodeFailure);
+                }
+            }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+        }
+
         @Override
         public void close() {
             if (!closed.compareAndSet(false, true)) {
@@ -621,6 +740,9 @@ public final class SignalClient implements AutoCloseable {
             }
             if (heartbeatExecutor != null) {
                 heartbeatExecutor.shutdownNow();
+            }
+            if (locationExecutor != null) {
+                locationExecutor.shutdownNow();
             }
             closeQuietly(socket);
         }

@@ -2,6 +2,7 @@ package io.github.jtconsole.ai.tool;
 
 import io.github.jtconsole.ai.action.ConfirmationPolicy;
 import io.github.jtconsole.ai.agent.AgentEventSink;
+import io.github.jtconsole.ai.view.ViewBudget;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.DataScope;
 import java.time.ZoneId;
@@ -20,7 +21,12 @@ public record ToolSession(
         DataScope scope,
         ZoneId zone,
         AgentEventSink events,
-        ConfirmationPolicy confirmationPolicy) {
+        ConfirmationPolicy confirmationPolicy,
+        /**
+         * 本轮的视图配额。刻意是可变对象——一轮对话内要跨多次工具调用累计计数，
+         * 而这个 record 的其余分量都是不可变的，所以在这里点明。
+         */
+        ViewBudget viewBudget) {
 
     private static final String KEY = "jt.tool.session";
 

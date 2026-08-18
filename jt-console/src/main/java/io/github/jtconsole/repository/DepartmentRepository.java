@@ -1,9 +1,9 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Department;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -139,7 +139,7 @@ public class DepartmentRepository {
                         WHERE id = ?
                         """)
                 .param(parentId).param(name).param(sortOrder).param(enabled ? 1 : 0)
-                .param(Instant.now().toString()).param(id)
+                .param(Timestamps.now()).param(id)
                 .update();
     }
 

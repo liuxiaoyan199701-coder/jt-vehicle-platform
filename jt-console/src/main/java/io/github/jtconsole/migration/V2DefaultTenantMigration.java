@@ -1,7 +1,7 @@
 package io.github.jtconsole.migration;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.TenantStatus;
-import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -36,7 +36,7 @@ public class V2DefaultTenantMigration implements SchemaMigration {
 
     @Override
     public void apply(JdbcClient jdbc) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long planId = ensureDefaultPlan(jdbc, now);
         long tenantId = ensureDefaultTenant(jdbc, planId, now);
         backfill(jdbc, tenantId);

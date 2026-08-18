@@ -1,14 +1,15 @@
 package io.github.jtplatform.simulator.ui;
 
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.TerminalTime;
 import io.github.jtplatform.simulator.diagnostics.LogEntry;
 import io.github.jtplatform.simulator.signal.SignalState;
+import io.github.jtplatform.simulator.trip.TripViewState;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.Map;
@@ -51,7 +52,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private static final int MAX_VISIBLE_LOGS = 500;
     private static final DateTimeFormatter LOG_TIME = DateTimeFormatter
             .ofPattern("HH:mm:ss.SSS")
-            .withZone(ZoneId.systemDefault());
+            .withZone(TerminalTime.ZONE);
 
     private final SimulatorOperations operations;
     private final ConfigurationPane configuration;
@@ -60,6 +61,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Button previewButton = new Button("启动预览");
     private final Label signalState = new Label("808 未连接");
     private final Label ffmpegState = new Label("FFmpeg 未检测");
+    private final Label tripState = new Label("行程 未连接");
     private final Label activity = new Label("就绪");
     private final ImageView previewImage = new ImageView();
     private final Label previewPlaceholder = new Label("暂无预览画面");
@@ -103,6 +105,8 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         signalState.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
         ffmpegState.setId("ffmpeg-state");
         ffmpegState.getStyleClass().add("ffmpeg-status");
+        tripState.setId("trip-state");
+        tripState.getStyleClass().add("trip-status");
         ffmpegState.setMinWidth(170);
         ffmpegState.setPrefWidth(300);
         ffmpegState.setMaxWidth(390);
@@ -122,6 +126,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
 
         saveButton.setOnAction(event -> saveConfiguration(true));
         connectButton.setOnAction(event -> toggleConnection());
+        configuration.tripToggleButton().setOnAction(event -> toggleTrip());
         previewButton.setOnAction(event -> togglePreview());
         configuration.browseFfmpegButton().setOnAction(event -> browseFfmpeg());
         configuration.detectFfmpegButton().setOnAction(event -> detectFfmpeg());
@@ -249,8 +254,9 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     }
 
     private Node createStatusBar() {
-        Separator separator = new Separator(Orientation.VERTICAL);
-        HBox status = new HBox(12, ffmpegState, separator, activity);
+        // 行程指示放状态栏而不是页眉：960px 下页眉已经排满，再塞就会把「连接」按钮挤出可视区。
+        HBox status = new HBox(12, ffmpegState, new Separator(Orientation.VERTICAL), tripState,
+                new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
         status.getStyleClass().add("status-bar");
         status.setAlignment(Pos.CENTER_LEFT);
@@ -424,6 +430,11 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     }
 
     @Override
+    public void onTripState(TripViewState state) {
+        runOnFx(() -> updateTripState(state));
+    }
+
+    @Override
     public void onPreviewFrame(byte[] jpeg) {
         if (jpeg == null || jpeg.length == 0) {
             return;
@@ -476,6 +487,29 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         connectButton.setDisable(state == SignalState.STOPPING);
         if (detail != null && !detail.isBlank()) {
             activity.setText(detail);
+        }
+    }
+
+    /**
+     * 行程按钮只有一个：未运行时开始，运行中停止。用当前状态而不是自己记一个布尔量决定动作——
+     * 状态来自运行时，界面记的副本迟早会和它对不上。
+     */
+    private void toggleTrip() {
+        if (operations.tripState().running()) {
+            operations.stopTrip();
+        } else {
+            operations.startTrip();
+        }
+    }
+
+    private void updateTripState(TripViewState state) {
+        tripState.setText(state.summary());
+        replaceStateStyle(tripState, state.running() ? "trip-running" : "trip-idle");
+        configuration.setTripState(
+                state.connected(), state.running(), state.planning(), state.explanation());
+        // 降级说明是用户唯一能看到「为什么车不贴路」的地方，值得占用一次活动提示。
+        if (!state.explanation().isBlank()) {
+            activity.setText(state.explanation());
         }
     }
 
@@ -650,7 +684,8 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private static void replaceStateStyle(Label label, String style) {
         label.getStyleClass().removeAll(
                 "state-online", "state-offline", "state-pending", "state-error",
-                "ffmpeg-ready", "ffmpeg-pending", "ffmpeg-error");
+                "ffmpeg-ready", "ffmpeg-pending", "ffmpeg-error",
+                "trip-running", "trip-idle");
         label.getStyleClass().add(style);
     }
 

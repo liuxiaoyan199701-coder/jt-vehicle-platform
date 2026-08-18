@@ -1,5 +1,6 @@
 package io.github.jtconsole.operations;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Fleet;
 import io.github.jtconsole.domain.FleetDetails;
 import io.github.jtconsole.domain.FleetSummary;
@@ -7,7 +8,6 @@ import io.github.jtconsole.repository.FleetRepository;
 import io.github.jtconsole.repository.VehicleRepository;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.DataScope;
-import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -116,7 +116,7 @@ public class FleetService {
         for (String current : fleets.memberIds(id)) {
             if (!requested.contains(current)) fleets.removeMember(id, current);
         }
-        String assignedAt = Instant.now().toString();
+        String assignedAt = Timestamps.now();
         for (String deviceId : requested) fleets.assign(id, deviceId, assignedAt);
         return find(id, scope);
     }
@@ -145,7 +145,7 @@ public class FleetService {
         String manager = optional(input.manager(), "负责人", 50);
         String contactPhone = optional(input.contactPhone(), "联系电话", 50);
         String remark = optional(input.remark(), "备注", 500);
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         return new Fleet(id, code, name, manager, contactPhone, remark, tenantId,
                 createdAt == null ? now : createdAt, now);
     }

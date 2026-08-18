@@ -5,6 +5,8 @@ import io.github.jtconsole.ai.tool.ActionTools;
 import io.github.jtconsole.ai.tool.FleetTools;
 import io.github.jtconsole.ai.tool.OperationsTools;
 import io.github.jtconsole.ai.tool.ToolSession;
+import io.github.jtconsole.ai.tool.ViewTools;
+import io.github.jtconsole.ai.view.ViewBudget;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.security.AuthorizedPrincipal;
@@ -55,12 +57,14 @@ public class AgentService {
             ConsoleProperties properties,
             FleetTools fleetTools,
             OperationsTools operationsTools,
-            ActionTools actionTools) {
+            ActionTools actionTools,
+            ViewTools viewTools) {
         this.chatModel = chatModel;
         this.prompts = prompts;
         this.dates = dates;
         this.properties = properties;
-        this.toolCallbacks = List.of(ToolCallbacks.from(fleetTools, operationsTools, actionTools));
+        this.toolCallbacks = List.of(
+                ToolCallbacks.from(fleetTools, operationsTools, actionTools, viewTools));
     }
 
     /**
@@ -79,8 +83,9 @@ public class AgentService {
         if (model == null) {
             throw new AiUnavailableException("平台未启用 AI 功能");
         }
+        // 配额每轮新建：它计的是「这一次对话里推了几个视图」，跨轮累计没有意义。
         ToolSession session = new ToolSession(
-                principal, principal.scope(), dates.zoneId(), sink, policy);
+                principal, principal.scope(), dates.zoneId(), sink, policy, new ViewBudget());
         ChatClient client = ChatClient.builder(model).build();
 
         StringBuilder answer = new StringBuilder();

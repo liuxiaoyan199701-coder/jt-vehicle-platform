@@ -1,6 +1,6 @@
 package io.github.jtconsole.repository;
 
-import java.time.Instant;
+import io.github.jtconsole.config.Timestamps;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -34,7 +34,7 @@ public class AiUsageRepository {
                         """)
                 .param(tenantId).param(accountId).param(kind).param(model).param(rounds)
                 .param(promptTokens).param(completionTokens).param(month)
-                .param(Instant.now().toString())
+                .param(Timestamps.now())
                 .update();
     }
 

@@ -65,12 +65,18 @@ public class TrackRepository {
      *
      * <p>{@code track_point} 不带租户列——投递写入时只有 deviceId，且设备跨租户调拨后
      * 历史行上的租户值会变成脏数据。范围过滤统一经车辆档案这张唯一权威映射。
+     *
+     * <p>时间边界经 {@link TimeBounds} 规范化：{@code device_time} 是字符串，比较走字节序，
+     * 边界写成空格分隔会让同一天的点一个都查不出来。原因见 {@code TimeBounds} 的类注释。
      */
     public List<TrackPoint> findRange(
             String deviceId, String start, String end, int limit, DataScope scope) {
         if (scope.empty()) {
             return List.of();
         }
+        // 边界为空表示该侧不设限。直接把 null 交给比较运算会让整个条件变成 NULL，静默返回空集。
+        String lower = TimeBounds.lower(start) == null ? "0000-01-01T00:00:00.000+08:00" : TimeBounds.lower(start);
+        String upper = TimeBounds.upper(end) == null ? "9999-12-31T23:59:59.999+08:00" : TimeBounds.upper(end);
         String sql = """
                 SELECT device_time AS deviceTime,
                        received_at AS receivedAt,
@@ -89,12 +95,13 @@ public class TrackRepository {
                 """;
         List<Object> params = new ArrayList<>();
         params.add(deviceId);
-        params.add(start);
-        params.add(end);
+        params.add(lower);
+        params.add(upper);
         params.addAll(scope.parameters());
         params.add(limit);
         return jdbc.sql(sql).params(params).query(TrackPoint.class).list();
     }
+
 
     public int countByDevice(String deviceId) {
         Integer count = jdbc.sql("SELECT COUNT(*) FROM track_point WHERE device_id = ?")

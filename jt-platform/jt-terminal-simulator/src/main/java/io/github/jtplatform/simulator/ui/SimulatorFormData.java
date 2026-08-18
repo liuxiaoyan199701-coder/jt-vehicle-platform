@@ -3,7 +3,11 @@ package io.github.jtplatform.simulator.ui;
 import io.github.jtplatform.simulator.config.Jt808Version;
 import io.github.jtplatform.simulator.config.RegistrationConfig;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.TripConfig;
 import io.github.jtplatform.simulator.config.VideoProfile;
+import io.github.jtplatform.simulator.trip.CoordinateTransform;
+import io.github.jtplatform.simulator.trip.GeoPoint;
+import io.github.jtplatform.simulator.trip.Route;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.EnumMap;
@@ -34,7 +38,8 @@ public record SimulatorFormData(
         String previewWidth,
         String previewHeight,
         String previewFrameRate,
-        String maxPayloadBytes) {
+        String maxPayloadBytes,
+        TripFormData trip) {
 
     public SimulatorFormData {
         signalHost = normalize(signalHost);
@@ -59,6 +64,7 @@ public record SimulatorFormData(
         previewHeight = normalize(previewHeight);
         previewFrameRate = normalize(previewFrameRate);
         maxPayloadBytes = normalize(maxPayloadBytes);
+        trip = trip == null ? TripFormData.from(TripConfig.defaults()) : trip;
     }
 
     public static SimulatorFormData from(SimulatorConfig config) {
@@ -87,7 +93,8 @@ public record SimulatorFormData(
                 Integer.toString(config.previewWidth()),
                 Integer.toString(config.previewHeight()),
                 Integer.toString(config.previewFps()),
-                Integer.toString(config.maxPayloadBytes()));
+                Integer.toString(config.maxPayloadBytes()),
+                TripFormData.from(config.trip()));
     }
 
     public ConfigValidation validate() {
@@ -135,6 +142,8 @@ public record SimulatorFormData(
         Integer checkedPayload = integer(maxPayloadBytes, ConfigField.MAX_PAYLOAD_BYTES,
                 "单片载荷", 1, 65_535, errors);
 
+        TripConfig checkedTrip = trip(errors);
+
         if (!errors.isEmpty()) {
             return new ConfigValidation(Optional.empty(), errors);
         }
@@ -165,12 +174,124 @@ public record SimulatorFormData(
                     checkedPreviewWidth,
                     checkedPreviewHeight,
                     checkedPreviewFps,
-                    checkedPayload);
+                    checkedPayload,
+                    checkedTrip);
             return new ConfigValidation(Optional.of(config), Map.of());
         } catch (IllegalArgumentException unexpected) {
             return new ConfigValidation(
                     Optional.empty(), Map.of(ConfigField.GENERAL, unexpected.getMessage()));
         }
+    }
+
+    /**
+     * 校验「行程」页。
+     *
+     * <p>起终点四项要么全空（使用内置路线），要么成对填写。半个坐标是无法使用的，
+     * 而且用户多半只是漏填了一格——就近提示比默默忽略有用得多。
+     */
+    private TripConfig trip(EnumMap<ConfigField, String> errors) {
+        Double originLat = optionalDecimal(trip.originLat(), ConfigField.TRIP_ORIGIN_LAT,
+                "起点纬度", -90.0D, 90.0D, errors);
+        Double originLng = optionalDecimal(trip.originLng(), ConfigField.TRIP_ORIGIN_LNG,
+                "起点经度", -180.0D, 180.0D, errors);
+        Double destinationLat = optionalDecimal(trip.destinationLat(),
+                ConfigField.TRIP_DESTINATION_LAT, "终点纬度", -90.0D, 90.0D, errors);
+        Double destinationLng = optionalDecimal(trip.destinationLng(),
+                ConfigField.TRIP_DESTINATION_LNG, "终点经度", -180.0D, 180.0D, errors);
+
+        requirePairedCoordinates(trip.originLat(), trip.originLng(),
+                ConfigField.TRIP_ORIGIN_LAT, ConfigField.TRIP_ORIGIN_LNG, "起点", errors);
+        requirePairedCoordinates(trip.destinationLat(), trip.destinationLng(),
+                ConfigField.TRIP_DESTINATION_LAT, ConfigField.TRIP_DESTINATION_LNG,
+                "终点", errors);
+
+        if (originLat != null && originLng != null
+                && destinationLat != null && destinationLng != null) {
+            double separation = CoordinateTransform.distanceMeters(
+                    new GeoPoint(originLat, originLng),
+                    new GeoPoint(destinationLat, destinationLng));
+            if (separation < Route.MIN_LENGTH_METERS) {
+                errors.put(ConfigField.TRIP_DESTINATION_LAT,
+                        "终点距起点仅 %.0f 米，请拉开至 %.0f 米以上，或将起终点都留空以使用内置路线"
+                                .formatted(separation, Route.MIN_LENGTH_METERS));
+            }
+        }
+
+        Double speed = decimal(trip.speedKph(), ConfigField.TRIP_SPEED, "行驶速度",
+                TripConfig.MIN_SPEED_KPH, TripConfig.MAX_SPEED_KPH, errors);
+        Integer interval = integer(trip.reportIntervalSeconds(),
+                ConfigField.TRIP_REPORT_INTERVAL, "上报间隔",
+                TripConfig.MIN_REPORT_INTERVAL_SECONDS, TripConfig.MAX_REPORT_INTERVAL_SECONDS,
+                errors);
+        if (speed == null || interval == null) {
+            return null;
+        }
+        return new TripConfig(trip.autoStart(), trip.amapKey(), originLat, originLng,
+                destinationLat, destinationLng, speed, interval, trip.roundTrip());
+    }
+
+    private static void requirePairedCoordinates(
+            String latitude,
+            String longitude,
+            ConfigField latitudeField,
+            ConfigField longitudeField,
+            String label,
+            EnumMap<ConfigField, String> errors) {
+        if (latitude.isEmpty() == longitude.isEmpty()) {
+            return;
+        }
+        ConfigField missing = latitude.isEmpty() ? latitudeField : longitudeField;
+        String missingLabel = latitude.isEmpty() ? "纬度" : "经度";
+        errors.putIfAbsent(missing,
+                "还需要填写%s%s，或把%s的经纬度都清空".formatted(label, missingLabel, label));
+    }
+
+    /**
+     * 解析可留空的小数。空串代表「未指定」，不是错误。
+     *
+     * <p>必须显式挡住无穷与非数：{@link Double#parseDouble} 对字符串 {@code "Infinity"} 与
+     * {@code "NaN"} 都会**解析成功**，而它们一旦进入坐标运算就会把整条路线变成 NaN。
+     */
+    private static Double optionalDecimal(
+            String value,
+            ConfigField field,
+            String label,
+            double minimum,
+            double maximum,
+            EnumMap<ConfigField, String> errors) {
+        if (value.isEmpty()) {
+            return null;
+        }
+        return decimal(value, field, label, minimum, maximum, errors);
+    }
+
+    private static Double decimal(
+            String value,
+            ConfigField field,
+            String label,
+            double minimum,
+            double maximum,
+            EnumMap<ConfigField, String> errors) {
+        try {
+            double parsed = Double.parseDouble(value);
+            if (!Double.isFinite(parsed)) {
+                errors.put(field, label + "必须为数字");
+                return null;
+            }
+            if (parsed < minimum || parsed > maximum) {
+                errors.put(field, "%s必须在 %s～%s 范围内".formatted(
+                        label, trimZero(minimum), trimZero(maximum)));
+                return null;
+            }
+            return parsed;
+        } catch (NumberFormatException invalid) {
+            errors.put(field, label + "必须为数字");
+            return null;
+        }
+    }
+
+    private static String trimZero(double value) {
+        return value == Math.rint(value) ? Long.toString((long) value) : Double.toString(value);
     }
 
     private static VideoProfile profile(

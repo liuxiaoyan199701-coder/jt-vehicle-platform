@@ -1,6 +1,6 @@
 package io.github.jtconsole.repository;
 
-import java.time.Instant;
+import io.github.jtconsole.config.Timestamps;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -25,7 +25,7 @@ public class AiConversationRepository {
     }
 
     public long create(Long tenantId, long accountId, String title) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.sql("""
                         INSERT INTO ai_conversation (tenant_id, account_id, title, created_at, updated_at)
@@ -53,7 +53,7 @@ public class AiConversationRepository {
     public void appendMessage(
             long conversationId, String role, String content, String toolTrace,
             int promptTokens, int completionTokens) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         jdbc.sql("""
                         INSERT INTO ai_message (conversation_id, role, content, tool_trace,
                                                 prompt_tokens, completion_tokens, created_at)
@@ -119,7 +119,7 @@ public class AiConversationRepository {
                 .param(conversationId).param(accountId)
                 .update();
         jdbc.sql("UPDATE ai_conversation SET updated_at = ? WHERE id = ? AND account_id = ?")
-                .param(java.time.Instant.now().toString()).param(conversationId).param(accountId)
+                .param(Timestamps.now()).param(conversationId).param(accountId)
                 .update();
         return removed;
     }

@@ -267,8 +267,8 @@ class OperationsIntegrationTest {
         AlarmEvent afterLateReports = alarm(AlarmSource.PROTOCOL, "overspeed");
 
         assertSoftly(softly -> {
-            softly.assertThat(latestDeviceTime).isEqualTo("2026-08-11T10:10:00");
-            softly.assertThat(latestSeenAt).isEqualTo("2026-08-11T02:10:00Z");
+            softly.assertThat(latestDeviceTime).isEqualTo("2026-08-11T10:10:00.000+08:00");
+            softly.assertThat(latestSeenAt).isEqualTo("2026-08-11T10:10:00.000+08:00");
             softly.assertThat(latestLng).isEqualTo(116.40);
             softly.assertThat(geofenceRepository.presence(created.id(), DEVICE)).contains(true);
             softly.assertThat(alarms.findCondition(DEVICE, AlarmSource.PROTOCOL, "overspeed")

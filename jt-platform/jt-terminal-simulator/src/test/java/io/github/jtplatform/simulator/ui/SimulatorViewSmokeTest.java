@@ -3,6 +3,7 @@ package io.github.jtplatform.simulator.ui;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.jtplatform.simulator.config.SimulatorConfig;
@@ -12,6 +13,7 @@ import io.github.jtplatform.simulator.media.DirectShowDevice;
 import io.github.jtplatform.simulator.media.DirectShowDevices;
 import io.github.jtplatform.simulator.media.FfmpegCapabilities;
 import io.github.jtplatform.simulator.signal.SignalState;
+import io.github.jtplatform.simulator.trip.TripViewState;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -142,6 +144,65 @@ class SimulatorViewSmokeTest {
     }
 
     @Test
+    @Timeout(30)
+    void bindsTheTripWorkflowAndExplainsWhyItIsUnavailable() throws Exception {
+        runOnFxAndWait(() -> {
+            FakeOperations operations = new FakeOperations();
+            SimulatorView view = new SimulatorView(operations, SimulatorConfig.defaults());
+            Stage stage = new Stage();
+            Scene scene = new Scene(view, 960, 640);
+            scene.getStylesheets().add(SimulatorApplication.stylesheetUrl());
+            stage.setScene(scene);
+            stage.sizeToScene();
+            stage.show();
+            view.activate();
+            view.applyCss();
+            view.layout();
+
+            // 新控件都能定位到，说明「行程」页确实建起来了。
+            assertNotNull(view.lookup("#trip-amap-key"));
+            assertNotNull(view.lookup("#trip-origin-lat"));
+            assertNotNull(view.lookup("#trip-destination-lng"));
+            assertNotNull(view.lookup("#trip-round-trip"));
+            assertNotNull(view.lookup("#trip-auto-start"));
+
+            Button trip = button(view, "#trip-toggle");
+            assertTrue(trip.isDisabled(), "未连接时不该能开启行程");
+            // 置灰必须解释原因——只置灰不解释是这类交互最常见的失分点。
+            assertNotNull(trip.getTooltip());
+            assertTrue(trip.getTooltip().getText().contains("请先连接"),
+                    trip.getTooltip().getText());
+            assertEquals("行程 未连接", label(view, "#trip-state").getText());
+
+            button(view, "#connect-toggle").fire();
+            assertEquals(1, operations.connectCalls);
+            assertFalse(trip.isDisabled(), "连接之后才允许开启行程");
+            assertNull(trip.getTooltip(), "可点击时不该再留着解释为什么不可点的提示");
+
+            trip.fire();
+            assertEquals(1, operations.tripStarts);
+            assertEquals("停止行程", trip.getText());
+            // 状态带文字而不只靠颜色——颜色不能是唯一的状态指示。
+            assertEquals("行程 运行中 · 3.2 km · 第 2 圈", label(view, "#trip-state").getText());
+
+            trip.fire();
+            assertEquals(1, operations.tripStops);
+            assertEquals("开始行程", trip.getText());
+
+            // 连接后配置项被锁定，但启停按钮不受影响。
+            assertTrue(field(view, "#trip-amap-key").isDisabled());
+            assertFalse(trip.isDisabled());
+
+            view.applyCss();
+            view.layout();
+            assertContained(view, view.lookup("#trip-state"));
+
+            view.close();
+            stage.close();
+        });
+    }
+
+    @Test
     @Timeout(20)
     void givesActionableWindowsGuidanceWhenNoCameraIsEnumerated() throws Exception {
         runOnFxAndWait(() -> {
@@ -250,10 +311,13 @@ class SimulatorViewSmokeTest {
         private SimulatorConfig config = SimulatorConfig.defaults();
         private SignalState signalState = SignalState.DISCONNECTED;
         private MediaViewState mediaState = MediaViewState.idle();
+        private TripViewState tripState = TripViewState.idle();
         private int detectCalls;
         private int connectCalls;
         private int previewStarts;
         private int previewStops;
+        private int tripStarts;
+        private int tripStops;
         private boolean closed;
         private final FfmpegProbeResult probeResult;
 
@@ -303,12 +367,45 @@ class SimulatorViewSmokeTest {
             this.config = config;
             signalState = SignalState.ONLINE;
             listener.onSignalState(signalState, "Authenticated");
+            emitTrip(withConnected(true));
         }
 
         @Override
         public void disconnect() {
             signalState = SignalState.DISCONNECTED;
             listener.onSignalState(signalState, "Disconnected");
+            emitTrip(withConnected(false));
+        }
+
+        @Override
+        public void startTrip() {
+            tripStarts++;
+            emitTrip(new TripViewState(true, true, false, false, 3_200.0D, 2,
+                    "内置路线", "使用内置离线路线"));
+        }
+
+        @Override
+        public void stopTrip() {
+            tripStops++;
+            emitTrip(new TripViewState(true, false, false, false,
+                    tripState.odometerMeters(), tripState.lap(),
+                    tripState.routeDescription(), tripState.explanation()));
+        }
+
+        @Override
+        public TripViewState tripState() {
+            return tripState;
+        }
+
+        private TripViewState withConnected(boolean connected) {
+            return new TripViewState(connected, false, false, false,
+                    tripState.odometerMeters(), tripState.lap(),
+                    tripState.routeDescription(), tripState.explanation());
+        }
+
+        private void emitTrip(TripViewState state) {
+            tripState = state;
+            listener.onTripState(state);
         }
 
         @Override

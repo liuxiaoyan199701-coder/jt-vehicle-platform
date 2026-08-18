@@ -51,6 +51,13 @@
                                         <exclude>org.springframework.boot:*</exclude>
                                         <exclude>io.github.jtplatform:jt-signal</exclude>
                                         <exclude>io.github.jtplatform:jt-media</exclude>
+                                        <!--
+                                          jt-common 里有一个同名的坐标换算工具，看上去正好能复用。
+                                          它不行：境内边界与控制台那份不一致，本身在生产代码里也无人调用，
+                                          而控制台是独立工程、这里根本依赖不到它实际在用的那个函数。
+                                          模拟器自带 trip/CoordinateTransform，禁掉这条依赖让该决定自我强制。
+                                        -->
+                                        <exclude>io.github.jtplatform:jt-common</exclude>
                                     </excludes>
                                     <message>The terminal simulator must remain independent from server runtimes.</message>
                                 </bannedDependencies>

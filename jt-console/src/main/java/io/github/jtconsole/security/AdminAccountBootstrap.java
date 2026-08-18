@@ -1,12 +1,12 @@
 package io.github.jtconsole.security;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.domain.Account;
 import io.github.jtconsole.domain.Role;
 import io.github.jtconsole.repository.AccountRepository;
 import io.github.jtconsole.repository.RoleRepository;
 import java.security.SecureRandom;
-import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -62,7 +62,7 @@ public class AdminAccountBootstrap implements InitializingBean {
         }
 
         String passwordHash = resolvePasswordHash(security, username);
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long accountId = accounts.insert(new Account(
                 0L, username, passwordHash, "平台管理员",
                 null, null, null, Account.ACTIVE, null, now, now));

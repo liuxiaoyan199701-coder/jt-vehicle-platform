@@ -1,5 +1,6 @@
 package io.github.jtconsole.iam;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.DataScopeType;
 import io.github.jtconsole.domain.Department;
 import io.github.jtconsole.domain.PermissionDefinition;
@@ -9,7 +10,6 @@ import io.github.jtconsole.repository.RoleRepository;
 import io.github.jtconsole.security.AuthorizationResolver;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.Permissions;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -80,7 +80,7 @@ public class RoleService {
         DataScopeType scope = DataScopeType.of(request.dataScope());
         List<Long> departmentIds = validateDepartments(tenantId, scope, request.departmentIds());
 
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long roleId = roles.insert(new Role(
                 0L, tenantId, code,
                 requireText(request.name(), "角色名称", MAX_NAME_LENGTH),
@@ -109,7 +109,7 @@ public class RoleService {
                 requireText(request.name(), "角色名称", MAX_NAME_LENGTH),
                 false, scope.name(),
                 optionalText(request.remark(), "备注", MAX_REMARK_LENGTH),
-                existing.createdAt(), Instant.now().toString()));
+                existing.createdAt(), Timestamps.now()));
         roles.replacePermissions(roleId, permissions);
         roles.replaceDepartments(roleId, departmentIds);
         // 收紧授权必须尽快生效，不能等各账号的 30 秒缓存自然过期。

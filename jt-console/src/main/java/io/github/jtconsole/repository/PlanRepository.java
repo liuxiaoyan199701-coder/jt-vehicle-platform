@@ -1,9 +1,9 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Plan;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -76,7 +76,7 @@ public class PlanRepository {
                 .param(plan.name()).param(plan.maxVehicles()).param(plan.maxAccounts())
                 .param(plan.maxAiCallsMonthly()).param(plan.priceCents())
                 .param(plan.periodMonths()).param(plan.enabled() ? 1 : 0)
-                .param(plan.remark()).param(Instant.now().toString()).param(plan.id())
+                .param(plan.remark()).param(Timestamps.now()).param(plan.id())
                 .update();
     }
 

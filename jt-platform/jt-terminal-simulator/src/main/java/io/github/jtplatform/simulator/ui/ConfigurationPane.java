@@ -15,9 +15,11 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.Control;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
@@ -70,14 +72,30 @@ final class ConfigurationPane extends VBox {
     private final TextField subGop = text(ConfigField.SUB_GOP);
     private final TextField maxPayloadBytes = text(ConfigField.MAX_PAYLOAD_BYTES);
 
+    private final CheckBox tripAutoStart = check(ConfigField.TRIP_AUTO_START, "连接成功后自动开始");
+    private final TextField tripAmapKey = text(ConfigField.TRIP_AMAP_KEY);
+    private final TextField tripOriginLat = text(ConfigField.TRIP_ORIGIN_LAT);
+    private final TextField tripOriginLng = text(ConfigField.TRIP_ORIGIN_LNG);
+    private final TextField tripDestinationLat = text(ConfigField.TRIP_DESTINATION_LAT);
+    private final TextField tripDestinationLng = text(ConfigField.TRIP_DESTINATION_LNG);
+    private final TextField tripSpeed = text(ConfigField.TRIP_SPEED);
+    private final TextField tripReportInterval = text(ConfigField.TRIP_REPORT_INTERVAL);
+    private final CheckBox tripRoundTrip = check(ConfigField.TRIP_ROUND_TRIP, "到终点后原路返回并循环");
+
     private final Button browseFfmpeg = new Button("浏览...");
     private final Button detectFfmpeg = new Button("检测 FFmpeg");
     private final Button refreshDevices = new Button("刷新设备");
+    private final Button tripToggle = new Button("开始行程");
+    private final ProgressIndicator tripProgress = new ProgressIndicator();
+    private final Label tripHint = new Label();
     private final Label validationSummary = new Label();
     private final TabPane tabs = new TabPane();
 
     private boolean locked;
     private boolean ffmpegBusy;
+    private boolean tripConnected;
+    private boolean tripRunning;
+    private boolean tripPlanning;
 
     /**
      * 手机号不足所选版本要求的位数时，左侧补零并刷新提示文案。
@@ -128,10 +146,24 @@ final class ConfigurationPane extends VBox {
         camera.setPromptText("选择或输入摄像头名称");
         microphone.setPromptText("选择或输入麦克风名称");
 
+        tripToggle.setId("trip-toggle");
+        tripAmapKey.setPromptText("留空则使用内置路线");
+        tripOriginLat.setPromptText("留空 = 用内置起点");
+        tripOriginLng.setPromptText("留空 = 用内置起点");
+        tripDestinationLat.setPromptText("留空 = 用内置终点");
+        tripDestinationLng.setPromptText("留空 = 用内置终点");
+        tripProgress.setMaxSize(16, 16);
+        tripProgress.setVisible(false);
+        tripProgress.setManaged(false);
+        tripHint.getStyleClass().add("field-hint");
+        tripHint.setWrapText(true);
+
+        // 「连接」页之后紧接「行程」：行程与连接的关联远比与采集、编码的关联紧密。
         Tab connectionTab = tab("连接", connectionContent());
+        Tab tripTab = tab("行程", tripContent());
         Tab captureTab = tab("采集", captureContent());
         Tab encodingTab = tab("编码", encodingContent());
-        tabs.getTabs().setAll(connectionTab, captureTab, encodingTab);
+        tabs.getTabs().setAll(connectionTab, tripTab, captureTab, encodingTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
@@ -141,6 +173,12 @@ final class ConfigurationPane extends VBox {
                 ConfigField.PROVINCE_ID, ConfigField.CITY_ID, ConfigField.MAKER_ID,
                 ConfigField.DEVICE_MODEL, ConfigField.PLATE_COLOR, ConfigField.PLATE_NO,
                 ConfigField.IMEI, ConfigField.SOFTWARE_VERSION);
+        mapTab(tripTab,
+                ConfigField.TRIP_AUTO_START, ConfigField.TRIP_AMAP_KEY,
+                ConfigField.TRIP_ORIGIN_LAT, ConfigField.TRIP_ORIGIN_LNG,
+                ConfigField.TRIP_DESTINATION_LAT, ConfigField.TRIP_DESTINATION_LNG,
+                ConfigField.TRIP_SPEED, ConfigField.TRIP_REPORT_INTERVAL,
+                ConfigField.TRIP_ROUND_TRIP);
         mapTab(captureTab,
                 ConfigField.FFMPEG_PATH, ConfigField.CAMERA, ConfigField.MICROPHONE,
                 ConfigField.PREVIEW_WIDTH, ConfigField.PREVIEW_HEIGHT,
@@ -159,6 +197,7 @@ final class ConfigurationPane extends VBox {
 
         getChildren().setAll(validationSummary, tabs);
         apply(SimulatorFormData.from(initialConfig));
+        setTripState(false, false, false, "");
     }
 
     private Node connectionContent() {
@@ -182,6 +221,44 @@ final class ConfigurationPane extends VBox {
         row(registration, 6, "IMEI", ConfigField.IMEI, imei);
         row(registration, 7, "软件版本", ConfigField.SOFTWARE_VERSION, softwareVersion);
         content.getChildren().addAll(sectionTitle("注册信息"), registration);
+        return scroll(content);
+    }
+
+    /**
+     * 「行程」页。控件按阅读顺序添加——密钥、起点、终点、参数——以保证 Tab 键顺序与视觉顺序一致。
+     */
+    private Node tripContent() {
+        VBox content = tabContent();
+
+        GridPane source = grid();
+        row(source, 0, "地图密钥", ConfigField.TRIP_AMAP_KEY, tripAmapKey);
+        Label sourceHint = new Label(
+                "填入高德「Web 服务」类型的 Key 后，行程会沿真实道路行驶；留空则使用内置路线。");
+        sourceHint.getStyleClass().add("field-hint");
+        sourceHint.setWrapText(true);
+        content.getChildren().addAll(sectionTitle("路线来源"), source, sourceHint);
+
+        GridPane endpoints = grid();
+        row(endpoints, 0, "起点纬度", ConfigField.TRIP_ORIGIN_LAT, tripOriginLat);
+        row(endpoints, 1, "起点经度", ConfigField.TRIP_ORIGIN_LNG, tripOriginLng);
+        row(endpoints, 2, "终点纬度", ConfigField.TRIP_DESTINATION_LAT, tripDestinationLat);
+        row(endpoints, 3, "终点经度", ConfigField.TRIP_DESTINATION_LNG, tripDestinationLng);
+        Label endpointHint = new Label(
+                "坐标为高德坐标系（GCJ-02），可直接从高德地图拾取；四项全部留空即使用内置路线。");
+        endpointHint.getStyleClass().add("field-hint");
+        endpointHint.setWrapText(true);
+        content.getChildren().addAll(sectionTitle("起点与终点"), endpoints, endpointHint);
+
+        GridPane parameters = grid();
+        row(parameters, 0, "速度 (km/h)", ConfigField.TRIP_SPEED, tripSpeed);
+        row(parameters, 1, "上报间隔 (秒)", ConfigField.TRIP_REPORT_INTERVAL, tripReportInterval);
+        row(parameters, 2, "往返", ConfigField.TRIP_ROUND_TRIP, tripRoundTrip);
+        row(parameters, 3, "自动开始", ConfigField.TRIP_AUTO_START, tripAutoStart);
+        content.getChildren().addAll(sectionTitle("行驶参数"), parameters);
+
+        HBox actions = new HBox(8, tripProgress, tripToggle);
+        actions.setAlignment(Pos.CENTER_RIGHT);
+        content.getChildren().addAll(actions, tripHint);
         return scroll(content);
     }
 
@@ -281,7 +358,17 @@ final class ConfigurationPane extends VBox {
                 previewWidth.getText(),
                 previewHeight.getText(),
                 previewFrameRate.getText(),
-                maxPayloadBytes.getText());
+                maxPayloadBytes.getText(),
+                new TripFormData(
+                        tripAutoStart.isSelected(),
+                        tripAmapKey.getText(),
+                        tripOriginLat.getText(),
+                        tripOriginLng.getText(),
+                        tripDestinationLat.getText(),
+                        tripDestinationLng.getText(),
+                        tripSpeed.getText(),
+                        tripReportInterval.getText(),
+                        tripRoundTrip.isSelected()));
     }
 
     void apply(SimulatorFormData data) {
@@ -311,7 +398,53 @@ final class ConfigurationPane extends VBox {
         previewHeight.setText(data.previewHeight());
         previewFrameRate.setText(data.previewFrameRate());
         maxPayloadBytes.setText(data.maxPayloadBytes());
+        TripFormData trip = data.trip();
+        tripAutoStart.setSelected(trip.autoStart());
+        tripAmapKey.setText(trip.amapKey());
+        tripOriginLat.setText(trip.originLat());
+        tripOriginLng.setText(trip.originLng());
+        tripDestinationLat.setText(trip.destinationLat());
+        tripDestinationLng.setText(trip.destinationLng());
+        tripSpeed.setText(trip.speedKph());
+        tripReportInterval.setText(trip.reportIntervalSeconds());
+        tripRoundTrip.setSelected(trip.roundTrip());
         clearErrors();
+    }
+
+    Button tripToggleButton() {
+        return tripToggle;
+    }
+
+    /**
+     * 更新行程按钮与提示。
+     *
+     * <p>未连接时按钮置灰，并用 tooltip 与页内提示说明**为什么**不可点——只置灰不解释，用户只会
+     * 反复点击然后以为程序坏了。行程唯一的可观测副作用是通过连接发位置汇报，没有连接就「开着但
+     * 什么都没发生」，那比置灰更让人困惑。
+     */
+    void setTripState(boolean connected, boolean running, boolean planning, String hint) {
+        this.tripConnected = connected;
+        this.tripRunning = running;
+        this.tripPlanning = planning;
+        tripHint.setText(hint == null ? "" : hint);
+        tripHint.setManaged(!tripHint.getText().isEmpty());
+        tripHint.setVisible(!tripHint.getText().isEmpty());
+        updateTripActionState();
+    }
+
+    private void updateTripActionState() {
+        // 规划路线最长可能等待数秒，必须给出进度反馈，否则用户会以为点击没有生效。
+        tripProgress.setVisible(tripPlanning);
+        tripProgress.setManaged(tripPlanning);
+        tripToggle.setText(tripPlanning ? "规划路线中…" : (tripRunning ? "停止行程" : "开始行程"));
+        tripToggle.setDisable(!tripConnected || tripPlanning);
+        if (!tripConnected) {
+            tripToggle.setTooltip(new Tooltip("请先连接平台，行程需要通过已建立的会话上报位置"));
+        } else if (tripPlanning) {
+            tripToggle.setTooltip(new Tooltip("正在获取路线，请稍候"));
+        } else {
+            tripToggle.setTooltip(null);
+        }
     }
 
     void setDevices(DirectShowDevices devices) {
@@ -445,6 +578,13 @@ final class ConfigurationPane extends VBox {
         TextField control = register(field, new TextField());
         control.setPrefColumnCount(16);
         return control;
+    }
+
+    /**
+     * 复选框控件工厂。文字写在控件自身上，因此左侧标签只承担分组说明的作用。
+     */
+    private CheckBox check(ConfigField field, String text) {
+        return register(field, new CheckBox(text));
     }
 
     private <T> ComboBox<T> combo(ConfigField field) {

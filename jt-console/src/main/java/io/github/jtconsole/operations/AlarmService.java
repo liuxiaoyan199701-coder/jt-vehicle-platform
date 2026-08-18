@@ -1,5 +1,6 @@
 package io.github.jtconsole.operations;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.AlarmDefinition;
 import io.github.jtconsole.domain.AlarmEvent;
 import io.github.jtconsole.domain.AlarmSource;
@@ -8,7 +9,6 @@ import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.AlarmRepository.ConditionState;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.security.DataScope;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -111,7 +111,7 @@ public class AlarmService {
         AlarmEvent event = alarms.findById(id, scope).orElse(null);
         if (event == null) return ActionResult.NOT_FOUND;
         if (event.status() != AlarmStatus.OPEN) return ActionResult.INVALID_STATE;
-        String at = Instant.now().toString();
+        String at = Timestamps.now();
         return alarms.acknowledge(id, requireNote(note), operator, at) == 1
                 ? ActionResult.UPDATED : ActionResult.INVALID_STATE;
     }
@@ -121,7 +121,7 @@ public class AlarmService {
         AlarmEvent event = alarms.findById(id, scope).orElse(null);
         if (event == null) return ActionResult.NOT_FOUND;
         if (event.status() == AlarmStatus.CLOSED) return ActionResult.INVALID_STATE;
-        String at = Instant.now().toString();
+        String at = Timestamps.now();
         return alarms.close(id, requireNote(note), operator, at) == 1
                 ? ActionResult.UPDATED : ActionResult.INVALID_STATE;
     }

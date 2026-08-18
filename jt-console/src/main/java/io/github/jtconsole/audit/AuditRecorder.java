@@ -1,5 +1,6 @@
 package io.github.jtconsole.audit;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.domain.AuditEntry;
 import io.github.jtconsole.repository.AuditRepository;
@@ -77,7 +78,7 @@ public class AuditRecorder implements DisposableBean {
 
     /** 分批删除超出保留期的记录，返回删除总数。清理放在低峰定时任务里调用。 */
     public long purgeOlderThan(Duration retention, int batchSize, int maxBatches) {
-        String cutoff = clock.instant().minus(retention).toString();
+        String cutoff = Timestamps.of(clock.instant().minus(retention));
         long total = 0;
         for (int batch = 0; batch < maxBatches; batch++) {
             int removed = repository.deleteOlderThan(cutoff, batchSize);

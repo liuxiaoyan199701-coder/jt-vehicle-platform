@@ -1,5 +1,6 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import java.time.Instant;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
@@ -30,7 +31,7 @@ public class EventRepository {
     public boolean markProcessed(String eventId) {
         int rows = jdbc.sql("INSERT OR IGNORE INTO processed_event (event_id, created_at) VALUES (?, ?)")
                 .param(eventId)
-                .param(Instant.now().toString())
+                .param(Timestamps.now())
                 .update();
         return rows > 0;
     }
@@ -40,7 +41,7 @@ public class EventRepository {
      */
     public int deleteOlderThan(Instant cutoff) {
         return jdbc.sql("DELETE FROM processed_event WHERE created_at < ?")
-                .param(cutoff.toString())
+                .param(Timestamps.of(cutoff))
                 .update();
     }
 }

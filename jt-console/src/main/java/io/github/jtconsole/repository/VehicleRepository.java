@@ -1,10 +1,10 @@
 package io.github.jtconsole.repository;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Vehicle;
 import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -72,7 +72,7 @@ public class VehicleRepository {
     }
 
     public void insert(Vehicle vehicle) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         jdbc.sql("""
                         INSERT INTO vehicle (device_id, plate_no, plate_color, brand, channel_count,
                                              remark, tenant_id, department_id, created_at, updated_at)
@@ -104,7 +104,7 @@ public class VehicleRepository {
                 .param(vehicle.channelCount())
                 .param(vehicle.remark())
                 .param(vehicle.departmentId())
-                .param(Instant.now().toString())
+                .param(Timestamps.now())
                 .param(vehicle.deviceId())
                 .update();
     }
@@ -124,7 +124,7 @@ public class VehicleRepository {
                         UPDATE vehicle SET tenant_id = ?, department_id = NULL, updated_at = ?
                         WHERE device_id = ?
                         """)
-                .param(targetTenantId).param(Instant.now().toString()).param(deviceId)
+                .param(targetTenantId).param(Timestamps.now()).param(deviceId)
                 .update();
     }
 
@@ -169,7 +169,7 @@ public class VehicleRepository {
                         UPDATE vehicle SET department_id = NULL, updated_at = ?
                         WHERE department_id = ?
                         """)
-                .param(Instant.now().toString()).param(departmentId)
+                .param(Timestamps.now()).param(departmentId)
                 .update();
     }
 

@@ -1,10 +1,10 @@
 package io.github.jtconsole.security;
 
+import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Role;
 import io.github.jtconsole.migration.SchemaMigrationRunner;
 import io.github.jtconsole.repository.PermissionRepository;
 import io.github.jtconsole.repository.RoleRepository;
-import java.time.Instant;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +57,7 @@ public class PermissionCatalogSynchronizer implements InitializingBean {
     }
 
     private void syncBuiltinRole(String code, String name, String remark, Set<String> grants) {
-        String now = Instant.now().toString();
+        String now = Timestamps.now();
         long roleId = roles.findBuiltin(code)
                 .map(Role::id)
                 .orElseGet(() -> roles.insert(new Role(
