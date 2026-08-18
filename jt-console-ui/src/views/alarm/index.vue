@@ -9,12 +9,14 @@ import {
   closeAlarm,
   fetchAlarm,
   fetchAlarms,
+  fetchMediaAround,
   fetchVehicles,
   type AlarmEvent,
   type AlarmLevel,
   type AlarmQuery,
   type AlarmSource,
   type AlarmStatus,
+  type MediaFileItem,
   type Vehicle
 } from '@/service/api';
 import {
@@ -38,6 +40,7 @@ const rows = ref<AlarmEvent[]>([]);
 const total = ref(0);
 const vehicles = ref<Vehicle[]>([]);
 const detailVisible = ref(false);
+const nearbyPhotos = ref<MediaFileItem[]>([]);
 const currentAlarm = ref<AlarmEvent | null>(null);
 const actionVisible = ref(false);
 const actionType = ref<'acknowledge' | 'close'>('acknowledge');
@@ -210,7 +213,23 @@ function reset() {
 function openDetail(alarm: AlarmEvent) {
   currentAlarm.value = alarm;
   detailVisible.value = true;
+  void loadNearbyPhotos(alarm);
   void router.replace({ query: { ...route.query, alarm: String(alarm.id) } });
+}
+
+/**
+ * 该时段抓拍。
+ *
+ * 失败静默：抓拍是锦上添花，加载不出来就当没有。为它弹一个错误提示会让人以为告警详情坏了。
+ */
+async function loadNearbyPhotos(alarm: AlarmEvent) {
+  nearbyPhotos.value = [];
+  try {
+    const { data } = await fetchMediaAround(alarm.deviceId, alarm.occurredAt, 6);
+    nearbyPhotos.value = data ?? [];
+  } catch {
+    nearbyPhotos.value = [];
+  }
 }
 
 async function openAlarmById(id: number) {
@@ -347,6 +366,39 @@ function locateVehicle() {
             </div>
           </NDescriptionsItem>
         </NDescriptions>
+
+        <!--
+          该时段的抓拍。
+          刻意不写「该告警的抓拍」：0x0801 只带事件项编码（平台指令/定时/抢劫/碰撞侧翻），
+          没有任何字段能定位到具体某条告警，所以这里给的是时间邻近的照片，不是因果关系。
+          没有照片时整块不出现，而不是显示一个空区域。
+        -->
+        <div v-if="nearbyPhotos.length" class="mt-16px">
+          <p class="mb-8px text-13px text-gray-600 dark:text-gray-300">
+            该时段（前后 90 秒）该车的抓拍
+          </p>
+          <div class="grid grid-cols-3 gap-8px">
+            <a
+              v-for="photo in nearbyPhotos"
+              :key="photo.id"
+              :href="photo.accessAddress ?? undefined"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block overflow-hidden rd-4px"
+            >
+              <img
+                v-if="photo.accessAddress"
+                :src="photo.accessAddress"
+                :alt="`${photo.deviceId} 于 ${photo.capturedAt} 的抓拍`"
+                class="aspect-video w-full bg-gray-100 object-cover dark:bg-gray-800"
+                loading="lazy"
+              />
+              <div v-else class="aspect-video w-full flex-center bg-gray-100 text-11px text-gray-500 dark:bg-gray-800">
+                无访问地址
+              </div>
+            </a>
+          </div>
+        </div>
       </template>
       <template #footer>
         <NSpace v-if="currentAlarm" justify="end" wrap>

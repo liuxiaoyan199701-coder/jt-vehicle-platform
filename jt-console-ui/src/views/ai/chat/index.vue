@@ -17,6 +17,8 @@ import {
   fetchAiMessages
 } from '@/service/api/ai';
 import type { AiConversation } from '@/service/api/ai';
+import { uploadAiAttachment } from '@/service/api/console';
+import { getServiceBaseURL } from '@/utils/service';
 import MarkdownView from './modules/markdown-view.vue';
 import ActionCard from './modules/action-card.vue';
 import ConversationList from './modules/conversation-list.vue';
@@ -43,6 +45,14 @@ interface Bubble {
   tools: ToolTrace[];
   views: AiViewEvent[];
   actions: AiActionEvent[];
+  /**
+   * 本轮随消息发出的图片附件 id。
+   *
+   * <p>只用于在自己的气泡里把图显示出来。图片内容的识别在服务端完成并已作为文字进入模型上下文，
+   * 界面上不呈现那段描述——用户看到的应该是「我发的图 + 助手的回答」，
+   * 而不是「我发的图 + 一份识别报告 + 回答」。
+   */
+  attachmentIds?: string[];
 }
 
 const appStore = useAppStore();
@@ -289,11 +299,92 @@ function onCompositionEnd() {
 
 function send(text?: string) {
   const question = (text ?? input.value).trim();
-  if (!question || streaming.value) return;
+  // 只发图不打字是完全正常的用法，所以有待发图片时不要求必须有文字。
+  if ((!question && !pendingImages.value.length) || streaming.value) return;
+  if (uploading.value) return;
   input.value = '';
   stuckToBottom.value = true;
-  runTurn(question);
+  runTurn(question || '看看这张图片。');
   inputRef.value?.focus();
+}
+
+// ---------------- 图片附件 ----------------
+
+/**
+ * 待发送的图片。
+ *
+ * <p>上传与发送分成两步：贴图即上传即预览，用户还在打字时图就已经在了。
+ * 等按下发送再传，会让人对着一个转圈的按钮等好几秒。
+ */
+const pendingImages = ref<{ id: string; url: string }[]>([]);
+const uploading = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
+
+/** 与后端 VisionImage.ALLOWED_MIME_TYPES 保持一致。SVG 刻意不在列——它是可执行文档。 */
+const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_PENDING = 4;
+
+async function attachFiles(files: FileList | File[]) {
+  const list = Array.from(files).filter(file => ACCEPTED.includes(file.type));
+  if (!list.length) {
+    message.warning('只支持 JPG、PNG、WebP 图片');
+    return;
+  }
+  const room = MAX_PENDING - pendingImages.value.length;
+  if (room <= 0) {
+    message.warning(`一次最多发送 ${MAX_PENDING} 张图片`);
+    return;
+  }
+  uploading.value = true;
+  try {
+    for (const file of list.slice(0, room)) {
+      const { data, error } = await uploadAiAttachment(file);
+      if (error || !data?.id) {
+        // 原因如实透出：超限、格式不符、未启用识别，处理方式完全不同。
+        message.error(error?.message ?? '图片上传失败');
+        continue;
+      }
+      pendingImages.value.push({ id: data.id, url: URL.createObjectURL(file) });
+    }
+  } finally {
+    uploading.value = false;
+  }
+}
+
+function removePending(id: string) {
+  const index = pendingImages.value.findIndex(item => item.id === id);
+  if (index < 0) return;
+  URL.revokeObjectURL(pendingImages.value[index].url);
+  pendingImages.value.splice(index, 1);
+}
+
+function onPickFiles(event: Event) {
+  const target = event.target as HTMLInputElement;
+  if (target.files?.length) void attachFiles(target.files);
+  // 清空 value，否则连续选同一个文件不会再触发 change。
+  target.value = '';
+}
+
+/** 粘贴截图直接进来——这是最自然的用法，比点按钮找文件快得多。 */
+function onPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? []);
+  if (!files.length) return;
+  event.preventDefault();
+  void attachFiles(files);
+}
+
+function onDrop(event: DragEvent) {
+  const files = event.dataTransfer?.files;
+  if (!files?.length) return;
+  event.preventDefault();
+  void attachFiles(files);
+}
+
+/** 附件 id 换成可访问地址。历史还原时也走它，所以不能依赖 objectURL。 */
+function attachmentUrl(id: string) {
+  const isHttpProxy = import.meta.env.DEV && import.meta.env.VITE_HTTP_PROXY === 'Y';
+  const { baseURL } = getServiceBaseURL(import.meta.env, isHttpProxy);
+  return `${baseURL}/ai/attachments/${id}`;
 }
 
 async function copyReply(content: string) {
@@ -315,9 +406,19 @@ function runTurn(question: string | null) {
   if (streaming.value) return;
 
   errorText.value = '';
+  // 附件在这一轮消费掉：取出来交给请求，同时挂到用户气泡上供显示。
+  const sending = pendingImages.value.map(item => item.id);
   if (question) {
-    pushBubble({ role: 'user', content: question, tools: [], views: [], actions: [] });
+    pushBubble({
+      role: 'user',
+      content: question,
+      tools: [],
+      views: [],
+      actions: [],
+      attachmentIds: sending.length ? sending : undefined
+    });
   }
+  pendingImages.value = [];
   // 必须取回数组里的那一份而不是继续用刚才那个字面量：ref 数组存的是响应式代理，
   // 改原始对象虽然数据也变了，却不会通知视图——表现就是「没有流式效果，全文最后一次性冒出来」。
   const reply = pushBubble({ role: 'assistant', content: '', tools: [], views: [], actions: [] });
@@ -385,7 +486,8 @@ function runTurn(question: string | null) {
         if (!reply.content) bubbles.value.pop();
       }
     },
-    activeId.value
+    activeId.value,
+    sending
   );
 }
 
@@ -518,8 +620,29 @@ onBeforeUnmount(() => {
  底纹用主色、文字保持正文色：主题色是用户可配的，白字压在主色上时对比度会随
                    配色变化（默认色实测仅 4.09:1，不达标）。让文字沿用正文色则与主题色无关。 
 -->
-              <div class="max-w-75% whitespace-pre-wrap break-words rd-8px bg-primary/12 px-12px py-8px">
-                {{ bubble.content }}
+              <div class="max-w-75% flex flex-col items-end gap-6px">
+                <!-- 自己发的图显示在自己的气泡里，与任何多模态对话一致 -->
+                <div v-if="bubble.attachmentIds?.length" class="flex flex-wrap justify-end gap-6px">
+                  <a
+                    v-for="attachmentId in bubble.attachmentIds"
+                    :key="attachmentId"
+                    :href="attachmentUrl(attachmentId)"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <img
+                      :src="attachmentUrl(attachmentId)"
+                      alt="我发送的图片"
+                      class="max-h-160px rd-8px object-cover"
+                    />
+                  </a>
+                </div>
+                <div
+                  v-if="bubble.content"
+                  class="whitespace-pre-wrap break-words rd-8px bg-primary/12 px-12px py-8px"
+                >
+                  {{ bubble.content }}
+                </div>
               </div>
             </div>
             <div v-else class="flex justify-start">
@@ -610,22 +733,69 @@ onBeforeUnmount(() => {
         </Transition>
       </NSpin>
 
-      <div class="pt-8px">
+      <div class="pt-8px" @dragover.prevent @drop="onDrop">
+        <!-- 待发图片的预览条。贴上就在，不用等发送 -->
+        <div v-if="pendingImages.length" class="mb-8px flex flex-wrap gap-8px">
+          <div v-for="image in pendingImages" :key="image.id" class="group relative">
+            <img :src="image.url" alt="待发送的图片" class="h-64px w-64px rd-6px object-cover" />
+            <NButton
+              size="tiny"
+              circle
+              type="error"
+              class="absolute -right-6px -top-6px opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+              aria-label="移除这张图片"
+              @click="removePending(image.id)"
+            >
+              <template #icon>
+                <SvgIcon icon="mdi:close" />
+              </template>
+            </NButton>
+          </div>
+        </div>
+
         <div class="flex items-end gap-8px">
+          <NButton
+            quaternary
+            circle
+            :disabled="streaming || uploading || pendingImages.length >= 4"
+            :loading="uploading"
+            aria-label="添加图片"
+            @click="fileInput?.click()"
+          >
+            <template #icon>
+              <SvgIcon icon="mdi:image-plus-outline" />
+            </template>
+          </NButton>
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            class="hidden"
+            @change="onPickFiles"
+          />
           <NInput
             ref="inputRef"
             v-model:value="input"
             type="textarea"
-            placeholder="问点什么，或让我帮你做点什么…（Enter 发送，Shift+Enter 换行）"
+            placeholder="问点什么，或让我帮你做点什么…可直接粘贴或拖入图片（Enter 发送，Shift+Enter 换行）"
             :autosize="{ minRows: 1, maxRows: 5 }"
             :disabled="streaming"
             aria-label="向 AI 助手提问"
             @compositionstart="onCompositionStart"
             @compositionend="onCompositionEnd"
             @keydown.enter.exact="onEnter"
+            @paste="onPaste"
           />
           <NButton v-if="streaming" type="warning" @click="stop">停止</NButton>
-          <NButton v-else type="primary" :disabled="!input.trim()" @click="send()">发送</NButton>
+          <NButton
+            v-else
+            type="primary"
+            :disabled="(!input.trim() && !pendingImages.length) || uploading"
+            @click="send()"
+          >
+            发送
+          </NButton>
         </div>
         <!-- AI 生成内容必须明示，尤其是这里的回答会直接引导用户去改平台数据 -->
         <p class="mt-6px text-center text-12px text-gray-500 dark:text-gray-400">

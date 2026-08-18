@@ -452,10 +452,108 @@ export interface MediaFileItem {
   size: number | null;
   accessAddress: string | null;
   channelId: number | null;
+  /**
+   * 0x0801 的事件项编码：0 平台下发指令、1 定时动作、2 抢劫报警触发、3 碰撞侧翻报警触发。
+   * **不是告警 ID**——协议没有提供能定位到具体某条告警的字段。
+   */
   eventCode: number | null;
+  /** 抓拍位置。设备当时未定位则为 null，**不会是 0**，可直接用于判断是否显示地图。 */
+  lat: number | null;
+  lng: number | null;
+  gcjLat: number | null;
+  gcjLng: number | null;
   capturedAt: string;
+}
+
+export interface MediaPage {
+  items: MediaFileItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface MediaQuery {
+  deviceId?: string;
+  fileType?: string;
+  channelId?: number | null;
+  /** manual = 指令或定时；alarm = 报警触发 */
+  trigger?: 'manual' | 'alarm' | null;
+  locatedOnly?: boolean;
+  start?: string;
+  end?: string;
+  page?: number;
+  pageSize?: number;
 }
 
 export function fetchRecentMedia(deviceId: string, limit = 20) {
   return request<MediaFileItem[]>({ url: '/media/recent', params: { deviceId, limit } });
+}
+
+/** 多媒体检索。不给 deviceId 即跨车辆查。 */
+export function fetchMedia(query: MediaQuery) {
+  return request<MediaPage>({ url: '/media', params: query });
+}
+
+/**
+ * 某台车在某个时刻前后的抓拍。
+ *
+ * 用于告警详情的「该时段抓拍」。注意它返回的是**时间邻近**的照片而不是「属于这条告警」的
+ * 照片——0x0801 没有携带告警标识，因果关系无从建立，界面文案不要暗示因果。
+ */
+export function fetchMediaAround(deviceId: string, at: string, limit = 20) {
+  return request<MediaFileItem[]>({ url: '/media/around', params: { deviceId, at, limit } });
+}
+
+// ---------------- 看板今日要点 ----------------
+
+export interface BriefingLink {
+  /** vue-router 路由名，如 track / monitor / alarm / media */
+  routeName: string;
+  query: Record<string, string>;
+  label: string | null;
+}
+
+export interface BriefingItem {
+  id: string;
+  category: 'OFFLINE' | 'ALARM' | 'MILEAGE' | 'CAMERA' | 'FLEET';
+  severity: 'INFO' | 'WARN' | 'CRITICAL';
+  /** 模型改写过的措辞。**数字来自 facts，不来自这句话** */
+  text: string;
+  /** 支撑数据，由服务端计算后原样透传，未经模型 */
+  facts: Record<string, unknown>;
+  deviceIds: string[];
+  link: BriefingLink | null;
+}
+
+export interface Briefing {
+  items: BriefingItem[];
+  /** OK 正常 / DEGRADED 模型降级但有内容 / FAILED 生成失败 / PENDING 尚未生成 / NONE 不适用 */
+  status: string;
+  updatedAt: string | null;
+  error: string | null;
+  /** 是否因数据范围隐藏了部分要点。为 true 时要向用户说明，免得以为平台漏报 */
+  filtered: boolean;
+}
+
+export function fetchBriefing() {
+  return request<Briefing>({ url: '/dashboard/briefing' });
+}
+
+/** 手动重新分析。会真的调一次模型，前端要给出加载态。 */
+export function refreshBriefing() {
+  return request<Briefing>({ url: '/dashboard/briefing/refresh', method: 'post' });
+}
+
+// ---------------- AI 对话图片附件 ----------------
+
+/** 上传一张对话里要发给 AI 的图片，返回附件 id。 */
+export function uploadAiAttachment(file: File) {
+  const form = new FormData();
+  form.append('file', file);
+  return request<{ id: string }>({
+    url: '/ai/attachments',
+    method: 'post',
+    data: form,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
 }

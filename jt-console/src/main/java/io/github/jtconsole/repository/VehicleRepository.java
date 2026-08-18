@@ -158,6 +158,21 @@ public class VehicleRepository {
         return count != null && count > 0;
     }
 
+    /**
+     * 范围内全部设备号。
+     *
+     * <p>供需要**批量判定可见性**的场景使用（如看板要点按数据范围过滤）：逐条调
+     * {@link #visible} 会对每个设备号打一次库，而那些场景一次要判十几条。
+     */
+    public java.util.Set<String> visibleDeviceIds(DataScope scope) {
+        if (scope.empty()) {
+            return java.util.Set.of();
+        }
+        String sql = "SELECT device_id FROM vehicle WHERE 1 = 1" + scope.vehicleCondition("");
+        return new java.util.HashSet<>(
+                jdbc.sql(sql).params(scope.parameters()).query(String.class).list());
+    }
+
     public int countByTenant(long tenantId) {
         Integer count = jdbc.sql("SELECT COUNT(*) FROM vehicle WHERE tenant_id = ?")
                 .param(tenantId).query(Integer.class).single();

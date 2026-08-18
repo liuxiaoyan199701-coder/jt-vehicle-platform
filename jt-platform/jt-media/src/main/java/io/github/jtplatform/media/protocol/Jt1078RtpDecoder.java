@@ -14,6 +14,13 @@ public final class Jt1078RtpDecoder extends ByteToMessageDecoder {
 
     private final StreamKind streamKind;
     private final int maxPayloadBytes;
+    /**
+     * 本连接的 SIM 宽度，判定一次后复用。
+     *
+     * <p>Netty 的解码器每条连接一个实例（见 {@code MediaNodeServer} 的 pipeline 装配），
+     * 所以放在这里就等于连接级缓存，不必再往 channel attribute 里塞一层。
+     */
+    private final SimWidthResolver simWidth = new SimWidthResolver();
 
     public Jt1078RtpDecoder(StreamKind streamKind, int maxPayloadBytes) {
         this.streamKind = Objects.requireNonNull(streamKind, "streamKind");
@@ -21,6 +28,11 @@ public final class Jt1078RtpDecoder extends ByteToMessageDecoder {
             throw new IllegalArgumentException("maxPayloadBytes must be in range 1..65535");
         }
         this.maxPayloadBytes = maxPayloadBytes;
+    }
+
+    /** 本连接判定出的 SIM 宽度，未判定时为 null。供指标统计。 */
+    public SimWidth simWidth() {
+        return simWidth.resolved();
     }
 
     @Override
@@ -43,11 +55,19 @@ public final class Jt1078RtpDecoder extends ByteToMessageDecoder {
         }
 
         int start = input.readerIndex();
-        int typeAndFragment = input.getUnsignedByte(start + 15);
+        // 判定一次即缓存。数据不足以判定时返回 null，等更多字节再说——
+        // 用半个头拍脑袋定下来，之后整条流都会按错误偏移解析。
+        SimWidth width = simWidth.resolve(input, start);
+        if (width == null) {
+            return;
+        }
+        int shift = width.offsetShift();
+
+        int typeAndFragment = input.getUnsignedByte(start + 15 + shift);
         int dataType = (typeAndFragment >>> 4) & 0x0f;
         int headerLength;
         try {
-            headerLength = headerLength(dataType);
+            headerLength = headerLength(dataType) + shift;
             FragmentFlag.fromWireValue(typeAndFragment & 0x0f);
         } catch (IllegalArgumentException invalidHeader) {
             LOGGER.warn("Discarding invalid JT/T 1078 header: {}", invalidHeader.getMessage());
@@ -73,15 +93,17 @@ public final class Jt1078RtpDecoder extends ByteToMessageDecoder {
             int version = input.getUnsignedByte(start + 4);
             int payloadType = input.getUnsignedByte(start + 5) & 0x7f;
             int sequence = input.getUnsignedShort(start + 6);
-            String deviceId = decodeBcd(input, start + 8, 6);
-            int channel = input.getUnsignedByte(start + 14);
+            // SIM 字段之后的每一个偏移都要平移 shift 字节——漏掉任何一处，
+            // 解出来的都是相邻字段的字节拼成的随机数，而且不会报错。
+            String deviceId = decodeBcd(input, start + 8, width.bytes());
+            int channel = input.getUnsignedByte(start + 14 + shift);
             FragmentFlag fragmentFlag = FragmentFlag.fromWireValue(typeAndFragment & 0x0f);
             long timestamp = dataType == Jt1078Constants.TRANSPARENT_DATA
-                    ? 0L : input.getLong(start + 16);
+                    ? 0L : input.getLong(start + 16 + shift);
             int lastIFrameInterval = dataType <= Jt1078Constants.VIDEO_B_FRAME
-                    ? input.getUnsignedShort(start + 24) : 0;
+                    ? input.getUnsignedShort(start + 24 + shift) : 0;
             int lastFrameInterval = dataType <= Jt1078Constants.VIDEO_B_FRAME
-                    ? input.getUnsignedShort(start + 26) : 0;
+                    ? input.getUnsignedShort(start + 26 + shift) : 0;
             Jt1078Header header = new Jt1078Header(
                     version,
                     payloadType,

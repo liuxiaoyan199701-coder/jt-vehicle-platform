@@ -7,6 +7,7 @@ import io.github.jtconsole.ai.agent.AgentService;
 import io.github.jtconsole.ai.agent.AiEvent;
 import io.github.jtconsole.ai.agent.RecordingEventSink;
 import io.github.jtconsole.ai.quota.AiQuotaService;
+import io.github.jtconsole.ai.vision.AttachmentVisionService;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.repository.AiConversationRepository;
 import io.github.jtconsole.repository.AiUsageRepository;
@@ -55,6 +56,7 @@ public class AiChatController {
     private final ConsoleProperties properties;
     private final ObjectMapper objectMapper;
     private final ExecutorService executor;
+    private final AttachmentVisionService attachments;
 
     public AiChatController(
             AgentService agent,
@@ -63,7 +65,8 @@ public class AiChatController {
             AiConversationRepository conversations,
             ConsoleProperties properties,
             ObjectMapper objectMapper,
-            ExecutorService aiExecutor) {
+            ExecutorService aiExecutor,
+            AttachmentVisionService attachments) {
         this.agent = agent;
         this.quotas = quotas;
         this.usage = usage;
@@ -71,6 +74,7 @@ public class AiChatController {
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.executor = aiExecutor;
+        this.attachments = attachments;
     }
 
     /** 前端据此决定要不要显示 AI 入口，以及本月还剩多少次。 */
@@ -91,11 +95,23 @@ public class AiChatController {
             finishWith(emitter, AiEvent.error("AI_DISABLED", "平台未启用 AI 功能"));
             return emitter;
         }
-        List<AgentService.Turn> history = toTurns(request);
-        if (history.isEmpty()) {
+        List<AgentService.Turn> parsed = toTurns(request);
+        boolean hasImages = request != null
+                && request.attachmentIds() != null
+                && !request.attachmentIds().isEmpty();
+        // 只发图不打字是完全正常的用法（「这是什么情况？」往往就是一张图），
+        // 所以有附件时不按空请求拒绝，补一句默认提问让模型有个着力点。
+        if (parsed.isEmpty() && hasImages) {
+            parsed = List.of(new AgentService.Turn(true, "看看这张图片。"));
+        }
+        if (parsed.isEmpty()) {
             finishWith(emitter, AiEvent.error("AI_EMPTY_REQUEST", "请输入你的问题"));
             return emitter;
         }
+        // 下面要被 lambda 捕获，必须是 effectively final。
+        final List<AgentService.Turn> history = hasImages
+                ? withImageDescription(parsed, principal, request.attachmentIds())
+                : parsed;
 
         AiQuotaService.Snapshot snapshot;
         try {
@@ -249,6 +265,28 @@ public class AiChatController {
         return AiEvent.error("AI_UPSTREAM_FAILED", "AI 服务暂时不可用，请稍后重试");
     }
 
+    /**
+     * 把图片识别结果拼进最后一条用户消息。
+     *
+     * <p><b>发生在 agent 循环之前、且不推任何事件</b>：界面上不该出现「正在识别图片」这类暴露
+     * 双模型结构的中间态。用户看到的是自己发的图和随后流出的回答，识别耗时体现为回答开始前
+     * 多等一会儿，与模型思考无从区分。
+     *
+     * <p>拼进消息而不是另起一条系统消息，是为了让它跟着这一轮一起进历史：下一轮用户追问
+     * 「那辆车什么颜色」时，描述还在上下文里，不必重新识别，也就不会因为附件过期而失忆。
+     */
+    private List<AgentService.Turn> withImageDescription(
+            List<AgentService.Turn> history, AuthorizedPrincipal principal, List<String> attachmentIds) {
+        String description = attachments.describe(principal.accountId(), attachmentIds);
+        if (description.isBlank()) {
+            return history;
+        }
+        List<AgentService.Turn> enriched = new ArrayList<>(history);
+        AgentService.Turn last = enriched.removeLast();
+        enriched.add(new AgentService.Turn(last.user(), last.content() + description));
+        return enriched;
+    }
+
     private static List<AgentService.Turn> toTurns(ChatRequest request) {
         List<AgentService.Turn> turns = new ArrayList<>();
         if (request == null || request.messages() == null) {
@@ -326,7 +364,13 @@ public class AiChatController {
         }
     }
 
-    public record ChatRequest(Long conversationId, List<ChatMessage> messages) {
+    /**
+     * @param attachmentIds 本轮随消息发送的图片附件 id（先经 {@code POST /api/ai/attachments} 上传）。
+     *                      只作用于最后一条用户消息——历史轮次的图片内容已经以文字形式固化在
+     *                      消息里了，不需要也不应该重新识别一遍。
+     */
+    public record ChatRequest(
+            Long conversationId, List<ChatMessage> messages, List<String> attachmentIds) {
     }
 
     public record ChatMessage(String role, String content) {

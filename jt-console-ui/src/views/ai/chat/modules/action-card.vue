@@ -37,6 +37,21 @@ const ROUTES: Record<string, (params: any) => { url: string; method: 'post' | 'p
   alarm_acknowledge: p => ({ url: `/alarms/${p.alarmId}/acknowledge`, method: 'post', body: { note: p.note } }),
   alarm_close: p => ({ url: `/alarms/${p.alarmId}/close`, method: 'post', body: { note: p.note } }),
   send_text: p => ({ url: '/commands/text', method: 'post', body: p }),
+  // 拍照与文本下发同属「会真的发到路上那台车」的一类，走同一个指令代理，
+  // 参数范围校验由后端 CommandProxyController 统一把关，前端不重复实现。
+  //
+  // 这里是唯一一处做参数改名的路由：模型侧统一用 channel（与 photo_gallery、live_video 一致），
+  // 而 0x8801 的指令接口历来叫 channelId。把转译放在白名单里，模型面前就只剩一个词。
+  take_photo: p => ({
+    url: '/commands/photo',
+    method: 'post',
+    body: {
+      deviceId: p.deviceId,
+      channelId: p.channel ?? p.channelId ?? 1,
+      count: p.count ?? 1,
+      resolution: p.resolution ?? 2
+    }
+  }),
   tenant_create: p => ({ url: '/platform/tenants', method: 'post', body: p }),
   tenant_update: p => ({ url: `/platform/tenants/${p.id}`, method: 'put', body: p }),
   tenant_disable: p => ({ url: `/platform/tenants/${p.id}/disable`, method: 'post', body: p }),

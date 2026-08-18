@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { fetchDashboardOverview, type AlarmEvent, type DashboardOverview } from '@/service/api';
 import { useLiveSocket } from '@/hooks/use-live-socket';
 import { normalizeDashboardOverview } from '@/utils/fleet-operations';
 import VehicleProfileDrawer from '@/components/business/vehicle-profile-drawer.vue';
 import OverviewBanner from './modules/overview-banner.vue';
+import AiBriefing from './modules/ai-briefing.vue';
+import AskBar from './modules/ask-bar.vue';
 import StatCards from './modules/stat-cards.vue';
 import FleetTrendChart from './modules/fleet-trend-chart.vue';
 import AlarmLevelChart from './modules/alarm-level-chart.vue';
@@ -33,10 +35,6 @@ const shortcuts = [
   { label: '车辆档案', icon: 'lucide:car-front', route: 'vehicle' },
   { label: '轨迹回放', icon: 'lucide:route', route: 'track' }
 ] as const;
-
-const latestCritical = computed(() =>
-  overview.value.recentAlarms.find(item => item.level === 'CRITICAL' && item.status !== 'CLOSED')
-);
 
 onMounted(async () => {
   await load();
@@ -93,13 +91,23 @@ function openAlarm(alarm: AlarmEvent) {
       <NButton text type="primary" :loading="loading" @click="load">立即重试</NButton>
     </NAlert>
 
-    <NAlert v-if="latestCritical" type="error" :bordered="false" class="dashboard-alert">
-      <template #header>有严重告警待处置</template>
-      <div class="flex flex-wrap items-center justify-between gap-8px">
-        <span>{{ latestCritical.plateNo || latestCritical.deviceId }} · {{ latestCritical.title }}</span>
-        <NButton size="small" type="error" secondary @click="openAlarm(latestCritical)">查看告警</NButton>
-      </div>
-    </NAlert>
+    <!--
+      「有严重告警待处置」那条独立 Alert 已经去掉：今日要点里本来就会报严重告警，
+      两处说同一件事只会互相削弱，而且它挤在最上面把真正的主位往下推。
+    -->
+
+    <!--
+      主位：AI 先读一遍数据，再给原始指标。
+      要点与问一句并排而不是上下堆——问一句是「顺手问」，不该占满宽把数据流切断。
+    -->
+    <NGrid cols="1 l:24" responsive="screen" :x-gap="12" :y-gap="12">
+      <NGi span="l:16">
+        <AiBriefing />
+      </NGi>
+      <NGi span="l:8">
+        <AskBar />
+      </NGi>
+    </NGrid>
 
     <StatCards :summary="overview.summary" />
 

@@ -81,7 +81,8 @@ export interface AiChatMessage {
 export function streamChat(
   messages: AiChatMessage[],
   handlers: AiStreamHandlers,
-  conversationId?: number | null
+  conversationId?: number | null,
+  attachmentIds?: string[]
 ): () => void {
   const controller = new AbortController();
   // 用与 axios 实例同一个 baseURL 解析：VITE_SERVICE_BASE_URL 生产环境是 "/api"，
@@ -92,12 +93,12 @@ export function streamChat(
 
   void (async () => {
     try {
-      let response = await post(baseURL, messages, controller.signal, conversationId);
+      let response = await post(baseURL, messages, controller.signal, conversationId, attachmentIds);
 
       // 令牌过期时先续期再重试一次。走裸 fetch 就绕开了 axios 那套自动刷新，
       // 不补上的话会出现「别的页面都好好的，唯独 AI 说你登录过期了」。
       if (response.status === 401 && (await refreshAccessToken())) {
-        response = await post(baseURL, messages, controller.signal, conversationId);
+        response = await post(baseURL, messages, controller.signal, conversationId, attachmentIds);
       }
 
       if (!response.ok || !response.body) {
@@ -123,7 +124,8 @@ function post(
   baseURL: string,
   messages: AiChatMessage[],
   signal: AbortSignal,
-  conversationId?: number | null
+  conversationId?: number | null,
+  attachmentIds?: string[]
 ) {
   return fetch(`${baseURL}/ai/chat`, {
     method: 'POST',
@@ -132,7 +134,13 @@ function post(
       Accept: 'text/event-stream',
       Authorization: `Bearer ${localStg.get('token') ?? ''}`
     },
-    body: JSON.stringify({ conversationId: conversationId ?? null, messages }),
+    // attachmentIds 只作用于本轮最后一条用户消息。历史轮次的图片内容已经以文字形式
+    // 固化在消息里，不需要也不应该重新送检。
+    body: JSON.stringify({
+      conversationId: conversationId ?? null,
+      messages,
+      attachmentIds: attachmentIds ?? []
+    }),
     signal
   });
 }

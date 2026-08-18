@@ -77,8 +77,10 @@ public final class PhotoCaptureHandler {
             throw new IllegalArgumentException("photo count must be at least 1");
         }
         String camera = config.cameraName();
+        // 没配摄像头就合成一张，而不是让整条拍照链路在这里断掉。模拟器的定位是「不需要真实
+        // 硬件也能跑通端到端」——行程模拟同样不需要真实 GPS。
         if (camera.isBlank()) {
-            throw new IOException("camera is not configured; cannot capture photos");
+            return synthesize(count, resolutionCode);
         }
         Path executable = resolveFfmpeg();
         int[] size = resolutionSize(resolutionCode);
@@ -146,6 +148,33 @@ public final class PhotoCaptureHandler {
                 });
             }
         }
+    }
+
+    /**
+     * 合成路径：不碰摄像头、不碰 FFmpeg，直接画出 JPEG。
+     *
+     * <p>返回的字节与真实抓拍走完全相同的后续流程——{@code SignalClient.uploadPhoto} 的分包上传
+     * 与 T0805 应答一个字都不用改，已有的 {@code PhotoSubpackageRoundTripTest} 继续守着那条路径。
+     */
+    private List<Photo> synthesize(int count, int resolutionCode) throws IOException {
+        int[] size = resolutionSize(resolutionCode);
+        String plate = config.registration().plateNo();
+        List<Photo> photos = new ArrayList<>(count);
+        for (int index = 1; index <= count; index++) {
+            byte[] jpeg = SyntheticPhoto.render(
+                    size[0], size[1],
+                    plate == null || plate.isBlank() ? config.deviceId() : plate,
+                    config.channel(), index, count);
+            photos.add(new Photo(nextMediaId(), jpeg));
+        }
+        diagnostics.accept("未配置摄像头，已合成 " + count + " 张 "
+                + size[0] + "×" + size[1] + " 模拟照片");
+        return photos;
+    }
+
+    /** 当前抓拍走的是真实摄像头还是合成图。界面用它给出状态提示，免得用户以为摄像头没生效。 */
+    public boolean synthesizing() {
+        return config.cameraName().isBlank();
     }
 
     private Path resolveFfmpeg() throws IOException {

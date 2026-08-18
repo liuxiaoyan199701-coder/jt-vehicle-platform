@@ -134,6 +134,18 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'media',
+    path: '/media',
+    component: 'layout.base$view.media',
+    meta: {
+      title: 'media',
+      i18nKey: 'route.media',
+      icon: 'mdi:image-multiple-outline',
+      order: 8,
+      permissions: ['media:list']
+    }
+  },
+  {
     name: 'monitor',
     path: '/monitor',
     component: 'layout.base$view.monitor',

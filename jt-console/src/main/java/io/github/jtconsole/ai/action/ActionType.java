@@ -61,6 +61,21 @@ public enum ActionType {
     /** 指令一旦发出就到了路上那台车的屏幕上，撤不回来。 */
     SEND_TEXT("send_text", "向终端下发文本消息", Permissions.COMMAND_SEND, true,
             List.of("deviceId", "text"), List.of()),
+    /**
+     * 让车现在拍一张。
+     *
+     * <p>需要确认的理由与 {@link #SEND_TEXT} 同源：它会通过网关向路上那台车下发 0x8801，
+     * 唤醒摄像头、占用车载上行带宽，还会在终端留下一次动作。查看**已经拍好的**照片是只读的，
+     * 走 {@code query_photos} 工具，不经过这里。
+     *
+     * <p><b>通道参数叫 {@code channel} 而不是 {@code channelId}</b>，与
+     * {@code photo_gallery}、{@code live_video} 两个视图保持同一个词。线上实测过代价：
+     * 模型刚用 {@code channel} 查完抓拍，紧接着提议拍照时自然沿用同一个词，被拒之后当着用户的面
+     * 说了一句「参数名写错了，重新提交」。同一个概念在模型面前只能有一个名字。
+     * 指令接口那边仍叫 {@code channelId}，由前端的路由白名单负责转译。
+     */
+    TAKE_PHOTO("take_photo", "让终端立即拍照", Permissions.COMMAND_SEND, true,
+            List.of("deviceId"), List.of("channel", "count", "resolution")),
 
     // ---- 平台级：只有平台管理员可见 ----
 

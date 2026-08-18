@@ -1,9 +1,11 @@
 package io.github.jtconsole.config;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.unit.DataSize;
 
 @ConfigurationProperties(prefix = "jt.console")
 public class ConsoleProperties {
@@ -434,6 +436,226 @@ public class ConsoleProperties {
         private String reportCron = "0 23 6 * * *";
         /** 对话留痕清理时间，同样错峰。 */
         private String cleanupCron = "0 41 3 * * *";
+
+        private final Vision vision = new Vision();
+        private final Attachment attachment = new Attachment();
+        private final Briefing briefing = new Briefing();
+
+        public Vision getVision() {
+            return vision;
+        }
+
+        public Attachment getAttachment() {
+            return attachment;
+        }
+
+        public Briefing getBriefing() {
+            return briefing;
+        }
+
+        /**
+         * 首页看板的 AI 要点。
+         *
+         * <p>定时预生成而不是打开首页即生成：首页会被反复打开、多人打开，每次调模型既慢又贵，
+         * 而且同一租户的不同人看到不同的「今日要点」会直接削弱这块看板的可信度。
+         */
+        public static class Briefing {
+            private boolean enabled = true;
+            /**
+             * 生成周期。刻意避开整点与既有清理任务的分钟数（审计 3:17、附件 4:53、
+             * 幂等表整点后一小时）——同时挤在一起会让 SQLite 的写锁排队。
+             */
+            private String cron = "0 7 * * * *";
+            /**
+             * 一次最多几条要点。
+             *
+             * <p>五条是「一眼扫完」的上限。再多就变成又一个需要人去筛的列表，
+             * 而这块看板存在的意义正是替人筛。
+             */
+            private int maxItems = 5;
+            /** 要点保留天数。看板只看当天，历史留一段供排查。 */
+            private Duration retention = Duration.ofDays(14);
+            /** 是否做视觉巡检。关掉后简报照常生成，只是少了摄像头那一类发现。 */
+            private boolean inspectCameras = true;
+
+            public boolean isEnabled() {
+                return enabled;
+            }
+
+            public void setEnabled(boolean enabled) {
+                this.enabled = enabled;
+            }
+
+            public String getCron() {
+                return cron;
+            }
+
+            public void setCron(String cron) {
+                this.cron = cron;
+            }
+
+            public int getMaxItems() {
+                return maxItems;
+            }
+
+            public void setMaxItems(int maxItems) {
+                this.maxItems = Math.max(1, maxItems);
+            }
+
+            public Duration getRetention() {
+                return retention;
+            }
+
+            public void setRetention(Duration retention) {
+                this.retention = retention;
+            }
+
+            public boolean isInspectCameras() {
+                return inspectCameras;
+            }
+
+            public void setInspectCameras(boolean inspectCameras) {
+                this.inspectCameras = inspectCameras;
+            }
+        }
+
+        /**
+         * 视觉模型：专门用来「看图」的旁路模型。
+         *
+         * <p><b>为什么单独一路而不是换掉主模型</b>：主模型（DeepSeek）没有视觉能力，但它在工具调用
+         * 与中文运营语境上是选定的。与其为了看图整体换模型，不如让视觉模型当一个「看图员」——
+         * 收图、出一段文字描述，描述再作为普通文本进入主模型的上下文。主模型全程不接触图像。
+         *
+         * <p><b>为什么不走 Spring AI</b>：它不是对话模型，是单次请求单次响应的转换器；接进
+         * {@code spring.ai.*} 会与既有的 deepseek 自动装配抢 {@code ChatModel} bean，还得为一个
+         * 不需要流式、不需要工具、不需要历史的调用背上整套抽象。直接用 {@code RestClient} 打
+         * OpenAI 兼容的 {@code /v1/chat/completions} 更短也更好排查。
+         *
+         * <p>未配置 {@code apiKey} 时整条视觉链路关闭，相关工具不注册、上传接口明确拒绝——
+         * 与高德 key 缺失时逆地理降级同一个思路：缺能力就少一个功能，不是报错。
+         */
+        public static class Vision {
+            private String baseUrl = "";
+            private String apiKey = "";
+            private String model = "";
+            /** 看一张图的耗时远高于纯文本补全，且它挡在主模型前面，超时要给够但不能没有。 */
+            private Duration timeout = Duration.ofSeconds(60);
+            /**
+             * 单次最多送几张图。
+             *
+             * <p>图片按面积折算 token，一次十张能轻易压过整轮对话的预算。四张是「一次抓拍最多
+             * 几张」与「一屏能看几张」的交集。
+             */
+            private int maxImages = 4;
+            /**
+             * 单张图送出前的最长边。
+             *
+             * <p>抓拍原图最大 D1（704×576），本就不大；这个上限主要挡用户上传的手机照片——
+             * 4000 像素宽的图既烧钱又不会让识别更准。
+             */
+            private int maxEdgePixels = 1280;
+            /** 描述的输出上限。要的是「看到了什么」，不是一篇作文。 */
+            private int maxOutputTokens = 600;
+
+            public boolean enabled() {
+                return !apiKey.isBlank() && !baseUrl.isBlank() && !model.isBlank();
+            }
+
+            public String getBaseUrl() {
+                return baseUrl;
+            }
+
+            public void setBaseUrl(String baseUrl) {
+                this.baseUrl = baseUrl == null ? "" : baseUrl.trim();
+            }
+
+            public String getApiKey() {
+                return apiKey;
+            }
+
+            public void setApiKey(String apiKey) {
+                this.apiKey = apiKey == null ? "" : apiKey.trim();
+            }
+
+            public String getModel() {
+                return model;
+            }
+
+            public void setModel(String model) {
+                this.model = model == null ? "" : model.trim();
+            }
+
+            public Duration getTimeout() {
+                return timeout;
+            }
+
+            public void setTimeout(Duration timeout) {
+                this.timeout = timeout;
+            }
+
+            public int getMaxImages() {
+                return maxImages;
+            }
+
+            public void setMaxImages(int maxImages) {
+                this.maxImages = maxImages;
+            }
+
+            public int getMaxEdgePixels() {
+                return maxEdgePixels;
+            }
+
+            public void setMaxEdgePixels(int maxEdgePixels) {
+                this.maxEdgePixels = maxEdgePixels;
+            }
+
+            public int getMaxOutputTokens() {
+                return maxOutputTokens;
+            }
+
+            public void setMaxOutputTokens(int maxOutputTokens) {
+                this.maxOutputTokens = maxOutputTokens;
+            }
+        }
+
+        /**
+         * 对话里用户上传的图片。
+         *
+         * <p>存盘而不是塞进消息体：一张手机照片几 MB，base64 进 SQLite 会让
+         * {@code findMessages} 的响应体直接爆掉——那正是 {@code tool_trace} 已经踩过并加了
+         * 体积上限的坑。
+         */
+        public static class Attachment {
+            /** 存储根目录。与网关的多媒体目录分开，两者生命周期和归属都不同。 */
+            private Path directory = Path.of("data", "console", "ai-attachments");
+            private DataSize maxSize = DataSize.ofMegabytes(8);
+            /** 保留期。图片只是对话的输入，描述已落在消息里，原图不必长留。 */
+            private Duration retention = Duration.ofDays(30);
+
+            public Path getDirectory() {
+                return directory;
+            }
+
+            public void setDirectory(Path directory) {
+                this.directory = directory;
+            }
+
+            public DataSize getMaxSize() {
+                return maxSize;
+            }
+
+            public void setMaxSize(DataSize maxSize) {
+                this.maxSize = maxSize;
+            }
+
+            public Duration getRetention() {
+                return retention;
+            }
+
+            public void setRetention(Duration retention) {
+                this.retention = retention;
+            }
+        }
 
         public Duration getStreamTimeout() {
             return streamTimeout;

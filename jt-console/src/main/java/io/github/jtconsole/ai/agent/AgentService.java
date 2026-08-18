@@ -4,6 +4,7 @@ import io.github.jtconsole.ai.action.ConfirmationPolicy;
 import io.github.jtconsole.ai.tool.ActionTools;
 import io.github.jtconsole.ai.tool.FleetTools;
 import io.github.jtconsole.ai.tool.OperationsTools;
+import io.github.jtconsole.ai.tool.ToolRoundBudget;
 import io.github.jtconsole.ai.tool.ToolSession;
 import io.github.jtconsole.ai.tool.ViewTools;
 import io.github.jtconsole.ai.view.ViewBudget;
@@ -83,9 +84,11 @@ public class AgentService {
         if (model == null) {
             throw new AiUnavailableException("平台未启用 AI 功能");
         }
-        // 配额每轮新建：它计的是「这一次对话里推了几个视图」，跨轮累计没有意义。
+        // 配额每轮新建：它计的是「这一次对话里推了几个视图 / 跑了几轮工具」，跨轮累计没有意义。
         ToolSession session = new ToolSession(
-                principal, principal.scope(), dates.zoneId(), sink, policy, new ViewBudget());
+                principal, principal.scope(), dates.zoneId(), sink, policy,
+                new ViewBudget(),
+                new ToolRoundBudget(properties.getAi().getMaxToolRounds()));
         ChatClient client = ChatClient.builder(model).build();
 
         StringBuilder answer = new StringBuilder();

@@ -26,9 +26,22 @@ public record ToolSession(
          * 本轮的视图配额。刻意是可变对象——一轮对话内要跨多次工具调用累计计数，
          * 而这个 record 的其余分量都是不可变的，所以在这里点明。
          */
-        ViewBudget viewBudget) {
+        ViewBudget viewBudget,
+        /**
+         * 本轮的工具调用轮数配额。同样是可变对象，理由同上。
+         *
+         * <p>由 {@code BoundedToolCallingManager} 在每轮工具执行前扣减——那是框架里唯一
+         * 「每轮恰好经过一次」的位置。工具自身不碰它。
+         */
+        ToolRoundBudget roundBudget) {
 
     private static final String KEY = "jt.tool.session";
+
+    /** 供框架侧从原始上下文映射中取回会话。与 {@link #from(ToolContext)} 同一个键。 */
+    public static ToolSession fromContextMap(Map<String, Object> context) {
+        Object value = context == null ? null : context.get(KEY);
+        return value instanceof ToolSession session ? session : null;
+    }
 
     public Map<String, Object> asContext() {
         return Map.of(KEY, this);

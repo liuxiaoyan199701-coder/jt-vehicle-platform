@@ -11,9 +11,12 @@ export function setupElegantRouter() {
     track: { icon: 'mdi:map-marker-path', order: 5 },
     fleet: { icon: 'mdi:garage-variant', order: 6 },
     vehicle: { icon: 'mdi:car-multiple', order: 7 },
+    // 抓拍照片。权限码沿用既有的 media:list，不新增——能看多媒体就是能看多媒体，
+    // 再分「列表」「详情」两级只会让角色配置变复杂而不变安全。
+    media: { icon: 'mdi:image-multiple-outline', order: 8, permissions: ['media:list'] },
     // permissions 写在这里而不是手改 src/router/elegant/routes.ts：
     // 那是生成产物，跑 pnpm gen-route 会被覆盖掉。
-    ai: { icon: 'mdi:robot-outline', order: 8 },
+    ai: { icon: 'mdi:robot-outline', order: 9 },
     ai_chat: { icon: 'mdi:robot-outline', order: 1, permissions: ['ai:chat'] }
   };
 

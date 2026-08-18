@@ -4,6 +4,7 @@ import io.github.jtplatform.common.model.MediaPorts;
 import io.github.jtplatform.media.config.MediaRuntimeProperties;
 import io.github.jtplatform.media.metrics.MediaNodeLoadMonitor;
 import io.github.jtplatform.media.pipeline.MediaPipeline;
+import io.github.jtplatform.media.protocol.SimWidthStats;
 import io.github.jtplatform.media.recording.RecordSink;
 import io.github.jtplatform.media.recording.RecordingStorageMetrics;
 import io.github.jtplatform.media.recording.RecordingStorageSnapshot;
@@ -103,7 +104,12 @@ final class MediaManagementHandler extends SimpleChannelInboundHandler<FullHttpR
                         + ",\"maxOutboundBitsPerSecond\":" + capacity.getMaxOutboundBitsPerSecond()
                         + ",\"recordingOccupiedBytes\":" + recording.occupiedBytes()
                         + ",\"recordingUsableBytes\":" + recording.usableBytes()
-                        + ",\"recordingTotalBytes\":" + recording.totalBytes() + "}"
+                        + ",\"recordingTotalBytes\":" + recording.totalBytes()
+                        // 对接新设备时「画面是花的」几乎不给线索——这三个数是第一手诊断依据。
+                        // undecided 不为零尤其要看：那说明有流是在没有依据的情况下按标准兜底跑的。
+                        + ",\"jt1078SimBcd6Streams\":" + SimWidthStats.standardStreams()
+                        + ",\"jt1078SimBcd10Streams\":" + SimWidthStats.extendedStreams()
+                        + ",\"jt1078SimUndecidedStreams\":" + SimWidthStats.undecidedStreams() + "}"
                 : "{\"status\":\"NOT_FOUND\"}";
         writeResponse(context, request, status, body);
     }

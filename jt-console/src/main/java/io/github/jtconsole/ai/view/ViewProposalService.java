@@ -174,6 +174,11 @@ public class ViewProposalService {
                 String problem = requireVisibleVehicle(params, session);
                 yield problem != null ? problem : requireExistingChannel(params, session);
             }
+            case PHOTO_GALLERY -> {
+                String problem = requireVisibleVehicle(params, session);
+                // 时间窗可省略（「最近的抓拍」不必给范围）；给了就必须合规。
+                yield problem != null ? problem : requireSanePhotoSpan(params);
+            }
             // 快照型不走这条路径，它有自己的入口。
             case CHART -> null;
         };
@@ -211,6 +216,30 @@ public class ViewProposalService {
         if (Duration.between(from, to).toHours() > ViewType.MAX_TRACK_HOURS) {
             return "轨迹时间跨度不能超过 " + ViewType.MAX_TRACK_HOURS
                     + " 小时。请缩小范围，或分多次查看。";
+        }
+        return null;
+    }
+
+    /**
+     * 抓拍时间窗校验。
+     *
+     * <p>与轨迹不同，这里**允许两端都不给**——「看看最近的抓拍」是最自然的问法，强制要求时间窗
+     * 只会逼模型现编一个。但只给一端属于表达不清，要退回让它说明白。
+     */
+    private String requireSanePhotoSpan(Map<String, Object> params) {
+        LocalDateTime from = parseLocal(params.get("start"));
+        LocalDateTime to = parseLocal(params.get("end"));
+        if (from == null && to == null) {
+            return null;
+        }
+        if (from == null || to == null) {
+            return "start 与 end 要么都不给（表示最近的抓拍），要么都给。";
+        }
+        if (!to.isAfter(from)) {
+            return "end 必须晚于 start。";
+        }
+        if (Duration.between(from, to).toDays() > ViewType.MAX_PHOTO_DAYS) {
+            return "抓拍查询的时间跨度不能超过 " + ViewType.MAX_PHOTO_DAYS + " 天。";
         }
         return null;
     }

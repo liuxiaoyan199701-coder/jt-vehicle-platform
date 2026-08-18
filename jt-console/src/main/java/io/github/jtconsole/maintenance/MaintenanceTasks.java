@@ -1,5 +1,6 @@
 package io.github.jtconsole.maintenance;
 
+import io.github.jtconsole.ai.vision.AttachmentStore;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.StatusRepository;
@@ -16,13 +17,34 @@ public class MaintenanceTasks {
 
     private final StatusRepository statuses;
     private final EventRepository events;
+    private final AttachmentStore attachments;
     private final ConsoleProperties properties;
 
     public MaintenanceTasks(
-            StatusRepository statuses, EventRepository events, ConsoleProperties properties) {
+            StatusRepository statuses,
+            EventRepository events,
+            AttachmentStore attachments,
+            ConsoleProperties properties) {
         this.statuses = statuses;
         this.events = events;
+        this.attachments = attachments;
         this.properties = properties;
+    }
+
+    /**
+     * 清理过期的对话图片附件。
+     *
+     * <p>低频即可：图片只是对话的输入，识别出的描述已经作为文字固化在消息里，原图过期删掉
+     * 不损失任何信息。放在凌晨且错开其它清理任务——SQLite 只有一个写锁，虽然本任务只动文件系统，
+     * 但磁盘 IO 同样会和业务写入抢资源。
+     */
+    @Scheduled(cron = "${jt.console.ai.attachment.cleanup-cron:0 53 4 * * *}")
+    public void purgeExpiredAttachments() {
+        Instant cutoff = Instant.now().minus(properties.getAi().getAttachment().getRetention());
+        int removed = attachments.purgeOlderThan(cutoff);
+        if (removed > 0) {
+            LOGGER.info("清理了 {} 个账号早于 {} 的对话图片附件", removed, cutoff);
+        }
     }
 
     /**

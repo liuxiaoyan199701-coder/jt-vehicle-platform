@@ -207,12 +207,22 @@ CREATE TABLE IF NOT EXISTS media_file (
     access_address TEXT,
     channel_id     INTEGER,
     event_code     INTEGER,
+    -- 抓拍位置：WGS-84 原值与 GCJ-02 偏移值并存，形态与 alarm_event、track_point 一致。
+    -- 可空——设备未定位时不写 0，(0,0) 是几内亚湾，会在地图上画出一个看不出是假的点。
+    lat            REAL,
+    lng            REAL,
+    gcj_lat        REAL,
+    gcj_lng        REAL,
     captured_at    TEXT NOT NULL,
     UNIQUE (device_id, file_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_media_device_time
     ON media_file (device_id, captured_at DESC, id DESC);
+
+-- 多媒体页支持「不限车辆、按时间段查」，那种查询用不上上面那条以 device_id 打头的索引。
+CREATE INDEX IF NOT EXISTS idx_media_captured
+    ON media_file (captured_at DESC, id DESC);
 
 -- 设备协议版本。车辆控制 0x8500 等双版本报文在 2011 与 2019 的编码不同
 -- （解锁/加锁的字节位置完全不一样），下发前必须知道设备实际注册的版本。

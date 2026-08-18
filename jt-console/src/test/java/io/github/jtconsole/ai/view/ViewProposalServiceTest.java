@@ -38,7 +38,8 @@ class ViewProposalServiceTest {
 
     private ToolSession sessionFor(AuthorizedPrincipal principal, ViewBudget budget) {
         return new ToolSession(principal, principal.scope(), ZONE,
-                AgentEventSink.noop(), ConfirmationPolicy.confirmEverything(), budget);
+                AgentEventSink.noop(), ConfirmationPolicy.confirmEverything(), budget,
+                new io.github.jtconsole.ai.tool.ToolRoundBudget(8));
     }
 
     @Test
@@ -108,6 +109,61 @@ class ViewProposalServiceTest {
                 .containsEntry("requiredPermission", "monitor:view")
                 .containsEntry("presentation", "inline");
         assertThat(proposal.asEventData().toString()).doesNotContain("/api");
+    }
+
+    /**
+     * 抓拍不给时间窗是合法的，与轨迹不同。
+     *
+     * <p>「看看最近拍到了什么」是最自然的问法。强制要求时间窗只会逼模型现编一个，
+     * 编出来的范围既不是用户的意思，也可能大得离谱。
+     */
+    @Test
+    void acceptsPhotoGalleryWithoutATimeWindow() {
+        Mockito.when(vehicles.get(Mockito.eq("138000000000"), Mockito.any()))
+                .thenReturn(Mockito.mock(Vehicle.class));
+
+        ViewProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.tenantAdmin(7L, 42L)),
+                "photo_gallery", "最近的抓拍", Map.of("deviceId", "138000000000"));
+
+        assertThat(outcome.accepted()).isTrue();
+        assertThat(outcome.proposal().type()).isEqualTo(ViewType.PHOTO_GALLERY);
+        assertThat(outcome.proposal().asEventData())
+                .containsEntry("requiredPermission", "media:list")
+                .containsEntry("presentation", "inline");
+    }
+
+    /** 只给一端属于表达不清，要退回让模型说明白，而不是替它猜另一端。 */
+    @Test
+    void rejectsAHalfOpenPhotoWindow() {
+        Mockito.when(vehicles.get(Mockito.eq("138000000000"), Mockito.any()))
+                .thenReturn(Mockito.mock(Vehicle.class));
+
+        ViewProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.tenantAdmin(7L, 42L)),
+                "photo_gallery", "抓拍",
+                Map.of("deviceId", "138000000000", "start", "2026-08-01T00:00:00"));
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(outcome.message()).contains("要么都不给");
+    }
+
+    /** 跨度上限存在的理由与轨迹一致：不限就等于把 AI 变成自助的全表扫描触发器。 */
+    @Test
+    void rejectsAPhotoWindowLongerThanTheLimit() {
+        Mockito.when(vehicles.get(Mockito.eq("138000000000"), Mockito.any()))
+                .thenReturn(Mockito.mock(Vehicle.class));
+
+        ViewProposalService.Outcome outcome = service.propose(
+                sessionFor(TestPrincipals.tenantAdmin(7L, 42L)),
+                "photo_gallery", "抓拍",
+                Map.of(
+                        "deviceId", "138000000000",
+                        "start", "2026-01-01T00:00:00",
+                        "end", "2026-08-01T00:00:00"));
+
+        assertThat(outcome.accepted()).isFalse();
+        assertThat(outcome.message()).contains(String.valueOf(ViewType.MAX_PHOTO_DAYS));
     }
 
     /** 留空设备号表示「全部在线车辆」，那本来就受数据范围约束，没有单独的目标可校验。 */

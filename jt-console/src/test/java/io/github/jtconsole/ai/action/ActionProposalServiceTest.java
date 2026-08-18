@@ -35,7 +35,8 @@ class ActionProposalServiceTest {
     private ToolSession sessionFor(AuthorizedPrincipal principal) {
         return new ToolSession(principal, principal.scope(), ZONE,
                 AgentEventSink.noop(), ConfirmationPolicy.confirmEverything(),
-                new io.github.jtconsole.ai.view.ViewBudget());
+                new io.github.jtconsole.ai.view.ViewBudget(),
+                new io.github.jtconsole.ai.tool.ToolRoundBudget(8));
     }
 
     @Test

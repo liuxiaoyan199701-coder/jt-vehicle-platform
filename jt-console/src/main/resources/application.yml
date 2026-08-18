@@ -24,6 +24,13 @@ spring:
       mode: always
       schema-locations: classpath:schema.sql
 
+  servlet:
+    multipart:
+      # 只有 AI 对话的图片会走 multipart。上限比 jt.console.ai.attachment.max-size 略大，
+      # 让超限由业务层给出中文提示，而不是被容器以一个没有上下文的 413 拦掉。
+      max-file-size: ${JT_AI_ATTACHMENT_MAX_SIZE:8MB}
+      max-request-size: 12MB
+
 jt:
   console:
     # jt-platform 网关地址。开流请求由后端代理转发，前端不直连网关。
@@ -70,6 +77,23 @@ jt:
       # 这里只放平台自己的策略参数。
       max-tool-rounds: ${JT_AI_MAX_TOOL_ROUNDS:8}
       concurrent-chats: ${JT_AI_CONCURRENT_CHATS:4}
+      vision:
+        # 视觉旁路模型：主模型（DeepSeek）没有视觉能力，由它专门负责「看图出文字」，
+        # 描述再作为普通文本进入主模型上下文。留空则整条视觉链路关闭：
+        # 相关工具不注册、图片上传接口明确拒绝，功能少一个而不是报错。
+        # 用 OpenAI 兼容接口，只需要 /v1/chat/completions。
+        base-url: ${JT_AI_VISION_BASE_URL:}
+        api-key: ${JT_AI_VISION_API_KEY:}
+        model: ${JT_AI_VISION_MODEL:}
+        timeout: ${JT_AI_VISION_TIMEOUT:60s}
+        max-images: ${JT_AI_VISION_MAX_IMAGES:4}
+        max-edge-pixels: ${JT_AI_VISION_MAX_EDGE:1280}
+      attachment:
+        # 用户在对话里发的图片。存盘不入库——一张手机照片几 MB，
+        # base64 进 SQLite 会把 findMessages 的响应体撑爆。
+        directory: ${JT_AI_ATTACHMENT_DIR:data/console/ai-attachments}
+        max-size: ${JT_AI_ATTACHMENT_MAX_SIZE:8MB}
+        retention: ${JT_AI_ATTACHMENT_RETENTION:30d}
     audit:
       # 审计写入永不阻塞业务：队列满时丢弃并计数，可在 /api/diagnostics 观察积压。
       queue-capacity: ${JT_CONSOLE_AUDIT_QUEUE_CAPACITY:4096}

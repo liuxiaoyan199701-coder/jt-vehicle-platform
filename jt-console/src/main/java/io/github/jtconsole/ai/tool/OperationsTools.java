@@ -5,11 +5,14 @@ import io.github.jtconsole.domain.AlarmLevel;
 import io.github.jtconsole.domain.AlarmPage;
 import io.github.jtconsole.domain.AlarmSource;
 import io.github.jtconsole.domain.AlarmStatus;
+import io.github.jtconsole.domain.MediaFile;
 import io.github.jtconsole.domain.TrackPoint;
 import io.github.jtconsole.domain.VehicleDailyStat;
 import io.github.jtconsole.ai.agent.AiEvent;
 import io.github.jtconsole.ai.view.ChartSpec;
 import io.github.jtconsole.ai.view.ViewProposalService;
+import io.github.jtconsole.ai.vision.SnapshotVisionService;
+import io.github.jtconsole.repository.MediaRepository;
 import io.github.jtconsole.geo.ReverseGeocoder;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.operations.TrackSummary;
@@ -40,6 +43,13 @@ public class OperationsTools {
     private static final int MAX_TRACK_POINTS = 2000;
     private static final int TRACK_SAMPLE = 40;
     private static final int MAX_DAYS = 31;
+    /**
+     * 一次抓拍查询最多返回几条元数据。
+     *
+     * <p>比识别上限（默认 4 张）大得多是有意的：元数据便宜，「这周拍了 18 张」本身就是答案；
+     * 真正贵的是看图，那一步另有自己的上限。
+     */
+    private static final int PHOTO_QUERY_LIMIT = 20;
 
     private final ToolRunner runner;
     private final ReverseGeocoder geocoder;
@@ -48,6 +58,8 @@ public class OperationsTools {
     private final DailyStatRepository dailyStats;
     private final BusinessDateService dates;
     private final ViewProposalService views;
+    private final MediaRepository media;
+    private final SnapshotVisionService snapshotVision;
 
     public OperationsTools(
             ToolRunner runner,
@@ -56,7 +68,9 @@ public class OperationsTools {
             TrackRepository tracks,
             DailyStatRepository dailyStats,
             BusinessDateService dates,
-            ViewProposalService views) {
+            ViewProposalService views,
+            MediaRepository media,
+            SnapshotVisionService snapshotVision) {
         this.runner = runner;
         this.geocoder = geocoder;
         this.alarms = alarms;
@@ -64,6 +78,8 @@ public class OperationsTools {
         this.dailyStats = dailyStats;
         this.dates = dates;
         this.views = views;
+        this.media = media;
+        this.snapshotVision = snapshotVision;
     }
 
     @Tool(name = "get_current_time",
@@ -238,6 +254,133 @@ public class OperationsTools {
     }
 
     /** 触发一张轨迹图。校验（含跨度上限）由提议服务负责，这里只管把参数递过去。 */
+    @Tool(name = "query_photos",
+            description = """
+                    查询一台车已经拍到的抓拍照片，**并直接告诉你照片里是什么**。
+                    回答「拍到了什么」「车上什么情况」「有没有拍到人/货物/事故」时用它。
+                    你会拿到照片的时间、通道、位置，以及前几张的画面内容描述——
+                    描述里没提到的东西就是看不出来，不要替它补充。
+                    时间跨度最多 7 天；不给时间就是查最近的。
+
+                    这个工具查的是**已经拍好的照片**；要让车现在去拍一张，用 propose_action 的
+                    take_photo（通道参数叫 channel，与本工具一致）。
+
+                    **只要用户可能想看照片，就把 showGallery 设为 true**——问「拍到了什么」
+                    「看一下在干什么」「有没有拍到人」都算。抓拍指令执行完的那一轮尤其要设，
+                    用户等的就是那张图，只用文字描述等于没给。
+                    照片墙的标题会自动带上最新一张的拍摄时间，不会和「待确认的新抓拍」混淆。""")
+    String queryPhotos(
+            @ToolParam(description = "设备号") String deviceId,
+            @ToolParam(description = "开始时间，格式 yyyy-MM-ddTHH:mm:ss；留空表示最近", required = false)
+            String start,
+            @ToolParam(description = "结束时间，格式同上；留空表示最近", required = false) String end,
+            @ToolParam(
+                    description = "是否在对话里展示照片，默认 true。只有用户明确只要数量、不想看图时才设 false",
+                    required = false)
+            Boolean showGallery,
+            ToolContext context) {
+        ToolSession session = ToolSession.from(context);
+        return runner.run(session, "query_photos", "查询抓拍 " + deviceId, () -> {
+            if (deviceId == null || deviceId.isBlank()) {
+                return ToolResults.error("缺少设备号，请先用车辆查询工具确认是哪一台车。");
+            }
+            String device = deviceId.trim();
+            MediaRepository.MediaFilter filter = new MediaRepository.MediaFilter(
+                    device, null, null, null, null,
+                    blankToNull(start), blankToNull(end), 1, PHOTO_QUERY_LIMIT);
+            List<MediaFile> photos = media.search(filter, session.scope()).items();
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("deviceId", device);
+            result.put("photoCount", photos.size());
+            if (photos.isEmpty()) {
+                result.put("note", "这段时间没有抓拍照片。可能是没人下发过拍照指令，也可能设备当时离线。");
+                return result;
+            }
+
+            // 画面描述折在这里，不另起一个工具：界面上不该出现「第二个模型」，
+            // 而且模型经常忘记去调那种需要额外一轮的辅助工具。
+            SnapshotVisionService.Described described = snapshotVision.describe(photos);
+
+            List<Map<String, Object>> rows = new ArrayList<>();
+            for (MediaFile photo : photos) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("time", photo.capturedAt());
+                row.put("channel", photo.channelId());
+                row.put("trigger", photo.alarmTriggered() ? "报警触发" : "指令或定时");
+                if (photo.locatable()) {
+                    row.put("lat", photo.gcjLat());
+                    row.put("lng", photo.gcjLng());
+                }
+                rows.add(row);
+            }
+            // 只给带位置的首张解析地址，理由同轨迹：地址要吃逆地理配额。
+            rows.stream().filter(row -> row.containsKey("lat")).findFirst()
+                    .ifPresent(row -> describeLocations(List.of(row)));
+            result.put("photos", rows);
+
+            // 描述放结果顶层而不是逐张挂：模型的分段措辞每次都可能不同，按「第 N 张」拆开
+            // 容易错位，把一张照片的画面安到另一张头上，比不拆分严重得多。
+            if (!described.isEmpty()) {
+                result.put("画面内容", described.text());
+                result.put("画面内容覆盖的拍摄时间", described.coveredTimes());
+                if (described.coveredTimes().size() < photos.size()) {
+                    result.put("note", "只识别了上列时间对应的照片，其余仅有元数据，"
+                            + "不要描述它们的画面内容。");
+                }
+            } else {
+                result.put("note", snapshotVision.available()
+                        // 如实说明，模型才不会对着元数据编出画面内容。
+                        ? "照片画面这次没能读取，只能提供拍摄时间与位置，不要描述画面内容。"
+                        : "平台未启用图片识别，无法得知画面内容，不要猜测照片里有什么。");
+            }
+            // 标题带上最新一张的时间：万一模型在「即将提议新抓拍」时仍然出了图，
+            // 用户至少能一眼看出这些是**已有的**照片，而不是刚拍的那张。
+            maybePhotoGallery(session, showGallery, device, start, end,
+                    photos.getFirst().capturedAt());
+            return result;
+        });
+    }
+
+    /**
+     * 抓拍照片墙。
+     *
+     * <p><b>默认展示，与其它视图相反。</b>其它视图（轨迹、图表）是「加分项」，模型不出图也答得完整；
+     * 而照片的价值几乎全在画面上，只给一段文字描述等于没给。线上实测过：把展示与否完全交给模型
+     * 判断，它在「抓拍执行完」这个最该出图的时刻反而没出，用户问「怎么没看到图片」。
+     *
+     * <p>模型仍可显式传 {@code false} 关闭（比如用户只问「一共几张」）。
+     * 同一台车一轮只出一张由 {@code ViewBudget} 的签名去重保证，不会刷屏。
+     */
+    private void maybePhotoGallery(
+            ToolSession session, Boolean showGallery, String deviceId,
+            String start, String end, String latestAt) {
+        if (Boolean.FALSE.equals(showGallery)) {
+            return;
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("deviceId", deviceId);
+        params.put("start", blankToNull(start));
+        params.put("end", blankToNull(end));
+        // 「已有抓拍」而不是「抓拍照片」：后者在紧跟着一张待确认抓拍卡时会被读成
+        // 「刚拍的那张」。标题里再带上最新一张的时间，歧义就没有了。
+        String title = "%s 已有抓拍（最新 %s）".formatted(deviceId, shortTime(latestAt));
+        ViewProposalService.Outcome outcome =
+                views.propose(session, "photo_gallery", title, params);
+        if (outcome.accepted()) {
+            session.events().emit(
+                    new AiEvent(AiEvent.Kind.VIEW, outcome.proposal().asEventData()));
+        }
+    }
+
+    /** 只取到分钟，标题里不需要秒与时区后缀。 */
+    private static String shortTime(String timestamp) {
+        if (timestamp == null || timestamp.length() < 16) {
+            return timestamp == null ? "" : timestamp;
+        }
+        return timestamp.substring(5, 16).replace('T', ' ');
+    }
+
     private void maybeTrackMap(
             ToolSession session, Boolean showMap, String deviceId, String start, String end) {
         if (!Boolean.TRUE.equals(showMap)) {

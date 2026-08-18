@@ -50,7 +50,20 @@ public enum ViewType {
      * <p>权限只要求能用助手：数据本来就是模型用别的工具在数据范围内查到的，再叠一层没有意义。
      */
     CHART("chart", "统计图表", Payload.SNAPSHOT, Permissions.AI_CHAT,
-            Presentation.INLINE, List.of(), List.of());
+            Presentation.INLINE, List.of(), List.of()),
+
+    /**
+     * 抓拍照片墙。
+     *
+     * <p>引用型：照片是平台数据面已有、可重新解析的资源，事件里只带设备号与时间窗，
+     * 前端拿用户自己的令牌去 {@code /api/media} 取。**绝不把图片本身塞进事件**——
+     * 那既撑爆留痕体积，也让权限校验失去意义。
+     *
+     * <p>直接内联渲染而不是引用卡：查看已经拍好的照片是纯读操作，没有任何真实世界副作用，
+     * 与实时视频「开流会向路上那台车下发指令」的性质完全不同。
+     */
+    PHOTO_GALLERY("photo_gallery", "抓拍照片", Payload.REFERENCE, Permissions.MEDIA_LIST,
+            Presentation.INLINE, List.of("deviceId"), List.of("start", "end", "channel"));
 
     /**
      * 轨迹查询的时间跨度上限。
@@ -59,6 +72,14 @@ public enum ViewType {
      * 拒绝服务触发器**。与轨迹查询工具描述里「跨度不要超过一天」保持一致。
      */
     public static final int MAX_TRACK_HOURS = 24;
+
+    /**
+     * 抓拍查询的时间跨度上限。
+     *
+     * <p>比轨迹宽是因为抓拍稀疏得多——一台车一天可能就几张，限到 24 小时会让「最近拍到了什么」
+     * 这种最自然的问法查不到东西。但仍要有上限，理由同上。
+     */
+    public static final int MAX_PHOTO_DAYS = 7;
 
     /** 事实的来源。决定校验管线走哪一支。 */
     public enum Payload {

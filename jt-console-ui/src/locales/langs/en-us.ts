@@ -235,6 +235,7 @@ const local: App.I18n.Schema = {
     fleet: 'Fleet Management',
     geofence: 'Geofences',
     vehicle: 'Vehicles',
+    media: 'Snapshots',
     ai: 'AI Assistant',
     ai_chat: 'AI Assistant',
     track: 'Track Playback',

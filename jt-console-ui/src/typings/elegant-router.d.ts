@@ -28,6 +28,7 @@ declare module "@elegant-router/types" {
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
     "login": "/login";
+    "media": "/media";
     "monitor": "/monitor";
     "register": "/register";
     "system": "/system";
@@ -84,6 +85,7 @@ declare module "@elegant-router/types" {
     | "home"
     | "iframe-page"
     | "login"
+    | "media"
     | "monitor"
     | "register"
     | "system"
@@ -115,6 +117,7 @@ declare module "@elegant-router/types" {
     | "fleet"
     | "geofence"
     | "home"
+    | "media"
     | "monitor"
     | "register"
     | "system_audit"

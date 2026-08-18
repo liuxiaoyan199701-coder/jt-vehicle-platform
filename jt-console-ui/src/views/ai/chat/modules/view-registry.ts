@@ -3,6 +3,7 @@ import LiveMapView from './views/live-map-view.vue';
 import TrackMapView from './views/track-map-view.vue';
 import ChartView from './views/chart-view.vue';
 import LiveVideoView from './views/live-video-view.vue';
+import PhotoGalleryView from './views/photo-gallery-view.vue';
 
 /**
  * 视图类型到组件的映射。
@@ -53,6 +54,13 @@ export const VIEW_REGISTRY: Record<string, ViewDefinition> = {
     requiredPermission: 'video:play',
     label: '实时视频',
     icon: 'mdi:video-outline',
+    enlargeable: true
+  },
+  photo_gallery: {
+    component: PhotoGalleryView,
+    requiredPermission: 'media:list',
+    label: '抓拍照片',
+    icon: 'mdi:image-multiple-outline',
     enlargeable: true
   }
 };
