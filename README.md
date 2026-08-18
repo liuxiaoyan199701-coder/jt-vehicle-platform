@@ -443,6 +443,38 @@ jt:
 媒体实例和一次性 token 状态。真实分进程命令、当前扩展边界和滚动顺序见
 [部署指南](docs/deployment.md)。
 
+## 架构与部署形态
+
+### 系统架构
+
+![系统架构：终端与客户端、接入网关 jt-platform、业务控制台 jt-console、存储与外部服务四层，以及各层之间的协议与端口](docs/images/architecture.svg)
+
+终端按 JT/T 808 接入 `jt-signal`，车载视频按 JT/T 1078 直连 `jt-media`。网关通过 `jt-delivery`
+把位置、告警与多媒体投递给业务控制台 `jt-console`；控制台自持 SQLite 单文件库，不依赖任何外部中间件。
+
+裸流播放是浏览器**直连媒体节点**的 WebSocket，不经业务后端中转——调度结果里带的就是具体节点的地址与端口。
+
+### 单节点部署（standalone）
+
+![单节点部署：一台主机上 Nginx、jt-platform、jt-console 与本地存储的端口与路由关系](docs/images/deploy-standalone.svg)
+
+一台主机跑完整套：一个 JAR 同时承担 signal / media / api 三个角色，控制台独立进程，Nginx 做统一入口。
+适合本地联调与单机小规模。`deploy/` 下提供了这一形态的安全发布基线（专用账户、防火墙、TLS、蓝绿发布）。
+
+需要放行的只有 `443`、`7100/TCP`、`7101/UDP`、`7811–7815/TCP`；`8100 / 8109 / 8300 / 7810`
+一律不得对公网暴露，Nginx 也显式把 `/internal/`、`/device/`、`/actuator/`、`/ingest/` 全部返回 404。
+
+### 多节点部署（cluster）
+
+![多节点部署：四层入口、signal-1、api 与可横向扩展的 media-1..N，并标注当前版本的扩展边界](docs/images/deploy-cluster.svg)
+
+同一个 JAR 以 `--jt.runtime.role=signal|media|api` 分角色启动。
+
+**当前版本只有媒体角色可以横向扩展**，图里如实标了边界：api 角色把媒体实例、流和一次性 token 全部
+存在内存（`jt.registry.type=redis` 尚未实现），signal 的设备会话路由也保存在进程本地——两者都必须
+保持单实例，不要把多个 signal 放到负载均衡后宣称无状态高可用。真实命令与滚动顺序见
+[部署指南](docs/deployment.md)。
+
 ## 工程结构
 
 | 路径 | 职责 |

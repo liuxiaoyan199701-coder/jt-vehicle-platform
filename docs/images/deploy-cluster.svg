@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 800" width="1120" height="800" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif">
+  <rect width="1120" height="800" fill="#fbfcfd"/>
+
+  <defs>
+    <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6b7a"/>
+    </marker>
+    <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d6fb8"/>
+    </marker>
+    <marker id="c3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2e7d5b"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="44" font-size="21" font-weight="600" fill="#12171d">多节点部署 · cluster</text>
+  <text x="40" y="66" font-size="13" fill="#5b6b7a">同一个 JAR 以 <tspan font-family="Consolas,monospace">--jt.runtime.role=signal|media|api</tspan> 分角色启动。当前版本<tspan font-weight="600" fill="#a05a1e">只有媒体角色可以横向扩展</tspan>，图中如实标出边界。</text>
+
+  <!-- 分隔：信令面 / 媒体面 -->
+  <line x1="560" y1="92" x2="560" y2="440" stroke="#dde4ea" stroke-width="1" stroke-dasharray="5 4"/>
+  <text x="52" y="108" font-size="12" font-weight="600" fill="#8593a0">信令面</text>
+  <text x="576" y="108" font-size="12" font-weight="600" fill="#8593a0">媒体面（终端与播放器直连真实节点，不经负载均衡）</text>
+
+  <!-- ===== 信令面 ===== -->
+  <rect x="60" y="122" width="200" height="52" rx="6" fill="#eef4fb" stroke="#b9d2ea"/>
+  <text x="160" y="146" font-size="13.5" font-weight="600" fill="#12171d" text-anchor="middle">JT/T 808 终端</text>
+  <text x="160" y="164" font-size="11" fill="#5b6b7a" text-anchor="middle">位置 · 告警 · 应答</text>
+
+  <rect x="60" y="212" width="200" height="52" rx="6" fill="#f4f6f8" stroke="#ccd6df"/>
+  <text x="160" y="236" font-size="13.5" font-weight="600" fill="#12171d" text-anchor="middle">四层入口</text>
+  <text x="160" y="254" font-size="11" fill="#5b6b7a" text-anchor="middle">7100/TCP · 7101/UDP</text>
+
+  <rect x="40" y="302" width="240" height="118" rx="7" fill="#eaf2fa" stroke="#9dc0e0"/>
+  <text x="160" y="326" font-size="14.5" font-weight="600" fill="#12171d" text-anchor="middle">signal-1</text>
+  <rect x="86" y="334" width="148" height="17" rx="8" fill="#fbeee0" stroke="#e0c48c"/>
+  <text x="160" y="347" font-size="10.5" font-weight="600" fill="#a05a1e" text-anchor="middle">当前仅支持 1 个活动实例</text>
+  <text x="58" y="371" font-size="11" fill="#41505e">71N1/TCP · 71N2/UDP　808 后端</text>
+  <text x="58" y="389" font-size="11" fill="#41505e">71N3/TCP　内部指令入口</text>
+  <text x="58" y="407" font-size="11" fill="#41505e">设备会话路由保存在本进程</text>
+
+  <rect x="300" y="302" width="240" height="118" rx="7" fill="#eaf2fa" stroke="#9dc0e0"/>
+  <text x="420" y="326" font-size="14.5" font-weight="600" fill="#12171d" text-anchor="middle">api</text>
+  <rect x="346" y="334" width="148" height="17" rx="8" fill="#fbeee0" stroke="#e0c48c"/>
+  <text x="420" y="347" font-size="10.5" font-weight="600" fill="#a05a1e" text-anchor="middle">必须单实例 · 状态在内存</text>
+  <text x="318" y="371" font-size="11" fill="#41505e">8100/TCP　REST + 内部共享状态</text>
+  <text x="318" y="389" font-size="11" fill="#41505e">开流调度 · 一次性媒体 token</text>
+  <text x="318" y="407" font-size="11" fill="#41505e">媒体实例注册表 · 容量指标</text>
+
+  <!-- ===== 媒体面 ===== -->
+  <rect x="576" y="122" width="230" height="52" rx="6" fill="#eef4fb" stroke="#b9d2ea"/>
+  <text x="691" y="146" font-size="13.5" font-weight="600" fill="#12171d" text-anchor="middle">JT/T 1078 车载视频</text>
+  <text x="691" y="164" font-size="11" fill="#5b6b7a" text-anchor="middle">音视频码流</text>
+
+  <rect x="836" y="122" width="244" height="52" rx="6" fill="#f2f7f4" stroke="#bcd9c9"/>
+  <text x="958" y="146" font-size="13.5" font-weight="600" fill="#12171d" text-anchor="middle">浏览器 · 播放器</text>
+  <text x="958" y="164" font-size="11" fill="#5b6b7a" text-anchor="middle">裸流播放 / 回放 / 对讲</text>
+
+  <rect x="576" y="230" width="504" height="190" rx="8" fill="#ffffff" stroke="#9dc0e0" stroke-dasharray="5 4"/>
+  <rect x="596" y="222" width="132" height="17" rx="8" fill="#e6f3ec" stroke="#a9d3bd"/>
+  <text x="662" y="235" font-size="10.5" font-weight="600" fill="#2e7d5b" text-anchor="middle">可横向扩展 · 实例号 1–9</text>
+
+  <rect x="596" y="256" width="148" height="146" rx="7" fill="#eaf2fa" stroke="#9dc0e0"/>
+  <text x="670" y="280" font-size="14" font-weight="600" fill="#12171d" text-anchor="middle">media-1</text>
+  <text x="612" y="302" font-size="10.5" fill="#41505e">7811–7814　码流接入</text>
+  <text x="612" y="320" font-size="10.5" fill="#41505e">7815　裸流 WS</text>
+  <text x="612" y="338" font-size="10.5" fill="#8593a0">7810　管理 / 容量</text>
+  <text x="612" y="364" font-size="10.5" fill="#41505e">独立端口段</text>
+  <text x="612" y="382" font-size="10.5" fill="#41505e">本地录像目录</text>
+
+  <rect x="762" y="256" width="148" height="146" rx="7" fill="#eaf2fa" stroke="#9dc0e0"/>
+  <text x="836" y="280" font-size="14" font-weight="600" fill="#12171d" text-anchor="middle">media-2</text>
+  <text x="778" y="302" font-size="10.5" fill="#41505e">7821–7824　码流接入</text>
+  <text x="778" y="320" font-size="10.5" fill="#41505e">7825　裸流 WS</text>
+  <text x="778" y="338" font-size="10.5" fill="#8593a0">7820　管理 / 容量</text>
+  <text x="778" y="364" font-size="10.5" fill="#41505e">独立端口段</text>
+  <text x="778" y="382" font-size="10.5" fill="#41505e">本地录像目录</text>
+
+  <rect x="928" y="256" width="134" height="146" rx="7" fill="#f4f6f8" stroke="#ccd6df" stroke-dasharray="4 3"/>
+  <text x="995" y="280" font-size="14" font-weight="600" fill="#5b6b7a" text-anchor="middle">media-N</text>
+  <text x="995" y="308" font-size="10.5" fill="#8593a0" text-anchor="middle">78N1–78N4</text>
+  <text x="995" y="326" font-size="10.5" fill="#8593a0" text-anchor="middle">78N5 · 78N0</text>
+  <text x="995" y="356" font-size="10.5" fill="#8593a0" text-anchor="middle">按容量增减</text>
+  <text x="995" y="380" font-size="10.5" fill="#8593a0" text-anchor="middle">N ≤ 9</text>
+
+  <!-- ===== 控制台 ===== -->
+  <rect x="40" y="474" width="500" height="128" rx="8" fill="#eef7f2" stroke="#a9d3bd"/>
+  <text x="290" y="498" font-size="14.5" font-weight="600" fill="#12171d" text-anchor="middle">Nginx :443　+　jt-console :8300</text>
+  <text x="60" y="522" font-size="11" fill="#41505e">前端静态资源 · /api/ 与 /ws/ 反代控制台</text>
+  <text x="60" y="540" font-size="11" fill="#41505e">/internal/ /device/ /actuator/ /ingest/ 一律 404</text>
+  <text x="60" y="558" font-size="11" fill="#41505e">多租户与权限 · 告警 · 围栏 · 轨迹 · 车队 · AI</text>
+  <text x="60" y="580" font-size="11" fill="#5b6b7a">控制台与网关解耦，可与信令面同机或独立部署</text>
+
+  <rect x="40" y="618" width="500" height="46" rx="6" fill="#f4f6f8" stroke="#ccd6df"/>
+  <text x="290" y="646" font-size="12.5" fill="#12171d" text-anchor="middle">SQLite 单文件库（控制台自持，不参与网关扩展）</text>
+
+  <!-- ===== 连线 ===== -->
+  <path d="M160,174 L160,212" stroke="#1d6fb8" stroke-width="1.8" fill="none" marker-end="url(#c2)"/>
+  <text x="168" y="198" font-size="11" fill="#1d6fb8">7100 / 7101</text>
+
+  <path d="M160,264 L160,302" stroke="#1d6fb8" stroke-width="1.8" fill="none" marker-end="url(#c2)"/>
+  <text x="152" y="288" font-size="11" fill="#1d6fb8" text-anchor="end">转发到 71N1 / 71N2</text>
+
+  <!-- api -> signal 内部指令：走方框上方走廊，标签紧贴连线 -->
+  <path d="M420,302 L420,284 L200,284 L200,300" stroke="#5b6b7a" stroke-width="1.5" fill="none" marker-end="url(#c1)"/>
+  <rect x="290" y="266" width="118" height="16" rx="3" fill="#fbfcfd"/>
+  <text x="294" y="278" font-size="10.5" fill="#41505e">71N3 内部指令</text>
+
+  <!-- 车载视频 -> media 直连 -->
+  <path d="M691,174 L691,256" stroke="#1d6fb8" stroke-width="1.8" fill="none" stroke-dasharray="6 3" marker-end="url(#c2)"/>
+  <text x="700" y="194" font-size="11" font-weight="600" fill="#1d6fb8">RTP 直连真实节点 IP</text>
+
+  <!-- 播放器 -> media 直连 -->
+  <path d="M958,174 L958,256" stroke="#1d6fb8" stroke-width="1.8" fill="none" stroke-dasharray="6 3" marker-end="url(#c2)"/>
+  <text x="968" y="194" font-size="11" font-weight="600" fill="#1d6fb8">78N5 WebSocket 直连</text>
+
+  <!-- api <-> media 共享状态 -->
+  <path d="M540,330 L576,330" stroke="#5b6b7a" stroke-width="1.5" fill="none" marker-end="url(#c1)"/>
+  <path d="M576,352 L540,352" stroke="#5b6b7a" stroke-width="1.5" fill="none" marker-end="url(#c1)"/>
+  <!-- 底片右边界必须停在 576 之前：越过去就会盖住 media-1 的端口号 -->
+  <rect x="438" y="304" width="134" height="16" rx="3" fill="#ffffff"/>
+  <text x="444" y="316" font-size="10.5" fill="#41505e">8100 共享状态</text>
+
+  <!-- signal -> console 投递 -->
+  <path d="M160,420 L160,474" stroke="#2e7d5b" stroke-width="1.8" fill="none" marker-end="url(#c3)"/>
+  <text x="168" y="452" font-size="11" font-weight="600" fill="#2e7d5b">jt-delivery：HTTP / RocketMQ</text>
+
+  <!-- 浏览器 -> console：从方框下沿出去再左转，避免横穿「车载视频」方框 -->
+  <path d="M850,174 L850,212 L560,212 L560,452 L360,452 L360,474" stroke="#2e7d5b" stroke-width="1.6" fill="none" marker-end="url(#c3)"/>
+  <text x="368" y="446" font-size="11" fill="#2e7d5b">HTTPS 控制台</text>
+
+  <!-- console -> sqlite -->
+  <path d="M290,602 L290,618" stroke="#5b6b7a" stroke-width="1.4" fill="none" marker-end="url(#c1)"/>
+
+  <!-- ===== 底部约束说明 ===== -->
+  <rect x="576" y="474" width="504" height="190" rx="8" fill="#fdf6ec" stroke="#e0c48c"/>
+  <text x="596" y="498" font-size="13" font-weight="600" fill="#a05a1e">扩展边界（部署前必须确认）</text>
+  <text x="596" y="524" font-size="11.5" fill="#41505e">1.　api 角色把媒体实例、流和一次性 token 全部存在内存，</text>
+  <text x="612" y="542" font-size="11.5" fill="#41505e">　 <tspan font-family="Consolas,monospace">jt.registry.type=redis</tspan> 尚未实现。必须单实例，</text>
+  <text x="612" y="560" font-size="11.5" fill="#41505e">　 重启会丢失上述运行时状态。</text>
+  <text x="596" y="584" font-size="11.5" fill="#41505e">2.　api 只配置一个 <tspan font-family="Consolas,monospace">command-base-url</tspan>，设备会话路由也在</text>
+  <text x="612" y="602" font-size="11.5" fill="#41505e">　 signal 进程本地——<tspan font-weight="600" fill="#a05a1e">不要把多个 signal 放到负载均衡后</tspan></text>
+  <text x="612" y="620" font-size="11.5" fill="#41505e">　 <tspan font-weight="600" fill="#a05a1e">宣称无状态高可用</tspan>，会话会路由到错误的实例。</text>
+  <text x="596" y="644" font-size="11.5" fill="#41505e">3.　media 可按实例号 1–9 扩展，各自独立端口段与本地存储。</text>
+
+  <text x="40" y="700" font-size="11.5" font-weight="600" fill="#41505e">调度结果里带的是具体 media 节点的地址与端口。设备推流与客户端 WebSocket 必须直连该节点——再经普通负载均衡随机转发，连接会落到不持有该流的节点上。</text>
+  <text x="40" y="722" font-size="11.5" fill="#a05a1e">因此 78N1–78N5 的防火墙规则必须指向真实节点 IP，只放行负载均衡地址不管用。</text>
+  <text x="40" y="744" font-size="11.5" fill="#5b6b7a">/internal/cluster-state/** 与 signal 的 /internal/streams/** 当前没有应用层认证，生产环境必须用网络 ACL、NetworkPolicy 或反向代理限制来源。</text>
+  <text x="40" y="770" font-size="11.5" fill="#5b6b7a">适用：媒体转发已成瓶颈、需要独立扩缩媒体资源的场景。信令与 API 的高可用需要等注册表外置后才能成立。</text>
+</svg>

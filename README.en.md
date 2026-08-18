@@ -130,6 +130,47 @@ is disabled and traffic is plain HTTP. For production use the scripts under
 `deploy/`, which provide checksum verification, blue-green releases and automatic
 rollback.
 
+## Architecture and deployment shapes
+
+### System architecture
+
+![System architecture: terminals and clients, the jt-platform gateway, the jt-console business layer, storage and external services, with the protocols and ports between them](docs/images/architecture.svg)
+
+Terminals reach `jt-signal` over JT/T 808; on-board video connects straight to `jt-media`
+over JT/T 1078. The gateway hands locations, alarms and multimedia to the `jt-console`
+business layer through `jt-delivery`. The console owns a single SQLite file and needs no
+external middleware.
+
+Raw-stream playback is a WebSocket **straight from the browser to the media node** — the
+scheduling result carries that node's own address and port, so it is never proxied through
+the business backend.
+
+### Single node (standalone)
+
+![Single-node deployment: Nginx, jt-platform, jt-console and local storage on one host, with ports and routing](docs/images/deploy-standalone.svg)
+
+One host runs everything: a single JAR serves the signal, media and api roles at once, the
+console is a separate process and Nginx is the only public entry point. Suitable for local
+integration and small single-machine installs. `deploy/` ships a hardened release baseline
+for exactly this shape (dedicated accounts, firewall, TLS, blue-green releases).
+
+Only `443`, `7100/TCP`, `7101/UDP` and `7811–7815/TCP` need to be open. `8100 / 8109 / 8300 / 7810`
+must never be reachable from the internet, and Nginx explicitly returns 404 for `/internal/`,
+`/device/`, `/actuator/` and `/ingest/`.
+
+### Multiple nodes (cluster)
+
+![Multi-node deployment: L4 entry, signal-1, api and horizontally scalable media-1..N, annotated with the current scaling limits](docs/images/deploy-cluster.svg)
+
+The same JAR starts per role via `--jt.runtime.role=signal|media|api`.
+
+**Only the media role scales horizontally in the current version**, and the diagram states
+that limit rather than hiding it: the api role keeps media instances, streams and one-time
+tokens in memory (`jt.registry.type=redis` is not implemented), and signal keeps device
+session routing process-local. Both must stay single-instance — do not put several signal
+instances behind a load balancer and call it stateless HA. See the
+[deployment guide](docs/deployment.md) for the real commands and rollout order.
+
 ## Documentation
 
 - [Deployment guide](docs/deployment.md)

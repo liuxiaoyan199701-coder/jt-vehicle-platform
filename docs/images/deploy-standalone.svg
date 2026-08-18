@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 720" width="1120" height="720" font-family="'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif">
+  <rect width="1120" height="720" fill="#fbfcfd"/>
+
+  <defs>
+    <marker id="s1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6b7a"/>
+    </marker>
+    <marker id="s2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d6fb8"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="44" font-size="21" font-weight="600" fill="#12171d">单节点部署 · standalone</text>
+  <text x="40" y="66" font-size="13" fill="#5b6b7a">一台主机跑完整套：一个 JAR 同时承担 signal / media / api 三个角色，控制台独立进程，SQLite 单文件库</text>
+
+  <!-- 外部来源 -->
+  <rect x="36" y="150" width="216" height="60" rx="6" fill="#f2f7f4" stroke="#bcd9c9"/>
+  <text x="144" y="176" font-size="14" font-weight="600" fill="#12171d" text-anchor="middle">浏览器 · 运营人员</text>
+  <text x="144" y="195" font-size="11" fill="#5b6b7a" text-anchor="middle">监控 / 回放 / 播放 / AI</text>
+
+  <rect x="36" y="322" width="216" height="60" rx="6" fill="#eef4fb" stroke="#b9d2ea"/>
+  <text x="144" y="348" font-size="14" font-weight="600" fill="#12171d" text-anchor="middle">JT/T 808 终端</text>
+  <text x="144" y="367" font-size="11" fill="#5b6b7a" text-anchor="middle">位置 · 告警 · 应答</text>
+
+  <rect x="36" y="404" width="216" height="60" rx="6" fill="#eef4fb" stroke="#b9d2ea"/>
+  <text x="144" y="430" font-size="14" font-weight="600" fill="#12171d" text-anchor="middle">JT/T 1078 车载视频</text>
+  <text x="144" y="449" font-size="11" fill="#5b6b7a" text-anchor="middle">音视频码流</text>
+
+  <!-- 主机边框 -->
+  <rect x="296" y="96" width="788" height="530" rx="10" fill="#ffffff" stroke="#b9c6d2" stroke-width="1.5"/>
+  <text x="312" y="118" font-size="12" font-weight="600" fill="#5b6b7a">单台主机（Ubuntu / systemd，deploy/ 下有安全发布基线）</text>
+
+  <!-- nginx -->
+  <rect x="326" y="132" width="728" height="126" rx="7" fill="#fdf6ec" stroke="#e0c48c"/>
+  <text x="346" y="155" font-size="15" font-weight="600" fill="#12171d">Nginx　:443 TLS　（:80 仅跳转）</text>
+  <text x="346" y="180" font-size="11.5" fill="#41505e">/　　　　　　　　　　　→　前端静态资源（Vue 3 构建产物）</text>
+  <text x="346" y="199" font-size="11.5" fill="#41505e">/api/　·　/ws/　　　　 →　127.0.0.1:8300　控制台</text>
+  <text x="346" y="218" font-size="11.5" fill="#41505e">/files/multimedia/　　→　127.0.0.1:8100　多媒体文件</text>
+  <text x="346" y="237" font-size="11.5" fill="#41505e">/media-ws　　　　　　 →　127.0.0.1:7815　裸流播放</text>
+  <text x="700" y="180" font-size="11.5" font-weight="600" fill="#a05a1e">一律返回 404：</text>
+  <text x="700" y="199" font-size="11.5" fill="#a05a1e">/internal/　/device/</text>
+  <text x="700" y="218" font-size="11.5" fill="#a05a1e">/actuator/　/ingest/</text>
+  <text x="700" y="240" font-size="10.5" fill="#8593a0">内部接口无应用层认证，必须在入口挡掉</text>
+
+  <!-- jt-platform -->
+  <rect x="326" y="316" width="340" height="150" rx="7" fill="#eaf2fa" stroke="#9dc0e0"/>
+  <text x="496" y="340" font-size="15" font-weight="600" fill="#12171d" text-anchor="middle">jt-platform（standalone）</text>
+  <text x="496" y="359" font-size="11" fill="#5b6b7a" text-anchor="middle">一个进程 = signal + media + api</text>
+  <text x="346" y="384" font-size="11.5" font-weight="600" fill="#1d6fb8">7100/TCP · 7101/UDP</text>
+  <text x="530" y="384" font-size="11" fill="#41505e">808 接入</text>
+  <text x="346" y="404" font-size="11.5" font-weight="600" fill="#1d6fb8">7811–7814/TCP</text>
+  <text x="530" y="404" font-size="11" fill="#41505e">1078 码流接入</text>
+  <text x="346" y="424" font-size="11.5" font-weight="600" fill="#1d6fb8">7815/TCP</text>
+  <text x="530" y="424" font-size="11" fill="#41505e">裸流 WebSocket</text>
+  <text x="346" y="444" font-size="11.5" font-weight="600" fill="#8593a0">7810 · 8100 · 8109</text>
+  <text x="530" y="444" font-size="11" fill="#41505e">仅本机，禁止公网</text>
+
+  <!-- jt-console -->
+  <rect x="700" y="316" width="354" height="150" rx="7" fill="#eef7f2" stroke="#a9d3bd"/>
+  <text x="877" y="340" font-size="15" font-weight="600" fill="#12171d" text-anchor="middle">jt-console</text>
+  <text x="877" y="359" font-size="11" fill="#5b6b7a" text-anchor="middle">业务控制台 · 独立 systemd 服务</text>
+  <text x="720" y="384" font-size="11.5" font-weight="600" fill="#8593a0">8300/TCP</text>
+  <text x="850" y="384" font-size="11" fill="#41505e">REST / SSE / WS，仅本机</text>
+  <text x="720" y="404" font-size="11" fill="#41505e">投递入口 · 多租户与权限</text>
+  <text x="720" y="424" font-size="11" fill="#41505e">告警 · 围栏 · 轨迹 · 车队 · AI</text>
+  <text x="720" y="446" font-size="11" fill="#41505e">凭据在 /etc/jt-console/*.env（0640）</text>
+
+  <!-- 存储 -->
+  <rect x="326" y="510" width="340" height="52" rx="6" fill="#f4f6f8" stroke="#ccd6df"/>
+  <text x="496" y="533" font-size="13" fill="#12171d" text-anchor="middle">录像分片与 MP4</text>
+  <text x="496" y="551" font-size="11" fill="#5b6b7a" text-anchor="middle">本地磁盘，按实例号隔离目录</text>
+
+  <rect x="700" y="510" width="354" height="52" rx="6" fill="#f4f6f8" stroke="#ccd6df"/>
+  <text x="877" y="533" font-size="13" fill="#12171d" text-anchor="middle">SQLite 单文件库</text>
+  <text x="877" y="551" font-size="11" fill="#5b6b7a" text-anchor="middle">PRAGMA user_version 增量迁移</text>
+
+  <!-- 连线 -->
+  <path d="M252,180 L326,180" stroke="#5b6b7a" stroke-width="1.8" fill="none" marker-end="url(#s1)"/>
+  <text x="256" y="172" font-size="11" fill="#41505e">HTTPS</text>
+
+  <path d="M252,352 L326,352" stroke="#1d6fb8" stroke-width="1.8" fill="none" marker-end="url(#s2)"/>
+  <text x="256" y="344" font-size="11" fill="#1d6fb8">7100 / 7101</text>
+
+  <path d="M252,434 L326,434" stroke="#1d6fb8" stroke-width="1.8" fill="none" marker-end="url(#s2)"/>
+  <text x="256" y="426" font-size="11" fill="#1d6fb8">7811–7814</text>
+
+  <!-- nginx -> platform（裸流与文件） -->
+  <path d="M430,258 L430,316" stroke="#5b6b7a" stroke-width="1.5" fill="none" marker-end="url(#s1)"/>
+  <text x="330" y="288" font-size="11" fill="#41505e">7815 · 8100</text>
+
+  <!-- nginx -> console -->
+  <path d="M900,258 L900,316" stroke="#5b6b7a" stroke-width="1.5" fill="none" marker-end="url(#s1)"/>
+  <text x="908" y="288" font-size="11" fill="#41505e">8300</text>
+
+  <!-- platform -> console 投递：绕到方框下方走，标签才贴得住连线 -->
+  <path d="M600,466 L600,492 L820,492 L820,468" stroke="#2e7d5b" stroke-width="1.8" fill="none" marker-end="url(#s1)"/>
+  <text x="618" y="484" font-size="11" font-weight="600" fill="#2e7d5b">环回投递 127.0.0.1:8300/ingest</text>
+
+  <!-- 落盘 -->
+  <path d="M496,466 L496,510" stroke="#5b6b7a" stroke-width="1.4" fill="none" marker-end="url(#s1)"/>
+  <path d="M877,466 L877,510" stroke="#5b6b7a" stroke-width="1.4" fill="none" marker-end="url(#s1)"/>
+
+  <text x="40" y="662" font-size="11.5" font-weight="600" fill="#41505e">适用：本地联调、单机小规模（几百台车级别）。防火墙只需放行 443、7100/TCP、7101/UDP、7811–7815/TCP。</text>
+  <text x="40" y="684" font-size="11.5" fill="#a05a1e">注意：8100 / 8109 / 8300 / 7810 一律不得对公网放行；媒体可达地址在 NAT 或容器环境中必须显式配置，自动探测会得到内网 IP 导致终端连不上。</text>
+  <text x="40" y="706" font-size="11.5" fill="#5b6b7a">瓶颈出现在媒体转发与磁盘 IO——先扩媒体节点，那正是多节点形态解决的问题。</text>
+</svg>
