@@ -1,0 +1,7 @@
+html, body, #map { height: 100%; margin: 0; }
+#map { background: #e8e3d8; cursor: crosshair; position: relative; overflow: hidden; }
+.leaflet-tile { position: absolute; width: 256px; height: 256px; object-fit: cover; }
+.leaflet-marker { position: absolute; width: 18px; height: 18px; margin-left: -9px; margin-top: -18px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid white; box-shadow: 0 1px 3px #333; }
+.leaflet-marker.origin { background: #198754; }
+.leaflet-marker.destination { background: #dc3545; }
+.leaflet-control { position: absolute; z-index: 10; top: 10px; left: 10px; background: white; padding: 8px 10px; border-radius: 4px; box-shadow: 0 1px 4px #777; font: 13px sans-serif; }

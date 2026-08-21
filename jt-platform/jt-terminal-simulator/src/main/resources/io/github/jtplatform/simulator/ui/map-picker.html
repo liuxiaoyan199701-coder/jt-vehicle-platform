@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>GCJ-02 地图选点</title><link rel="stylesheet" href="leaflet.css"></head>
+<body><div id="map"><div class="leaflet-control">点击地图：第一次起点，第二次终点；可拖动标记微调</div></div>
+<script src="leaflet.js"></script><script>
+/* 本地内嵌的 Leaflet-compatible 轻量页面壳；瓦片使用高德标准样式，免 Key。 */
+const map = document.getElementById('map');
+const state = { origin: null, destination: null, center: {lat:31.230416,lng:121.473701}, zoom:12 };
+const markers = {};
+function project(p) { const w=map.clientWidth||900,h=map.clientHeight||600; return {x:w/2+(p.lng-state.center.lng)*9000,y:h/2-(p.lat-state.center.lat)*9000}; }
+function unproject(x,y) { const w=map.clientWidth||900,h=map.clientHeight||600; return {lat:state.center.lat-(y-h/2)/9000,lng:state.center.lng+(x-w/2)/9000}; }
+function drawTiles() { const tile = L.tileLayer('https://wprd0{1-4}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}', {maxZoom:18}); tile.addTo(map); }
+function draw() {
+  drawTiles(); Object.keys(markers).forEach(k=>markers[k].remove());
+  ['origin','destination'].forEach(k=>{ if(!state[k])return; const p=project(state[k]); const e=document.createElement('div'); e.className='leaflet-marker '+k; e.dataset.kind=k; e.style.left=p.x+'px';e.style.top=p.y+'px';
+    e.onmousedown=function(ev){ev.stopPropagation(); let move=function(me){const q=unproject(me.offsetX,me.offsetY);state[k]=q;draw();emit(k,q)};map.onmousemove=move;map.onmouseup=function(){map.onmousemove=null;map.onmouseup=null;};}; map.appendChild(e);markers[k]=e; });
+}
+function emit(kind,p){window.__mapEvent=kind+','+p.lat.toFixed(6)+','+p.lng.toFixed(6);}
+map.onclick=function(ev){ if(ev.target!==map)return; const p=unproject(ev.offsetX,ev.offsetY); let kind; if(!state.origin){state.origin=p;kind='origin';} else {state.destination=p;kind='destination';} emit(kind,p); draw(); };
+window.clearMarkers=function(){state.origin=null;state.destination=null;draw();};
+window.initMap=function(initial){ if(initial.origin)state.origin=initial.origin;if(initial.destination)state.destination=initial.destination;if(state.origin)state.center=state.origin;draw(); };
+window.addEventListener('resize',draw); draw();
+</script></body></html>

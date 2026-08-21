@@ -186,6 +186,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         saveButton.setOnAction(event -> saveConfiguration(true));
         connectButton.setOnAction(event -> toggleConnection());
         configuration.tripToggleButton().setOnAction(event -> toggleTrip());
+        configuration.mapPickerButton().setOnAction(event -> openMapPicker());
         previewButton.setOnAction(event -> togglePreview());
         configuration.browseFfmpegButton().setOnAction(event -> browseFfmpeg());
         configuration.detectFfmpegButton().setOnAction(event -> detectFfmpeg());
@@ -642,6 +643,20 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         status.getStyleClass().add("status-bar");
         status.setAlignment(Pos.CENTER_LEFT);
         return status;
+    }
+
+    private void openMapPicker() {
+        if (closed.get()) {
+            return;
+        }
+        MapPickerDialog.show(owner(), configuration.currentOriginPoint(),
+                configuration.currentDestinationPoint(), selection -> runOnFx(() -> {
+                    configuration.applyMapSelection(selection);
+                    activity.setText("地图起终点已回填，请保存配置");
+                }), failure -> runOnFx(() -> {
+                    activity.setText("地图不可用，请手输");
+                    showActionError("地图不可用，请手输", failure);
+                }));
     }
 
     private void toggleConnection() {
