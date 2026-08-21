@@ -187,7 +187,8 @@ export const generatedRoutes: GeneratedRoute[] = [
       title: 'recording',
       i18nKey: 'route.recording',
       icon: 'mdi:video-vintage',
-      order: 8
+      order: 8,
+      permissions: ['recording:search']
     }
   },
   {

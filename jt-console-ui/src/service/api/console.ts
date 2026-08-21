@@ -353,6 +353,33 @@ export function openStream(deviceId: string, channel: number, streamKind: 'main'
 export interface RecordingRange {
   startTime: string;
   endTime: string;
+  channel?: number;
+  streamKind?: string;
+  source?: string;
+}
+
+export interface DeviceRecordingResource {
+  channel: number;
+  startTime: string;
+  endTime: string;
+  warnBit: number;
+  mediaType: number;
+  streamType: number;
+  storageType: number;
+  size: number;
+}
+
+export interface RecordingSearchResult {
+  platform: {
+    available: boolean;
+    reason?: string | null;
+    segments: RecordingRange[];
+  };
+  device: {
+    available: boolean;
+    reason?: string | null;
+    resources: DeviceRecordingResource[];
+  };
 }
 
 export function searchRecordings(
@@ -362,10 +389,31 @@ export function searchRecordings(
   endTime: string,
   streamKind: 'main' | 'sub' = 'main'
 ) {
-  return request<RecordingRange[]>({
+  return request<RecordingSearchResult>({
     url: '/recordings/search',
     params: { deviceId, channel, streamKind, startTime, endTime }
   });
+}
+
+export function fetchRecordingsAround(deviceId: string, at: string, channel = 1) {
+  return request<RecordingRange[]>({
+    url: '/recordings/around',
+    params: { deviceId, at, channel }
+  });
+}
+
+export interface RecordingStorageMetrics {
+  recordingOccupiedBytes: number;
+  recordingUsableBytes: number;
+  recordingTotalBytes: number;
+  retentionDays: number;
+  maxBytes: number;
+  realtimeEnabled: boolean;
+  playbackEnabled: boolean;
+}
+
+export function fetchRecordingStorage() {
+  return request<RecordingStorageMetrics>({ url: '/system/recording-storage' });
 }
 
 export function openPlaybackStream(
