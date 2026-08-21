@@ -6,7 +6,9 @@ import {
   type TenantView,
   fetchConfigKeys,
   fetchConfigOverrides,
+  fetchRecordingStorage,
   fetchTenants,
+  type RecordingStorageMetrics,
   saveConfigOverrides
 } from '@/service/api';
 import { useAuthStore } from '@/store/modules/auth';
@@ -25,6 +27,29 @@ const keys = ref<ConfigKeyDefinition[]>([]);
 const values = ref<Record<string, string>>({});
 const tenants = ref<TenantView[]>([]);
 const tenantFilter = ref<number | null>(null);
+const recordingStorage = ref<RecordingStorageMetrics | null>(null);
+const storageUnavailable = ref(false);
+
+const storagePercent = computed(() => {
+  const value = recordingStorage.value;
+  if (!value) return 0;
+  const filesystemCapacity = value.recordingOccupiedBytes + value.recordingUsableBytes;
+  const capacity = value.maxBytes > 0 ? Math.min(value.maxBytes, filesystemCapacity) : filesystemCapacity;
+  return capacity > 0 ? Math.min(100, (value.recordingOccupiedBytes / capacity) * 100) : 0;
+});
+const storageStatus = computed(() => storagePercent.value >= 90 ? 'error' : storagePercent.value >= 80 ? 'warning' : 'success');
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '-';
+  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
 
 const scopeLabel = computed(() => {
   if (!isPlatform.value) {
@@ -39,12 +64,15 @@ onMounted(load);
 async function load() {
   loading.value = true;
   try {
-    const [keyResult, overrideResult] = await Promise.all([
+    const [keyResult, overrideResult, storageResult] = await Promise.all([
       fetchConfigKeys(),
-      fetchConfigOverrides(tenantFilter.value)
+      fetchConfigOverrides(tenantFilter.value),
+      fetchRecordingStorage()
     ]);
     keys.value = keyResult.data ?? [];
     values.value = { ...(overrideResult.data ?? {}) };
+    recordingStorage.value = storageResult.data ?? null;
+    storageUnavailable.value = Boolean(storageResult.error);
     if (isPlatform.value && !tenants.value.length) {
       const tenantResult = await fetchTenants();
       tenants.value = tenantResult.data ?? [];
@@ -71,6 +99,26 @@ async function save() {
 </script>
 
 <template>
+  <div class="flex flex-col gap-12px">
+  <NCard title="录像存储" :bordered="false" size="small">
+    <NAlert v-if="storageUnavailable" type="warning" :bordered="false">录像存储状态暂不可用</NAlert>
+    <div v-else-if="recordingStorage" class="grid gap-16px md:grid-cols-3">
+      <NStatistic label="录像占用" :value="formatBytes(recordingStorage.recordingOccupiedBytes)" />
+      <NStatistic label="磁盘可用" :value="formatBytes(recordingStorage.recordingUsableBytes)" />
+      <NStatistic label="保留期" :value="recordingStorage.retentionDays || '未按天限制'" :suffix="recordingStorage.retentionDays ? '天' : ''" />
+      <div class="md:col-span-3">
+        <div class="mb-6px flex justify-between text-12px">
+          <span>录像占用率</span><span>{{ storagePercent.toFixed(1) }}%</span>
+        </div>
+        <NProgress type="line" :percentage="storagePercent" :status="storageStatus" :show-indicator="false" />
+        <p class="mt-6px text-12px text-gray-500">
+          容量上限 {{ recordingStorage.maxBytes ? formatBytes(recordingStorage.maxBytes) : '未配置' }}；
+          实时录像 {{ recordingStorage.realtimeEnabled ? '已开启' : '未开启' }}。
+        </p>
+      </div>
+    </div>
+  </NCard>
+
   <NCard title="租户配置" :bordered="false" size="small" class="h-full">
     <template #header-extra>
       <NSpace align="center">
@@ -112,4 +160,5 @@ async function save() {
       </NForm>
     </NSpin>
   </NCard>
+  </div>
 </template>

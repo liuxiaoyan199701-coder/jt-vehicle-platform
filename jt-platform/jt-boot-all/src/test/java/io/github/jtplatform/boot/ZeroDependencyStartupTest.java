@@ -31,11 +31,17 @@ class ZeroDependencyStartupTest {
     @Autowired
     private SignalStreamCommandController internalCommandController;
 
+    @Autowired
+    private RecordingMetricsController recordingMetricsController;
+
     @Test
     void startsWithMemoryDefaultsAndNoExternalConnections() {
         assertInstanceOf(LocalStreamCommandPort.class, commandPort);
         assertEquals(JtPlatformProperties.RegistryType.MEMORY, properties.getRegistry().getType());
         assertEquals(JtPlatformProperties.StreamAuthMode.DISABLED, properties.getAuth().getStream().getMode());
         assertInstanceOf(SignalStreamCommandController.class, internalCommandController);
+        // 控制台固定经 8100 网关基址代理 /metrics/recording；必须确保该控制器实际注册，
+        // 不能只在媒体节点 78N0 管理端口存在同名端点。
+        assertInstanceOf(RecordingMetricsController.class, recordingMetricsController);
     }
 }

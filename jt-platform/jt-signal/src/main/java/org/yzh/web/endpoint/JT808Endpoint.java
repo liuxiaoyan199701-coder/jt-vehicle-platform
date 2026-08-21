@@ -28,6 +28,7 @@ import org.yzh.protocol.t808.T0302;
 import org.yzh.protocol.t808.T0303;
 import org.yzh.protocol.t808.T0608;
 import org.yzh.protocol.t808.T0700;
+import org.yzh.protocol.t808.T0701;
 import org.yzh.protocol.t808.T0702;
 import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0705;
@@ -222,7 +223,7 @@ public class JT808Endpoint {
     }
 
     @Mapping(types = 电子运单上报, desc = "电子运单上报")
-    public void T0701(JTMessage message, Session session) {
+    public void T0701(T0701 message, Session session) {
     }
 
     @Mapping(types = 驾驶员身份信息采集上报, desc = "驾驶员身份信息采集上报")

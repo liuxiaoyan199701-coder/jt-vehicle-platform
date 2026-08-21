@@ -35,6 +35,9 @@ public final class MessageTypeClassifier {
         if (id == JT808.定位数据批量上传) {
             return MessageType.BATCH_LOCATION;
         }
+        if (id == JT808.电子运单上报) {
+            return MessageType.WAYBILL;
+        }
         if (id == JT808.终端心跳) {
             return MessageType.HEARTBEAT;
         }

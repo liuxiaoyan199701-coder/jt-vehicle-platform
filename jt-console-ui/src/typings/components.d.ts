@@ -69,6 +69,7 @@ declare module 'vue' {
     NNotificationProvider: typeof import('naive-ui')['NNotificationProvider']
     NPagination: typeof import('naive-ui')['NPagination']
     NPopconfirm: typeof import('naive-ui')['NPopconfirm']
+    NProgress: typeof import('naive-ui')['NProgress']
     NRadioButton: typeof import('naive-ui')['NRadioButton']
     NRadioGroup: typeof import('naive-ui')['NRadioGroup']
     NResult: typeof import('naive-ui')['NResult']
@@ -96,6 +97,7 @@ declare module 'vue' {
     TableHeaderOperation: typeof import('./../components/advanced/table-header-operation.vue')['default']
     ThemeSchemaSwitch: typeof import('./../components/common/theme-schema-switch.vue')['default']
     VehicleProfileDrawer: typeof import('./../components/business/vehicle-profile-drawer.vue')['default']
+    VehicleWaybillTab: typeof import('./../components/business/vehicle-waybill-tab.vue')['default']
     WaveBg: typeof import('./../components/custom/wave-bg.vue')['default']
   }
 }
@@ -159,6 +161,7 @@ declare global {
   const NNotificationProvider: typeof import('naive-ui')['NNotificationProvider']
   const NPagination: typeof import('naive-ui')['NPagination']
   const NPopconfirm: typeof import('naive-ui')['NPopconfirm']
+  const NProgress: typeof import('naive-ui')['NProgress']
   const NRadioButton: typeof import('naive-ui')['NRadioButton']
   const NRadioGroup: typeof import('naive-ui')['NRadioGroup']
   const NResult: typeof import('naive-ui')['NResult']
@@ -186,5 +189,6 @@ declare global {
   const TableHeaderOperation: typeof import('./../components/advanced/table-header-operation.vue')['default']
   const ThemeSchemaSwitch: typeof import('./../components/common/theme-schema-switch.vue')['default']
   const VehicleProfileDrawer: typeof import('./../components/business/vehicle-profile-drawer.vue')['default']
+  const VehicleWaybillTab: typeof import('./../components/business/vehicle-waybill-tab.vue')['default']
   const WaveBg: typeof import('./../components/custom/wave-bg.vue')['default']
 }

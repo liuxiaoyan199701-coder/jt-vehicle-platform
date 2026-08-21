@@ -321,6 +321,44 @@ export function deleteFleet(id: number) {
   return request<void>({ url: `/fleets/${encodePathSegment(id)}`, method: 'delete' });
 }
 
+// ---------------- 电子运单 ----------------
+
+export interface WaybillItem {
+  id: number;
+  deviceId: string;
+  reportedAt: string;
+  receivedAt: string;
+  rawLength: number;
+  preview: string;
+  utf8: boolean;
+}
+
+export interface WaybillPage {
+  items: WaybillItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function fetchWaybills(deviceId: string, page = 1, pageSize = 20) {
+  return request<WaybillPage>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/waybills`,
+    params: { page, pageSize }
+  });
+}
+
+export interface WaybillRaw {
+  base64: string;
+  length: number;
+  fileName: string;
+}
+
+export function fetchWaybillRaw(deviceId: string, waybillId: number) {
+  return request<WaybillRaw>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/waybills/${encodePathSegment(waybillId)}/raw`
+  });
+}
+
 // ---------------- 实时监控 ----------------
 
 export function fetchLiveStatus() {
@@ -353,6 +391,33 @@ export function openStream(deviceId: string, channel: number, streamKind: 'main'
 export interface RecordingRange {
   startTime: string;
   endTime: string;
+  channel?: number;
+  streamKind?: string;
+  source?: string;
+}
+
+export interface DeviceRecordingResource {
+  channel: number;
+  startTime: string;
+  endTime: string;
+  warnBit: number;
+  mediaType: number;
+  streamType: number;
+  storageType: number;
+  size: number;
+}
+
+export interface RecordingSearchResult {
+  platform: {
+    available: boolean;
+    reason?: string | null;
+    segments: RecordingRange[];
+  };
+  device: {
+    available: boolean;
+    reason?: string | null;
+    resources: DeviceRecordingResource[];
+  };
 }
 
 export function searchRecordings(
@@ -362,10 +427,31 @@ export function searchRecordings(
   endTime: string,
   streamKind: 'main' | 'sub' = 'main'
 ) {
-  return request<RecordingRange[]>({
+  return request<RecordingSearchResult>({
     url: '/recordings/search',
     params: { deviceId, channel, streamKind, startTime, endTime }
   });
+}
+
+export function fetchRecordingsAround(deviceId: string, at: string, channel = 1) {
+  return request<RecordingRange[]>({
+    url: '/recordings/around',
+    params: { deviceId, at, channel }
+  });
+}
+
+export interface RecordingStorageMetrics {
+  recordingOccupiedBytes: number;
+  recordingUsableBytes: number;
+  recordingTotalBytes: number;
+  retentionDays: number;
+  maxBytes: number;
+  realtimeEnabled: boolean;
+  playbackEnabled: boolean;
+}
+
+export function fetchRecordingStorage() {
+  return request<RecordingStorageMetrics>({ url: '/system/recording-storage' });
 }
 
 export function openPlaybackStream(
@@ -580,6 +666,131 @@ export function uploadUpgradePackage(file: File, name: string, version: string, 
 
 export function deleteUpgradePackage(id: number) {
   return request<void>({ url: `/upgrade-packages/${encodePathSegment(id)}`, method: 'delete' });
+}
+
+export interface Driver {
+  id: number;
+  name: string;
+  idCard: string;
+  licenseNo: string;
+  institution: string | null;
+  licenseValidPeriod: string | null;
+  phone: string | null;
+  remark: string | null;
+  departmentId: number | null;
+  tenantId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DriverMutation {
+  name: string;
+  idCard: string;
+  licenseNo: string;
+  institution?: string | null;
+  licenseValidPeriod?: string | null;
+  phone?: string | null;
+  remark?: string | null;
+  departmentId?: number | null;
+  tenantId?: number | null;
+}
+
+export interface DriverIdentityEvent {
+  id: number;
+  eventId: string;
+  deviceId: string;
+  status: number;
+  cardStatus: number;
+  name: string | null;
+  licenseNo: string | null;
+  institution: string | null;
+  licenseValidPeriod: string | null;
+  idCard: string | null;
+  driverId: number | null;
+  deviceTime: string;
+  receivedAt: string;
+}
+
+export interface DriverSession {
+  id: number;
+  deviceId: string;
+  driverId: number | null;
+  driverName: string | null;
+  licenseNo: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  source: string;
+}
+
+export interface CurrentDriver {
+  deviceId: string;
+  driverId: number | null;
+  driverName: string | null;
+  licenseNo: string | null;
+  startedAt: string;
+  source: string;
+}
+
+export function fetchDrivers(params?: {
+  keyword?: string;
+  departmentId?: number;
+  page?: number;
+  pageSize?: number;
+}) {
+  return request<{ items: Driver[]; total: number }>({ url: '/drivers', params });
+}
+
+export function fetchDriver(id: number) {
+  return request<Driver>({ url: `/drivers/${encodePathSegment(id)}` });
+}
+
+export function createDriver(driver: DriverMutation) {
+  return request<Driver>({ url: '/drivers', method: 'post', data: driver });
+}
+
+export function updateDriver(id: number, driver: DriverMutation) {
+  return request<Driver>({ url: `/drivers/${encodePathSegment(id)}`, method: 'put', data: driver });
+}
+
+export function deleteDriver(id: number) {
+  return request<void>({ url: `/drivers/${encodePathSegment(id)}`, method: 'delete' });
+}
+
+export function fetchDriverSessions(id: number) {
+  return request<DriverSession[]>({ url: `/drivers/${encodePathSegment(id)}/sessions` });
+}
+
+export function fetchIdentityEvents(params?: {
+  deviceId?: string;
+  unmatched?: boolean;
+  failed?: boolean;
+  start?: string;
+  end?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  return request<DriverIdentityEvent[]>({ url: '/drivers/identity-events', params });
+}
+
+export function fetchCurrentDriver(deviceId: string) {
+  return request<CurrentDriver | null>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/driver`
+  });
+}
+
+export function bindDriver(deviceId: string, driverId: number) {
+  return request<DriverSession>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/driver`,
+    method: 'post',
+    data: { driverId }
+  });
+}
+
+export function unbindDriver(deviceId: string) {
+  return request<void>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/driver`,
+    method: 'delete'
+  });
 }
 
 // ---------------- 多媒体（拍照结果） ----------------

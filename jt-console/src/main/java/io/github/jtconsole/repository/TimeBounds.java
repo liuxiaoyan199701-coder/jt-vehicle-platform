@@ -14,18 +14,18 @@ import io.github.jtconsole.config.Timestamps;
  * <p>这类约束靠在参数说明里写清楚是守不住的：它同时约束着网页、AI 工具两条调用路径，
  * 而其中一条的参数是模型现场生成的。规范化必须放在依赖该格式的 SQL 这一侧。
  */
-final class TimeBounds {
+public final class TimeBounds {
 
     private TimeBounds() {
     }
 
     /** 下界：只给日期时取当天零点。 */
-    static String lower(String bound) {
+    public static String lower(String bound) {
         return normalize(bound, "T00:00:00.000");
     }
 
     /** 上界：只给日期时取当天最后一毫秒。 */
-    static String upper(String bound) {
+    public static String upper(String bound) {
         return normalize(bound, "T23:59:59.999");
     }
 
@@ -36,6 +36,27 @@ final class TimeBounds {
      * {@code "…T09:40:00"} 会小于同一秒的 {@code "…T09:40:00.123+08:00"}，缺偏移时
      * {@code '+'}（0x2B）又排在数字之前。两种情况都会悄悄漏掉边界附近的记录。
      */
+    /** 把外部时间参数按下界口径归一后转换为绝对时刻，供非 SQL 的时段查询复用。 */
+    public static java.time.Instant instant(String bound) {
+        return parseInstant(lower(bound), bound);
+    }
+
+    /** 把外部时间参数按上界口径归一；仅给日期时取当天最后一毫秒。 */
+    public static java.time.Instant upperInstant(String bound) {
+        return parseInstant(upper(bound), bound);
+    }
+
+    private static java.time.Instant parseInstant(String normalized, String original) {
+        if (normalized == null) {
+            throw new IllegalArgumentException("时间不能为空");
+        }
+        try {
+            return java.time.OffsetDateTime.parse(normalized).toInstant();
+        } catch (java.time.format.DateTimeParseException invalid) {
+            throw new IllegalArgumentException("时间格式不正确：" + original, invalid);
+        }
+    }
+
     private static String normalize(String bound, String bareDateSuffix) {
         if (bound == null || bound.isBlank()) {
             return null;

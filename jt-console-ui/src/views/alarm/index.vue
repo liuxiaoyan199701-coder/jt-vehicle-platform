@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, h, onMounted, reactive, ref, watch } from 'vue';
+import dayjs from 'dayjs';
 import { useRoute, useRouter } from 'vue-router';
 import { useAppStore } from '@/store/modules/app';
+import { useAuthStore } from '@/store/modules/auth';
 import { NButton, NSpace, NTag, useMessage } from 'naive-ui';
 import type { DataTableColumns } from 'naive-ui';
 import {
@@ -10,6 +12,7 @@ import {
   fetchAlarm,
   fetchAlarms,
   fetchMediaAround,
+  fetchRecordingsAround,
   fetchVehicles,
   type AlarmEvent,
   type AlarmLevel,
@@ -17,6 +20,7 @@ import {
   type AlarmSource,
   type AlarmStatus,
   type MediaFileItem,
+  type RecordingRange,
   type Vehicle
 } from '@/service/api';
 import {
@@ -34,6 +38,7 @@ defineOptions({ name: 'AlarmIndex' });
 const route = useRoute();
 const router = useRouter();
 const appStore = useAppStore();
+const authStore = useAuthStore();
 const message = useMessage();
 const loading = ref(false);
 const rows = ref<AlarmEvent[]>([]);
@@ -41,6 +46,7 @@ const total = ref(0);
 const vehicles = ref<Vehicle[]>([]);
 const detailVisible = ref(false);
 const nearbyPhotos = ref<MediaFileItem[]>([]);
+const nearbyRecordings = ref<RecordingRange[]>([]);
 const currentAlarm = ref<AlarmEvent | null>(null);
 const actionVisible = ref(false);
 const actionType = ref<'acknowledge' | 'close'>('acknowledge');
@@ -214,6 +220,7 @@ function openDetail(alarm: AlarmEvent) {
   currentAlarm.value = alarm;
   detailVisible.value = true;
   void loadNearbyPhotos(alarm);
+  void loadNearbyRecordings(alarm);
   void router.replace({ query: { ...route.query, alarm: String(alarm.id) } });
 }
 
@@ -230,6 +237,30 @@ async function loadNearbyPhotos(alarm: AlarmEvent) {
   } catch {
     nearbyPhotos.value = [];
   }
+}
+
+async function loadNearbyRecordings(alarm: AlarmEvent) {
+  nearbyRecordings.value = [];
+  if (!authStore.hasPermission('recording:search') || !authStore.hasPermission('recording:playback')) return;
+  try {
+    const { data } = await fetchRecordingsAround(alarm.deviceId, alarm.occurredAt);
+    nearbyRecordings.value = data ?? [];
+  } catch {
+    nearbyRecordings.value = [];
+  }
+}
+
+function openNearbyRecording(alarm: AlarmEvent) {
+  const at = dayjs(alarm.occurredAt);
+  void router.push({
+    name: 'recording',
+    query: {
+      deviceId: alarm.deviceId,
+      startTime: at.subtract(5, 'minute').toISOString(),
+      endTime: at.add(5, 'minute').toISOString(),
+      autoplay: '1'
+    }
+  });
 }
 
 async function openAlarmById(id: number) {
@@ -366,6 +397,13 @@ function locateVehicle() {
             </div>
           </NDescriptionsItem>
         </NDescriptions>
+
+        <div v-if="nearbyRecordings.length" class="mt-16px">
+          <NButton type="primary" secondary @click="openNearbyRecording(currentAlarm)">
+            <template #icon><SvgIcon icon="lucide:video" /></template>
+            该时段录像
+          </NButton>
+        </div>
 
         <!--
           该时段的抓拍。

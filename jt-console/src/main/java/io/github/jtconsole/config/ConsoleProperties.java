@@ -440,6 +440,10 @@ public class ConsoleProperties {
         /** 同时进行的对话数上限。满了直接拒绝而不是排队，避免请求堆在池里超时。 */
         private int concurrentChats = 4;
         private Duration conversationRetention = Duration.ofDays(90);
+        /** 单批清理的会话数，限制 SQLite 写事务长度。 */
+        private int conversationCleanupBatchSize = 500;
+        /** 单次调度最多清理多少批，给维护任务一个运行时间上界。 */
+        private int conversationCleanupMaxBatches = 100;
         private Duration reportRetention = Duration.ofDays(365);
         /** 简报生成时间。避开整点，且晚于昨日统计固化、错开审计清理。 */
         private String reportCron = "0 23 6 * * *";
@@ -720,6 +724,22 @@ public class ConsoleProperties {
 
         public void setConversationRetention(Duration conversationRetention) {
             this.conversationRetention = conversationRetention;
+        }
+
+        public int getConversationCleanupBatchSize() {
+            return conversationCleanupBatchSize;
+        }
+
+        public void setConversationCleanupBatchSize(int conversationCleanupBatchSize) {
+            this.conversationCleanupBatchSize = conversationCleanupBatchSize;
+        }
+
+        public int getConversationCleanupMaxBatches() {
+            return conversationCleanupMaxBatches;
+        }
+
+        public void setConversationCleanupMaxBatches(int conversationCleanupMaxBatches) {
+            this.conversationCleanupMaxBatches = conversationCleanupMaxBatches;
         }
 
         public Duration getReportRetention() {

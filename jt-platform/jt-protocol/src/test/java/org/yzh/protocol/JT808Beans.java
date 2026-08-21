@@ -340,6 +340,11 @@ public class JT808Beans {
         return bean;
     }
 
+    //电子运单上报
+    public static T0701 T0701() {
+        return new T0701().setData("WAYBILL-测试".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
     //驾驶员身份信息采集上报
     public static T0702 T0702() {
         T0702 bean = new T0702();

@@ -11,12 +11,17 @@ public class EventIngestionService {
     private final EventRepository events;
     private final LocationService locations;
     private final MediaIngestionService media;
+    private final DriverIdentityIngestionService driverIdentity;
+    private final WaybillIngestionService waybills;
 
     public EventIngestionService(
-            EventRepository events, LocationService locations, MediaIngestionService media) {
+            EventRepository events, LocationService locations, MediaIngestionService media,
+            DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills) {
         this.events = events;
         this.locations = locations;
         this.media = media;
+        this.driverIdentity = driverIdentity;
+        this.waybills = waybills;
     }
 
     @Transactional
@@ -29,6 +34,10 @@ public class EventIngestionService {
 
         // 多媒体上传先落元数据，再走位置/在线时间的常规处理
         media.handleIfMediaUpload(normalized);
+        // 驾驶员身份识别（0702）落事件与驾驶区间
+        driverIdentity.handleIfDriverIdentity(normalized);
+        // 电子运单（0701）按归属无损留存原文
+        waybills.handleIfWaybill(normalized);
 
         LocationHandlingResult handled = locations.handle(normalized);
         return IngestionResult.committed(handled);

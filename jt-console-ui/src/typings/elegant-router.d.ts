@@ -23,6 +23,7 @@ declare module "@elegant-router/types" {
     "ai": "/ai";
     "ai_chat": "/ai/chat";
     "alarm": "/alarm";
+    "driver": "/driver";
     "fleet": "/fleet";
     "geofence": "/geofence";
     "home": "/home";
@@ -84,6 +85,7 @@ declare module "@elegant-router/types" {
     | "500"
     | "ai"
     | "alarm"
+    | "driver"
     | "fleet"
     | "geofence"
     | "home"
@@ -122,6 +124,7 @@ declare module "@elegant-router/types" {
     | "login"
     | "ai_chat"
     | "alarm"
+    | "driver"
     | "fleet"
     | "geofence"
     | "home"

@@ -2,9 +2,11 @@
 import { computed, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import {
+  fetchCurrentDriver,
   fetchRecentMedia,
   queryTerminalInfo,
   sendDeviceCommand,
+  type CurrentDriver,
   type LiveStatus,
   type MediaFileItem
 } from '@/service/api';
@@ -37,6 +39,9 @@ const photoSending = ref(false);
 const photos = ref<MediaFileItem[]>([]);
 const photosLoading = ref(false);
 
+// ---------------- 当前驾驶员 ----------------
+const currentDriver = ref<CurrentDriver | null>(null);
+
 // ---------------- 电话回拨 ----------------
 const callback = ref({ phoneNumber: '', mode: 'call' });
 const callbackSending = ref(false);
@@ -63,9 +68,16 @@ watch(
   async isVisible => {
     if (isVisible && props.vehicle) {
       await loadPhotos();
+      await loadDriver();
     }
   }
 );
+
+async function loadDriver() {
+  if (!props.vehicle) return;
+  const { data } = await fetchCurrentDriver(props.vehicle.deviceId);
+  currentDriver.value = data ?? null;
+}
 
 function requireDevice(): string | null {
   if (!props.vehicle) {
@@ -199,6 +211,16 @@ const adjustActions = [
     <NAlert v-if="vehicle && !vehicle.online" type="warning" :bordered="false" class="mb-12px">
       设备离线，所有指令暂不可用。请确认车机已连接平台。
     </NAlert>
+
+    <div v-if="currentDriver" class="mb-12px flex items-center gap-8px rounded bg-gray-50 px-10px py-8px text-13px dark:bg-#1a1a1a">
+      <SvgIcon icon="mdi:account" />
+      <span>
+        当前驾驶员：<b>{{ currentDriver.driverName ?? '未建档' }}</b>
+        <span v-if="currentDriver.startedAt" class="text-gray-500">
+          （{{ currentDriver.startedAt.replace('T', ' ').slice(0, 16) }} 上车）
+        </span>
+      </span>
+    </div>
 
     <NTabs type="line" size="small">
       <!-- ============ 文本下发 ============ -->

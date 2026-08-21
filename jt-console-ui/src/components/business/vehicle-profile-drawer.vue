@@ -12,6 +12,7 @@ import {
   normalizeVehicleProfile
 } from '@/utils/fleet-operations';
 import VideoDialog from '@/views/monitor/modules/video-dialog.vue';
+import VehicleWaybillTab from './vehicle-waybill-tab.vue';
 
 defineOptions({ name: 'VehicleProfileDrawer' });
 
@@ -109,7 +110,9 @@ function alarmTitle(alarm: AlarmEvent) {
         </template>
       </NResult>
 
-      <div v-else-if="profile" class="flex flex-col gap-16px">
+      <NTabs v-else-if="profile" type="line" animated>
+        <NTabPane name="overview" tab="概览">
+          <div class="flex flex-col gap-16px">
         <NAlert v-if="!profile.vehicle" type="warning" :bordered="false" class="flex items-center justify-between">
           <span>该设备尚未建档，状态与轨迹仍可查看；建档后可关联车牌与车辆信息。</span>
           <NButton size="tiny" type="primary" @click="toVehicleArchive">去建档</NButton>
@@ -215,7 +218,12 @@ function alarmTitle(alarm: AlarmEvent) {
             </NListItem>
           </NList>
         </div>
-      </div>
+          </div>
+        </NTabPane>
+        <NTabPane name="waybills" tab="运单">
+          <VehicleWaybillTab :device-id="profile.vehicle?.deviceId ?? profile.status?.deviceId ?? deviceId!" />
+        </NTabPane>
+      </NTabs>
 
       <template #footer>
         <NSpace v-if="profile" justify="end" wrap>

@@ -160,7 +160,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(12L);
+        assertThat(userVersion()).isEqualTo(15L);
         for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
             assertThat(scalar("""
                     SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
@@ -178,7 +178,22 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(12L);
+        assertThat(userVersion()).isEqualTo(15L);
+    }
+
+    @Test
+    void waybillMigrationUsesV15AndCreatesExpectedIndexes() {
+        TestSchema.migrate(jdbc, transactions);
+
+        assertThat(userVersion()).isEqualTo(15L);
+        assertThat(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='waybill'"))
+                .isEqualTo(1L);
+        assertThat(scalar("""
+                SELECT COUNT(*) FROM sqlite_master
+                WHERE type='index' AND name='idx_waybill_device_reported'
+                """)).isEqualTo(1L);
+        // V14 留给连接诊断车道；本变更只能直接落 V15。
+        assertThat(new V15WaybillMigration().version()).isEqualTo(15);
     }
 
     /** 把库推进到加 AI 表之前的状态，用来模拟真实的升级起点。 */

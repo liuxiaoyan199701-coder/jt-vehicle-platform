@@ -12,11 +12,13 @@ import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.AlarmRuleRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
+import io.github.jtconsole.repository.DriverRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
 import io.github.jtconsole.repository.MediaRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import io.github.jtconsole.repository.TrackRepository;
 import io.github.jtconsole.repository.VehicleRepository;
+import io.github.jtconsole.repository.WaybillRepository;
 import io.github.jtconsole.web.VehicleController;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.operations.AlarmService;
@@ -334,6 +336,11 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        WaybillRepository waybillRepository(JdbcClient jdbc) {
+            return new WaybillRepository(jdbc);
+        }
+
+        @Bean
         VehicleRepository vehicleRepository(JdbcClient jdbc) {
             return new VehicleRepository(jdbc);
         }
@@ -365,6 +372,11 @@ class EventIngestionIntegrationTest {
         @Bean
         AlarmRuleRepository alarmRuleRepository(JdbcClient jdbc) {
             return new AlarmRuleRepository(jdbc);
+        }
+
+        @Bean
+        DriverRepository driverRepository(JdbcClient jdbc) {
+            return new DriverRepository(jdbc);
         }
 
         @Bean
@@ -436,8 +448,11 @@ class EventIngestionIntegrationTest {
 
         @Bean
         EventIngestionService eventIngestionService(
-                EventRepository events, LocationService locations, MediaRepository media) {
-            return new EventIngestionService(events, locations, new MediaIngestionService(media));
+                EventRepository events, LocationService locations, MediaRepository media,
+                DriverRepository drivers, WaybillRepository waybills) {
+            return new EventIngestionService(events, locations, new MediaIngestionService(media),
+                    new DriverIdentityIngestionService(drivers),
+                    new WaybillIngestionService(waybills, org.mockito.Mockito.mock(DeviceOwnershipCache.class)));
         }
     }
 }

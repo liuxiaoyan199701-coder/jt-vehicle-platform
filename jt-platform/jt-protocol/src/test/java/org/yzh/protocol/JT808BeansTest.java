@@ -119,6 +119,12 @@ public class JT808BeansTest {
     }
 
     @Test
+    public void testT0701() {
+        selfCheck(H2013(T0701()));
+        selfCheck(H2019(T0701()));
+    }
+
+    @Test
     public void testT0702() {
         selfCheck(H2013(T0702()));
         selfCheck(H2019(T0702()));

@@ -30,6 +30,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Enumeration;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -45,6 +46,7 @@ import org.yzh.protocol.jsatl12.T9208;
 import org.yzh.protocol.t1078.T9105;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0701;
 import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0801;
 import org.yzh.web.model.entity.DeviceDO;
@@ -57,7 +59,7 @@ class SignalMessageCoverageTest {
     @Test
     void everyProtocolMessageClassReachesThePublisher() throws Exception {
         Set<Class<? extends JTMessage>> messageClasses = protocolMessageClasses();
-        assertEquals(73, messageClasses.size());
+        assertEquals(74, messageClasses.size());
 
         CapturingPublisher publisher = new CapturingPublisher();
         SignalMessageDispatcher dispatcher = new SignalMessageDispatcher(
@@ -79,7 +81,7 @@ class SignalMessageCoverageTest {
             assertEquals(before + 1, publisher.messages.size(), messageClass.getName());
         }
 
-        assertEquals(73, publisher.messages.size());
+        assertEquals(74, publisher.messages.size());
     }
 
     @Test
@@ -175,6 +177,31 @@ class SignalMessageCoverageTest {
         } finally {
             ReferenceCountUtil.safeRelease(bytes);
         }
+    }
+
+    @Test
+    void waybillCarriesRawBase64LengthAndStableSerialBasedIdempotencyKey() {
+        SignalMessageEnvelopeMapper mapper = new SignalMessageEnvelopeMapper(payloadMapper, classifier,
+                Clock.fixed(Instant.parse("2026-08-10T00:00:00Z"), ZoneOffset.UTC), "signal-test");
+        byte[] raw = "运单-A".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        T0701 first = new T0701().setData(raw);
+        first.setClientId("138000000000");
+        first.setMessageId(first.reflectMessageId());
+        first.setSerialNo(17);
+        T0701 duplicate = new T0701().setData(raw);
+        duplicate.setClientId("138000000000");
+        duplicate.setMessageId(duplicate.reflectMessageId());
+        duplicate.setSerialNo(17);
+
+        MessageEnvelope envelope = mapper.map(null, first);
+        MessageEnvelope repeated = mapper.map(null, duplicate);
+
+        assertEquals(MessageType.WAYBILL, envelope.type());
+        assertEquals(Base64.getEncoder().encodeToString(raw), envelope.payload().get("rawBase64"));
+        assertEquals(raw.length, envelope.payload().get("length"));
+        assertTrue(envelope.eventId().contains(":17:"));
+        assertEquals(envelope.eventId(), repeated.eventId());
+        assertTrue(MessageType.WAYBILL.isCritical());
     }
 
     @Test

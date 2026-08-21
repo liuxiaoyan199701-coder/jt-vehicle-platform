@@ -78,6 +78,10 @@ jt:
       # 这里只放平台自己的策略参数。
       max-tool-rounds: ${JT_AI_MAX_TOOL_ROUNDS:8}
       concurrent-chats: ${JT_AI_CONCURRENT_CHATS:4}
+      conversation-retention: ${JT_AI_CONVERSATION_RETENTION:90d}
+      conversation-cleanup-batch-size: ${JT_AI_CONVERSATION_CLEANUP_BATCH:500}
+      conversation-cleanup-max-batches: ${JT_AI_CONVERSATION_CLEANUP_MAX_BATCHES:100}
+      cleanup-cron: ${JT_AI_CLEANUP_CRON:0 41 3 * * *}
       vision:
         # 视觉旁路模型：主模型（DeepSeek）没有视觉能力，由它专门负责「看图出文字」，
         # 描述再作为普通文本进入主模型上下文。留空则整条视觉链路关闭：

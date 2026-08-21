@@ -84,7 +84,13 @@ public class StreamProxyController {
             throw new IllegalArgumentException("deviceId 不能为空");
         }
         // 归属校验必须在触达网关之前：越权请求 MUST NOT 产生任何开流信令。
-        String canonicalId = vehicles.requireVisibleDevice(deviceId.toString(), scope);
+        String requestedId = deviceId.toString().trim();
+        AuditContext.resource("vehicle", requestedId);
+        if ("playback".equals(String.valueOf(request.get("streamKind")))) {
+            AuditContext.detail("目标设备=" + requestedId
+                    + "，回放范围=" + request.get("startTime") + " 至 " + request.get("endTime"));
+        }
+        String canonicalId = vehicles.requireVisibleDevice(requestedId, scope);
         AuditContext.resource("vehicle", canonicalId);
         Map<String, Object> gatewayRequest = new LinkedHashMap<>(request);
         gatewayRequest.put("deviceId", canonicalId);

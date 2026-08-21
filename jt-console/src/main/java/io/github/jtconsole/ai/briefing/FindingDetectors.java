@@ -1,10 +1,12 @@
 package io.github.jtconsole.ai.briefing;
 
 import io.github.jtconsole.config.Timestamps;
+import io.github.jtconsole.domain.Driver;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
+import io.github.jtconsole.repository.DriverRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import io.github.jtconsole.security.DataScope;
 import java.time.Duration;
@@ -50,16 +52,19 @@ public class FindingDetectors {
     private final AlarmRepository alarms;
     private final DailyStatRepository dailyStats;
     private final BusinessDateService dates;
+    private final DriverRepository drivers;
 
     public FindingDetectors(
             StatusRepository statuses,
             AlarmRepository alarms,
             DailyStatRepository dailyStats,
-            BusinessDateService dates) {
+            BusinessDateService dates,
+            DriverRepository drivers) {
         this.statuses = statuses;
         this.alarms = alarms;
         this.dailyStats = dailyStats;
         this.dates = dates;
+        this.drivers = drivers;
     }
 
     /**
@@ -73,6 +78,7 @@ public class FindingDetectors {
         findings.addAll(alarmSurge(scope));
         findings.addAll(fleetSnapshot(scope));
         findings.addAll(idleVehicles(scope));
+        findings.addAll(driverLicenseExpiry(scope));
         return findings.size() > MAX_FINDINGS ? findings.subList(0, MAX_FINDINGS) : findings;
     }
 
@@ -222,6 +228,66 @@ public class FindingDetectors {
                 Map.of("在线车辆", snapshot.online(), "今日里程(km)", Math.round(distance * 10) / 10.0),
                 List.of(),
                 new DashboardFinding.Link("monitor", Map.of(), "去监控页")));
+    }
+
+    /** 从业资格证 30 天内到期（WARN）或已过期（CRITICAL）的司机。 */
+    private List<DashboardFinding> driverLicenseExpiry(DataScope scope) {
+        LocalDate today = dates.today();
+        List<Driver> expiring = drivers.findExpiringBy(today.plusDays(30).toString(), scope);
+        if (expiring.isEmpty()) {
+            return List.of();
+        }
+        List<Driver> expired = new ArrayList<>();
+        List<Driver> expiringSoon = new ArrayList<>();
+        for (Driver driver : expiring) {
+            LocalDate period = parseDate(driver.licenseValidPeriod());
+            if (period == null) {
+                continue;
+            }
+            if (!period.isAfter(today)) {
+                expired.add(driver);
+            } else {
+                expiringSoon.add(driver);
+            }
+        }
+        List<DashboardFinding> findings = new ArrayList<>();
+        if (!expired.isEmpty()) {
+            findings.add(new DashboardFinding(
+                    "driver-license-expired",
+                    DashboardFinding.Category.DRIVER,
+                    DashboardFinding.Severity.CRITICAL,
+                    "%d 名司机从业资格证已过期".formatted(expired.size()),
+                    Map.of("司机", names(expired)),
+                    List.of(),
+                    new DashboardFinding.Link("driver", Map.of(), "去司机管理")));
+        }
+        if (!expiringSoon.isEmpty()) {
+            findings.add(new DashboardFinding(
+                    "driver-license-expiring",
+                    DashboardFinding.Category.DRIVER,
+                    DashboardFinding.Severity.WARN,
+                    "%d 名司机从业资格证 30 天内到期".formatted(expiringSoon.size()),
+                    Map.of("司机", names(expiringSoon)),
+                    List.of(),
+                    new DashboardFinding.Link("driver", Map.of(), "去司机管理")));
+        }
+        return findings;
+    }
+
+    private static List<String> names(List<Driver> drivers) {
+        return drivers.stream().map(Driver::name).toList();
+    }
+
+    /** 解析 yyyy-MM-dd，解析失败返回 null（不把脏数据当成已过期）。 */
+    private static LocalDate parseDate(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value.trim());
+        } catch (RuntimeException unparseable) {
+            return null;
+        }
     }
 
     private static String label(LiveStatus status) {

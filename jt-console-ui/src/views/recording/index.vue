@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { useMessage } from 'naive-ui';
 import dayjs from 'dayjs';
+import { useAuthStore } from '@/store/modules/auth';
 import { JT1078Player } from '@jt/player';
 import type { OpenStreamRequest, StreamTicket as PlayerTicket } from '@jt/player';
 import {
   fetchVehicles,
   openPlaybackStream,
   searchRecordings,
+  type DeviceRecordingResource,
   type RecordingRange,
   type Vehicle
 } from '@/service/api';
@@ -15,6 +18,9 @@ import {
 defineOptions({ name: 'RecordingIndex' });
 
 const message = useMessage();
+const route = useRoute();
+const authStore = useAuthStore();
+const canPlayback = computed(() => authStore.hasPermission('recording:playback'));
 const vehicles = ref<Vehicle[]>([]);
 const loading = ref(false);
 
@@ -24,11 +30,17 @@ const query = ref({
   range: [dayjs().subtract(1, 'hour').valueOf(), dayjs().valueOf()] as [number, number]
 });
 
-const ranges = ref<RecordingRange[]>([]);
+const platformAvailable = ref<boolean | null>(null);
+const platformReason = ref('');
+const platformRanges = ref<RecordingRange[]>([]);
+const deviceAvailable = ref<boolean | null>(null);
+const deviceReason = ref('');
+const deviceRanges = ref<DeviceRecordingResource[]>([]);
+const searched = ref(false);
 const searching = ref(false);
 
 // 回放
-const playing = ref<null | RecordingRange>(null);
+const playing = ref<null | RecordingRange | DeviceRecordingResource>(null);
 const playbackVisible = ref(false);
 const playbackState = ref('idle');
 const playbackError = ref('');
@@ -46,9 +58,17 @@ const vehicleOptions = computed(() =>
 onMounted(async () => {
   const { data } = await fetchVehicles();
   vehicles.value = data ?? [];
+  const deviceId = typeof route.query.deviceId === 'string' ? route.query.deviceId : '';
+  const startTime = typeof route.query.startTime === 'string' ? route.query.startTime : '';
+  const endTime = typeof route.query.endTime === 'string' ? route.query.endTime : '';
+  if (deviceId && startTime && endTime) {
+    query.value.deviceId = deviceId;
+    query.value.range = [dayjs(startTime).valueOf(), dayjs(endTime).valueOf()];
+    await search(Boolean(route.query.autoplay));
+  }
 });
 
-async function search() {
+async function search(autoplay = false) {
   if (!query.value.deviceId) {
     message.warning('请选择车辆');
     return;
@@ -60,14 +80,26 @@ async function search() {
     query.value.deviceId, query.value.channel, start, end
   );
   searching.value = false;
-  if (error) {
-    message.error(error.message || '检索失败');
-    ranges.value = [];
+  searched.value = true;
+  if (error || !data) {
+    message.error(error?.message || '检索失败');
+    platformAvailable.value = false;
+    platformReason.value = error?.message || '检索失败';
+    platformRanges.value = [];
+    deviceAvailable.value = false;
+    deviceReason.value = error?.message || '检索失败';
+    deviceRanges.value = [];
     return;
   }
-  ranges.value = data ?? [];
-  if (!ranges.value.length) {
-    message.info('该时间范围内没有录像');
+  platformAvailable.value = data.platform.available;
+  platformReason.value = data.platform.reason ?? '';
+  platformRanges.value = data.platform.segments ?? [];
+  deviceAvailable.value = data.device.available;
+  deviceReason.value = data.device.reason ?? '';
+  deviceRanges.value = data.device.resources ?? [];
+  if (autoplay && platformRanges.value.length) {
+    // 告警入口传入的是 ±5 分钟窗口；从窗口起点开流，而不是从列表第一片自己的起点开流。
+    await play({ startTime: start, endTime: end });
   }
 }
 
@@ -91,13 +123,18 @@ const opener = {
   }
 };
 
-async function play(range: RecordingRange) {
-  if (!query.value.deviceId || !canvasRef.value) return;
+async function play(range: RecordingRange | DeviceRecordingResource) {
+  if (!query.value.deviceId) return;
   await stopPlayback();
   playing.value = range;
   playbackVisible.value = true;
   playbackError.value = '';
   playbackState.value = 'opening';
+  await nextTick();
+  if (!canvasRef.value) {
+    playbackError.value = '播放器画布初始化失败';
+    return;
+  }
 
   try {
     player = new JT1078Player({ canvas: canvasRef.value, opener });
@@ -188,19 +225,51 @@ const stateText: Record<string, string> = {
         <span class="text-13px text-#666">通道</span>
         <NInputNumber v-model:value="query.channel" :min="1" :max="255" class="w-80px" />
         <NDatePicker v-model:value="query.range" type="datetimerange" clearable class="w-320px" />
-        <NButton type="primary" size="small" :loading="searching" @click="search">检索</NButton>
+        <NButton type="primary" size="small" :loading="searching" @click="search(false)">检索</NButton>
       </div>
 
       <NSpin :show="searching">
-        <NEmpty v-if="!searching && ranges.length === 0" description="选择车辆与时间后检索录像" class="py-40px" />
-        <div v-for="(range, index) in ranges" :key="index" class="recording-row">
-          <div class="flex items-center justify-between gap-8px">
-            <span class="text-13px">
-              {{ fmt(range.startTime) }} ~ {{ fmt(range.endTime) }}
-              <span class="text-#999">（{{ Math.max(0, dayjs(range.endTime).diff(dayjs(range.startTime), 'second')) }} 秒）</span>
-            </span>
-            <NButton size="tiny" type="primary" @click="play(range)">回放</NButton>
-          </div>
+        <NEmpty v-if="!searched && !searching" description="选择车辆与时间后检索录像" class="py-40px" />
+        <div v-else-if="!searching" class="flex flex-col gap-16px pt-8px">
+          <section>
+            <div class="mb-6px flex items-center gap-8px">
+              <strong>平台侧录像</strong>
+              <NTag :type="platformAvailable ? 'success' : 'error'" size="small">
+                {{ platformAvailable ? '可用' : '不可用' }}
+              </NTag>
+              <span v-if="platformReason" class="text-12px text-#999">{{ platformReason }}</span>
+            </div>
+            <NEmpty v-if="platformAvailable && platformRanges.length === 0" description="该时段没有平台侧分片" size="small" />
+            <div v-for="(range, index) in platformRanges" :key="`platform-${index}`" class="recording-row">
+              <div class="flex items-center justify-between gap-8px">
+                <span class="text-13px">
+                  {{ fmt(range.startTime) }} ~ {{ fmt(range.endTime) }}
+                  <span class="text-#999">（{{ Math.max(0, dayjs(range.endTime).diff(dayjs(range.startTime), 'second')) }} 秒）</span>
+                </span>
+                <NButton v-if="canPlayback" size="tiny" type="primary" @click="play(range)">回放</NButton>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div class="mb-6px flex items-center gap-8px">
+              <strong>设备侧录像</strong>
+              <NTag :type="deviceAvailable ? 'success' : 'warning'" size="small">
+                {{ deviceAvailable ? '可用' : '不可用' }}
+              </NTag>
+              <span v-if="deviceReason" class="text-12px text-#999">{{ deviceReason }}</span>
+            </div>
+            <NEmpty v-if="deviceAvailable && deviceRanges.length === 0" description="终端返回的资源列表为空" size="small" />
+            <div v-for="(range, index) in deviceRanges" :key="`device-${index}`" class="recording-row">
+              <div class="flex items-center justify-between gap-8px">
+                <span class="text-13px">
+                  通道 {{ range.channel }} · {{ fmt(range.startTime) }} ~ {{ fmt(range.endTime) }}
+                  <span class="text-#999">（{{ Math.max(0, dayjs(range.endTime).diff(dayjs(range.startTime), 'second')) }} 秒，{{ range.size }} 字节）</span>
+                </span>
+                <NButton v-if="canPlayback" size="tiny" type="primary" @click="play(range)">回放</NButton>
+              </div>
+            </div>
+          </section>
         </div>
       </NSpin>
     </NCard>
