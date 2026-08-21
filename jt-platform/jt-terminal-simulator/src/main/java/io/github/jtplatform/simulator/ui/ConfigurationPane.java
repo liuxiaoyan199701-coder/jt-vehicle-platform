@@ -98,6 +98,7 @@ final class ConfigurationPane extends VBox {
     private final Button detectFfmpeg = new Button("检测 FFmpeg");
     private final Button refreshDevices = new Button("刷新设备");
     private final Button tripToggle = new Button("开始行程");
+    private final Button mapPicker = new Button("地图选点");
     private final ProgressIndicator tripProgress = new ProgressIndicator();
     private final Label tripHint = new Label();
     private final Label validationSummary = new Label();
@@ -171,6 +172,7 @@ final class ConfigurationPane extends VBox {
         microphone.setPromptText("选择或输入麦克风名称");
 
         tripToggle.setId("trip-toggle");
+        mapPicker.setId("trip-map-picker");
         tripAmapKey.setPromptText("留空则使用内置路线");
         tripOriginLat.setPromptText("留空 = 用内置起点");
         tripOriginLng.setPromptText("留空 = 用内置起点");
@@ -287,7 +289,7 @@ final class ConfigurationPane extends VBox {
         row(parameters, 3, "自动开始", ConfigField.TRIP_AUTO_START, tripAutoStart);
         content.getChildren().addAll(sectionTitle("行驶参数"), parameters);
 
-        HBox actions = new HBox(8, tripProgress, tripToggle);
+        HBox actions = new HBox(8, tripProgress, mapPicker, tripToggle);
         actions.setAlignment(Pos.CENTER_RIGHT);
         content.getChildren().addAll(actions, tripHint);
         return scroll(content);
@@ -494,6 +496,36 @@ final class ConfigurationPane extends VBox {
 
     Button tripToggleButton() {
         return tripToggle;
+    }
+
+    Button mapPickerButton() {
+        return mapPicker;
+    }
+
+    MapPoint currentOriginPoint() {
+        return point(tripOriginLat.getText(), tripOriginLng.getText());
+    }
+
+    MapPoint currentDestinationPoint() {
+        return point(tripDestinationLat.getText(), tripDestinationLng.getText());
+    }
+
+    void applyMapSelection(MapSelection selection) {
+        tripOriginLat.setText(selection.origin().latitudeText());
+        tripOriginLng.setText(selection.origin().longitudeText());
+        tripDestinationLat.setText(selection.destination().latitudeText());
+        tripDestinationLng.setText(selection.destination().longitudeText());
+    }
+
+    private static MapPoint point(String latitude, String longitude) {
+        try {
+            if (latitude == null || longitude == null || latitude.isBlank() || longitude.isBlank()) {
+                return null;
+            }
+            return new MapPoint(Double.parseDouble(latitude), Double.parseDouble(longitude));
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     /**

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GCJ-02 地图选点</title>
+  <link rel="stylesheet" href="leaflet.css">
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    #map { min-height: 560px; }
+    .map-hint { position: absolute; z-index: 1000; top: 10px; left: 50px; padding: 8px 12px;
+      color: #263238; background: rgba(255,255,255,.94); border-radius: 4px;
+      box-shadow: 0 1px 5px rgba(0,0,0,.35); font: 13px sans-serif; }
+    .map-error { display: none; position: absolute; z-index: 1001; right: 10px; top: 10px;
+      padding: 8px 12px; color: #842029; background: #f8d7da; border: 1px solid #f1aeb5;
+      border-radius: 4px; font: 13px sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="map-hint">点击地图：第一次选择起点，第二次选择终点；标记可拖动微调</div>
+  <div id="map-error" class="map-error">地图瓦片不可用，请检查网络；仍可尝试点选或返回手输</div>
+  <script src="leaflet.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      const DEFAULT_CENTER = [31.230416, 121.473701];
+      const map = L.map('map', { zoomControl: true, attributionControl: true });
+      const tileLayer = L.tileLayer(
+        'https://wprd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
+        { subdomains: ['1', '2', '3', '4'], maxZoom: 18, minZoom: 3, attribution: '© 高德地图' }
+      );
+      const state = { origin: null, destination: null };
+      const markers = { origin: null, destination: null };
+      let firstTileError = true;
+
+      map.setView(DEFAULT_CENTER, 12);
+      tileLayer.addTo(map);
+      tileLayer.on('tileerror', function () {
+        if (firstTileError) {
+          firstTileError = false;
+          document.getElementById('map-error').style.display = 'block';
+          window.__mapUnavailable = true;
+        }
+      });
+
+      function pointFromLatLng(latlng) {
+        return { lat: Number(latlng.lat), lng: Number(latlng.lng) };
+      }
+      function emit(kind, point) {
+        window.__mapEvent = kind + ',' + point.lat.toFixed(6) + ',' + point.lng.toFixed(6);
+      }
+      function place(kind, point) {
+        state[kind] = point;
+        if (markers[kind]) {
+          markers[kind].setLatLng([point.lat, point.lng]);
+        } else {
+          markers[kind] = L.marker([point.lat, point.lng], {
+            draggable: true,
+            autoPan: true,
+            title: kind === 'origin' ? '起点' : '终点'
+          }).addTo(map);
+          markers[kind].on('dragend', function (event) {
+            const moved = pointFromLatLng(event.target.getLatLng());
+            state[kind] = moved;
+            emit(kind, moved);
+          });
+        }
+        emit(kind, point);
+      }
+      function applyInitial(initial) {
+        if (initial && initial.origin) {
+          place('origin', { lat: Number(initial.origin.lat), lng: Number(initial.origin.lng) });
+        }
+        if (initial && initial.destination) {
+          place('destination', { lat: Number(initial.destination.lat), lng: Number(initial.destination.lng) });
+        }
+        const center = state.origin || state.destination || { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+        map.setView([center.lat, center.lng], initial && (state.origin || state.destination) ? 13 : 12);
+      }
+      map.on('click', function (event) {
+        const point = pointFromLatLng(event.latlng);
+        place(state.origin ? 'destination' : 'origin', point);
+      });
+      window.clearMarkers = function () {
+        if (markers.origin) { map.removeLayer(markers.origin); markers.origin = null; }
+        if (markers.destination) { map.removeLayer(markers.destination); markers.destination = null; }
+        state.origin = null;
+        state.destination = null;
+        window.__mapEvent = null;
+      };
+      window.initMap = applyInitial;
+      window.__mapUnavailable = false;
+      applyInitial(null);
+    }());
+  </script>
+</body>
+</html>

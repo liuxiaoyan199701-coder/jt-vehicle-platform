@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.Jt808Version;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.TerminalManagementConfig;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -36,6 +37,16 @@ class SignalClientFeatureTest {
         report = client.locationReportForTest(fix);
         assertFalse((report.getWarnBit() & (1 << AlarmDefinition.FATIGUE_BIT)) != 0);
         assertTrue((report.getWarnBit() & (1 << AlarmDefinition.GNSS_MODULE_FAULT_BIT)) != 0);
+        client.close();
+    }
+
+    @Test
+    void terminalHeartbeatParameterDrivesProductionInterval() {
+        SimulatorConfig defaults = SimulatorConfig.defaults();
+        SimulatorConfig configured = defaults.withTerminalManagement(
+                new TerminalManagementConfig(java.util.Map.of(0x0001, 7L), 0, false));
+        SignalClient client = new SignalClient(configured, noCommands(), null);
+        assertEquals(java.time.Duration.ofSeconds(7), client.heartbeatIntervalForTest());
         client.close();
     }
 

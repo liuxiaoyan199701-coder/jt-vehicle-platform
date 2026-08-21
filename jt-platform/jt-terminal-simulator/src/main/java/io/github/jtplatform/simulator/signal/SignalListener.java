@@ -29,4 +29,22 @@ public interface SignalListener {
 
     default void onBlindspotEvent(String detail) {
     }
+
+    default void onTerminalParametersChanged(java.util.Map<Integer, Object> parameters) {
+    }
+
+    default void onTerminalManagementEvent(String detail) {
+    }
+
+    default void onUpgradeEvent(String detail) {
+    }
+
+    default void onTerminalText(String content, boolean urgent) {
+    }
+
+    default void onWaybillEvent(String detail) {
+    }
+
+    default void onFailNextUpgradeConsumed() {
+    }
 }

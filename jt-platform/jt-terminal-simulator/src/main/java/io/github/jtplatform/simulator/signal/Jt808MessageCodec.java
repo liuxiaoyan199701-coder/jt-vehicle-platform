@@ -9,6 +9,7 @@ import java.util.Objects;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.codec.JTMessageDecoder;
 import org.yzh.protocol.codec.JTMessageEncoder;
+import org.yzh.protocol.codec.MultiPacketDecoder;
 
 public final class Jt808MessageCodec {
     private final JTMessageEncoder encoder;
@@ -17,7 +18,7 @@ public final class Jt808MessageCodec {
     public Jt808MessageCodec() {
         SchemaManager schemas = new SchemaManager("org.yzh.protocol");
         this.encoder = new JTMessageEncoder(schemas);
-        this.decoder = new JTMessageDecoder(schemas);
+        this.decoder = new MultiPacketDecoder(schemas);
     }
 
     public byte[] encode(JTMessage message) {

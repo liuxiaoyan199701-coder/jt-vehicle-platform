@@ -38,6 +38,24 @@ public interface RuntimeListener {
     default void onBlindspotEvent(String detail) {
     }
 
+    default void onTerminalParametersChanged(java.util.Map<Integer, Object> parameters) {
+    }
+
+    default void onTerminalManagementEvent(String detail) {
+    }
+
+    default void onUpgradeEvent(String detail) {
+    }
+
+    default void onTerminalText(String content, boolean urgent) {
+    }
+
+    default void onFailNextUpgradeConsumed() {
+    }
+
+    default void onWaybillEvent(String detail) {
+    }
+
     default void onFleetState(io.github.jtplatform.simulator.signal.FleetRuntime.FleetMemberState state) {
     }
 }

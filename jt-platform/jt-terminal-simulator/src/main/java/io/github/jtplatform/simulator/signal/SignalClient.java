@@ -7,6 +7,7 @@ import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.TerminalTime;
 import io.github.jtplatform.simulator.config.TripConfig;
 import io.github.jtplatform.simulator.config.RecordingConfig;
+import io.github.jtplatform.simulator.config.TerminalManagementConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -21,6 +22,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -37,12 +39,22 @@ import org.yzh.protocol.t1078.T1205;
 import org.yzh.protocol.t808.T0001;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
+import org.yzh.protocol.t808.T0104;
+import org.yzh.protocol.t808.T0107;
+import org.yzh.protocol.t808.T0108;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0701;
 import org.yzh.protocol.t808.T0702;
 import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0801;
 import org.yzh.protocol.t808.T0805;
 import org.yzh.protocol.t808.T8100;
+import org.yzh.protocol.t808.T8103;
+import org.yzh.protocol.t808.T8105;
+import org.yzh.protocol.t808.T8106;
+import org.yzh.protocol.t808.T8108;
+import org.yzh.protocol.t808.T0201_0500;
+import org.yzh.protocol.t808.T8300;
 import org.yzh.protocol.t808.T8801;
 
 public final class SignalClient implements AutoCloseable {
@@ -77,7 +89,11 @@ public final class SignalClient implements AutoCloseable {
     private final java.util.concurrent.atomic.AtomicInteger alarmBits = new java.util.concurrent.atomic.AtomicInteger();
     private final java.util.concurrent.atomic.AtomicReference<Double> overspeedKph = new java.util.concurrent.atomic.AtomicReference<>();
     private final BlindspotBuffer blindspotBuffer = new BlindspotBuffer();
+    private final TerminalParameterStore terminalParameters;
+    private volatile TerminalManagementConfig terminalManagement;
     private volatile boolean previousBlindspot;
+    private volatile LocationFix latestLocation;
+    private volatile boolean upgradeInProgress;
     private static final DateTimeFormatter DRIVER_TIME = DateTimeFormatter.ofPattern("yyMMddHHmmss");
 
     private volatile SignalState state = SignalState.DISCONNECTED;
@@ -118,6 +134,8 @@ public final class SignalClient implements AutoCloseable {
         this.jitterSource = Objects.requireNonNull(jitterSource, "jitterSource");
         this.photoHandler = new PhotoCaptureHandler(config, this::logDiagnostic);
         this.recordingPlayback = new SyntheticRecordingPlayback(config);
+        this.terminalManagement = config.terminalManagement();
+        this.terminalParameters = new TerminalParameterStore(terminalManagement);
     }
 
     private void logDiagnostic(String message) {
@@ -194,11 +212,67 @@ public final class SignalClient implements AutoCloseable {
         return blindspotBuffer.size();
     }
 
+    public java.util.Map<Integer, Object> terminalParameters() {
+        return terminalParameters.all();
+    }
+
+    public boolean upgradeInProgress() {
+        return upgradeInProgress;
+    }
+
+    Duration heartbeatIntervalForTest() {
+        return effectiveHeartbeatInterval();
+    }
+
+    private Duration effectiveHeartbeatInterval() {
+        // 小于 1 秒的 Timing 是连接测试注入值；实际运行时由 0x0001 参数驱动。
+        if (timing.heartbeatInterval().toMillis() < 1_000) {
+            return timing.heartbeatInterval();
+        }
+        return Duration.ofSeconds(terminalParameters.heartbeatSeconds());
+    }
+
+    public void setTerminalManagement(TerminalManagementConfig management) {
+        this.terminalManagement = Objects.requireNonNull(management, "management");
+    }
+
     public void setOverspeedKph(Double speedKph) {
         if (speedKph != null && (!Double.isFinite(speedKph) || speedKph < 0)) {
             throw new IllegalArgumentException("speedKph must be finite and non-negative");
         }
         overspeedKph.set(speedKph);
+    }
+
+    public CompletionStage<Void> sendWaybill(String content) {
+        Objects.requireNonNull(content, "content");
+        if (content.isBlank()) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalArgumentException("waybill content must not be blank"));
+        }
+        Connection current = connection;
+        if (current == null || current.closed.get() || state != SignalState.ONLINE) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalStateException("808 signal is not online"));
+        }
+        byte[] data = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                T0701 message = new T0701().setData(data);
+                current.writer.write(prepare(message, serialNumbers.next()));
+                notifyWaybill("0701 已发送 " + data.length + " 字节");
+            } catch (IOException failure) {
+                throw new java.util.concurrent.CompletionException(failure);
+            }
+        }, commandExecutor);
+    }
+
+    T0701 waybillForTest(String content) {
+        Objects.requireNonNull(content, "content");
+        if (content.isBlank()) {
+            throw new IllegalArgumentException("waybill content must not be blank");
+        }
+        return prepare(new T0701().setData(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                serialNumbers.next());
     }
 
     public CompletionStage<Void> sendDriverCard(DriverConfig driver, DriverAction action) {
@@ -381,6 +455,13 @@ public final class SignalClient implements AutoCloseable {
                 continue;
             }
             notifyMessage(message);
+            if (message instanceof T8108 upgrade && message.isSubpackage()
+                    && upgrade.getPacket() == null) {
+                // MultiPacketDecoder 尚未收到全部分包；继续读取，不提前回平台通用应答。
+                notifyUpgrade("接收升级包 %d/%d".formatted(
+                        upgrade.getPackageNo(), upgrade.getPackageTotal()));
+                continue;
+            }
             if (!message.isVerified()) {
                 dispatchResponse(current, message, () -> T0001.MessageError);
                 continue;
@@ -395,6 +476,27 @@ public final class SignalClient implements AutoCloseable {
                 handleRecordingQuery(current, query);
             } else if (message instanceof T9201 playback && message.getMessageId() == JT1078.平台下发远程录像回放请求) {
                 handleRecordingPlayback(current, playback);
+            } else if (message instanceof T8103 setParameters
+                    && message.getMessageId() == JT808.设置终端参数) {
+                handleSetParameters(current, setParameters);
+            } else if (message.getMessageId() == JT808.查询终端参数) {
+                handleQueryParameters(current, message, null);
+            } else if (message instanceof T8106 queryParameters
+                    && message.getMessageId() == JT808.查询指定终端参数) {
+                handleQueryParameters(current, queryParameters, queryParameters.getId());
+            } else if (message.getMessageId() == JT808.查询终端属性) {
+                handleTerminalPropertyQuery(current, message);
+            } else if (message instanceof T8105 terminalControl
+                    && message.getMessageId() == JT808.终端控制) {
+                handleTerminalControl(current, terminalControl);
+            } else if (message instanceof T8108 upgrade
+                    && message.getMessageId() == JT808.下发终端升级包) {
+                handleUpgrade(current, upgrade);
+            } else if (message.getMessageId() == JT808.位置信息查询) {
+                handleLocationQuery(current, message);
+            } else if (message instanceof T8300 text
+                    && message.getMessageId() == JT808.文本信息下发) {
+                handleText(current, text);
             } else if (message.getMessageId() == JT808.平台通用应答
                     || message.getMessageId() == JT808.终端注册应答) {
                 // Platform responses are terminal events, not commands requiring another response.
@@ -449,6 +551,222 @@ public final class SignalClient implements AutoCloseable {
      * 手工设置分包字段会与编码器的头部长度计算错位，产生解码端「帧比声明长度短」
      * 的异常——这在网关侧 MultiPacketDecoderTest 的用法中有对照验证。
      */
+    private void handleSetParameters(Connection current, T8103 command) {
+        commandExecutor.execute(() -> {
+            terminalParameters.update(command.getParameters());
+            notifyTerminalParametersChanged();
+            Connection active = connection;
+            if (active != null) {
+                active.rescheduleHeartbeat();
+            }
+            try {
+                current.writer.write(generalResponse(command, T0001.Success));
+                notifyTerminalManagement("8103 已设置 " + terminalParameters.all().size() + " 项参数");
+            } catch (IOException failure) {
+                reportError("writing 8103 response", failure);
+                current.close();
+            }
+        });
+    }
+
+    private void handleQueryParameters(Connection current, JTMessage request, int[] ids) {
+        commandExecutor.execute(() -> {
+            try {
+                T0104 response = new T0104()
+                        .setResponseSerialNo(request.getSerialNo())
+                        .setParameters(ids == null
+                                ? terminalParameters.all() : terminalParameters.select(ids));
+                current.writer.write(prepare(response, serialNumbers.next()));
+                notifyTerminalParametersChanged();
+                notifyTerminalManagement(request.getMessageId() == JT808.查询终端参数
+                        ? "8104 已全量查询" : "8106 已指定查询");
+            } catch (IOException failure) {
+                reportError("writing terminal parameter query response", failure);
+                current.close();
+            }
+        });
+    }
+
+    private void handleTerminalPropertyQuery(Connection current, JTMessage request) {
+        commandExecutor.execute(() -> {
+            try {
+                RegistrationConfig registration = config.registration();
+                T0107 response = new T0107()
+                        .setDeviceType(0)
+                        .setMakerId(registration.makerId())
+                        .setDeviceModel(registration.deviceModel())
+                        .setDeviceId(config.deviceId())
+                        .setIccid(iccid())
+                        .setHardwareVersion("1.0")
+                        .setFirmwareVersion(registration.softwareVersion())
+                        .setGnssAttribute(1)
+                        .setNetworkAttribute(1);
+                current.writer.write(prepare(response, serialNumbers.next()));
+                notifyTerminalManagement("8107 已查询终端属性");
+            } catch (IOException failure) {
+                reportError("writing 8107 response", failure);
+                current.close();
+            }
+        });
+    }
+
+    private void handleTerminalControl(Connection current, T8105 command) {
+        commandExecutor.execute(() -> {
+            try {
+                current.writer.write(generalResponse(command, T0001.Success));
+                notifyTerminalManagement("8105 控制字 " + command.getCommand() + " 已应答");
+                if (command.getCommand() == 4) {
+                    // 保持 connectionRequested=true；关闭当前连接后 supervisor 会自动重连。
+                    current.close();
+                }
+            } catch (IOException failure) {
+                reportError("writing 8105 response", failure);
+                current.close();
+            }
+        });
+    }
+
+    private void handleUpgrade(Connection current, T8108 command) {
+        if (upgradeInProgress) {
+            dispatchResponse(current, command, () -> T0001.Failure);
+            return;
+        }
+        upgradeInProgress = true;
+        notifyUpgrade("收到升级包 " + (command.getPacket() == null ? 0 : command.getPacket().length) + " 字节");
+        Thread.ofVirtual().name("jt-simulator-upgrade").start(() -> {
+            int result = T0001.Success;
+            try {
+                byte[] packet = command.getPacket();
+                if (!validUpgradePacketLength(command)) {
+                    result = T0001.Failure;
+                    notifyUpgrade("升级包长度校验失败");
+                } else {
+                    Thread.sleep(terminalManagement.upgradeInstallDelayMillis());
+                    if (terminalManagement.failNextUpgrade()) {
+                        result = T0001.Failure;
+                        terminalManagement = terminalManagement.withFailNextUpgrade(false);
+                        try {
+                            listener.onFailNextUpgradeConsumed();
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                }
+                T0108 response = new T0108().setType(command.getType())
+                        .setResult(result == T0001.Success ? 0 : 1);
+                current.writer.write(prepare(response, serialNumbers.next()));
+                notifyUpgrade(result == T0001.Success ? "升级成功" : "升级失败");
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                notifyUpgrade("升级中断");
+            } catch (IOException | RuntimeException failure) {
+                reportError("writing 0108 upgrade result", failure);
+                notifyUpgrade("升级失败: " + safeMessage(failure));
+                current.close();
+            } finally {
+                upgradeInProgress = false;
+            }
+        });
+    }
+
+    /** T8108 的包长字段位于消息体末尾，解码后用消息体总长与实收包长复核。 */
+    boolean validUpgradePacketLengthForTest(T8108 command) {
+        return validUpgradePacketLength(command);
+    }
+
+    private boolean validUpgradePacketLength(T8108 command) {
+        byte[] packet = command.getPacket();
+        String version = command.getVersion();
+        int versionLength = version == null ? 0
+                : version.getBytes(java.nio.charset.StandardCharsets.US_ASCII).length;
+        int expectedBodyLength = 1 + 5 + 1 + versionLength + 4
+                + (packet == null ? 0 : packet.length);
+        if (packet == null || packet.length == 0) {
+            return false;
+        }
+        // 分包重组后协议栈保留最后分包的 bodyLength；编码器按 1023 字节切片，
+        // 因而可由分包数和最后一片长度还原实收消息体总长。
+        int receivedBodyLength = command.isSubpackage()
+                ? Math.max(0, command.getPackageTotal() - 1) * 1_023 + command.getBodyLength()
+                : command.getBodyLength();
+        return receivedBodyLength == expectedBodyLength;
+    }
+
+    private void handleLocationQuery(Connection current, JTMessage request) {
+        commandExecutor.execute(() -> {
+            try {
+                LocationFix fix = latestLocation;
+                T0201_0500 response = locationResponse(fix)
+                        .setResponseSerialNo(request.getSerialNo());
+                current.writer.write(prepare(response, serialNumbers.next()));
+                notifyTerminalManagement("8201 已应答即时位置");
+            } catch (IOException failure) {
+                reportError("writing 0201 response", failure);
+                current.close();
+            }
+        });
+    }
+
+    private void handleText(Connection current, T8300 text) {
+        boolean urgent = (text.getSign() & 1) != 0;
+        notifyTerminalText(text.getContent(), urgent);
+        dispatchResponse(current, text, () -> T0001.Success);
+    }
+
+    private T0201_0500 locationResponse(LocationFix fix) {
+        T0200 source = fix == null ? zeroLocation() : locationReport(fix);
+        T0201_0500 response = new T0201_0500();
+        response.setWarnBit(source.getWarnBit());
+        response.setStatusBit(source.getStatusBit());
+        response.setLatitude(source.getLatitude());
+        response.setLongitude(source.getLongitude());
+        response.setAltitude(source.getAltitude());
+        response.setSpeed(source.getSpeed());
+        response.setDirection(source.getDirection());
+        response.setDeviceTime(source.getDeviceTime());
+        response.setAttributes(source.getAttributes());
+        return response;
+    }
+
+    private String iccid() {
+        String source = config.registration().imei() + "00000";
+        return source.substring(0, Math.min(20, source.length()));
+    }
+
+    private void notifyTerminalParametersChanged() {
+        try {
+            listener.onTerminalParametersChanged(terminalParameters.all());
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void notifyTerminalManagement(String detail) {
+        try {
+            listener.onTerminalManagementEvent(detail);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void notifyUpgrade(String detail) {
+        try {
+            listener.onUpgradeEvent(detail);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void notifyWaybill(String detail) {
+        try {
+            listener.onWaybillEvent(detail);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void notifyTerminalText(String content, boolean urgent) {
+        try {
+            listener.onTerminalText(content == null ? "" : content, urgent);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
     private void handleRecordingQuery(Connection current, T9205 query) {
         commandExecutor.execute(() -> {
             try {
@@ -880,6 +1198,8 @@ public final class SignalClient implements AutoCloseable {
         private final AtomicBoolean closed = new AtomicBoolean();
         private ScheduledExecutorService heartbeatExecutor;
         private ScheduledExecutorService locationExecutor;
+        private volatile ScheduledFuture<?> heartbeatTask;
+        private final AtomicInteger heartbeatGeneration = new AtomicInteger();
 
         private Connection(Socket socket, Jt808MessageCodec codec) throws IOException {
             this.socket = socket;
@@ -894,9 +1214,20 @@ public final class SignalClient implements AutoCloseable {
         private void startHeartbeat() {
             heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(
                     Thread.ofVirtual().name("jt-simulator-heartbeat-", 0).factory());
-            long intervalMillis = Math.max(1, timing.heartbeatInterval().toMillis());
-            heartbeatExecutor.scheduleAtFixedRate(() -> {
-                if (closed.get() || connection != this || !connectionRequested.get()) {
+            int generation = heartbeatGeneration.incrementAndGet();
+            scheduleHeartbeat(generation);
+        }
+
+        /** 每次发送前重新读取参数，8103 修改 0x0001 后无需重连即可生效。 */
+        private void scheduleHeartbeat(int generation) {
+            if (heartbeatExecutor == null || heartbeatExecutor.isShutdown()
+                    || generation != heartbeatGeneration.get()) {
+                return;
+            }
+            long intervalMillis = Math.max(1, SignalClient.this.effectiveHeartbeatInterval().toMillis());
+            heartbeatTask = heartbeatExecutor.schedule(() -> {
+                if (closed.get() || connection != this || !connectionRequested.get()
+                        || generation != heartbeatGeneration.get()) {
                     return;
                 }
                 try {
@@ -904,8 +1235,19 @@ public final class SignalClient implements AutoCloseable {
                 } catch (IOException heartbeatFailure) {
                     reportError("writing T0002 heartbeat", heartbeatFailure);
                     close();
+                    return;
                 }
-            }, intervalMillis, intervalMillis, TimeUnit.MILLISECONDS);
+                scheduleHeartbeat(generation);
+            }, intervalMillis, TimeUnit.MILLISECONDS);
+        }
+
+        private void rescheduleHeartbeat() {
+            int generation = heartbeatGeneration.incrementAndGet();
+            ScheduledFuture<?> task = heartbeatTask;
+            if (task != null) {
+                task.cancel(false);
+            }
+            scheduleHeartbeat(generation);
         }
 
         /**
@@ -948,6 +1290,7 @@ public final class SignalClient implements AutoCloseable {
                         previousBlindspot = false;
                     }
                     writer.write(report);
+                    latestLocation = fix;
                     try {
                         listener.onLocationReported(Instant.now());
                         listener.onLocationFix(fix);

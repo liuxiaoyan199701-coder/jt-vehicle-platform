@@ -34,9 +34,11 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.cell.PropertyValueFactory;
@@ -81,6 +83,20 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label streamState = new Label("推流 空闲");
     private final Label recordingState = new Label("录像 未收到指令");
     private final Label blindspotState = new Label("盲区 未进入 · 缓存 0 点");
+    private final Label waybillState = new Label("运单 未发送");
+    private final ComboBox<String> waybillTemplate = new ComboBox<>();
+    private final TextArea waybillEditor = new TextArea();
+    private final CheckBox autoWaybill = new CheckBox("行程开始自动上报运单");
+    private final Label terminalUpgradeState = new Label("升级 未收到包");
+    private final ListView<String> terminalParametersView = new ListView<>();
+    private final ListView<String> terminalCommandsView = new ListView<>();
+    private final TextArea terminalTextView = new TextArea();
+    private final javafx.collections.ObservableList<String> terminalParameters =
+            FXCollections.observableArrayList();
+    private final javafx.collections.ObservableList<String> terminalCommands =
+            FXCollections.observableArrayList();
+    private final CheckBox failNextUpgrade = new CheckBox("下次升级模拟失败");
+    private final TextField upgradeDelayMillis = new TextField();
     private final TableView<FleetRuntime.FleetMemberState> fleetTable = new TableView<>();
     private final javafx.collections.ObservableList<FleetRuntime.FleetMemberState> fleetRows =
             FXCollections.observableArrayList();
@@ -154,6 +170,8 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         streamState.getStyleClass().add("status-item");
         recordingState.getStyleClass().add("status-item");
         blindspotState.getStyleClass().add("status-item");
+        terminalUpgradeState.getStyleClass().add("status-item");
+        waybillState.getStyleClass().add("status-item");
         DriverConfig rememberedDriver = initialConfig.driver();
         driverName.setText(rememberedDriver.name());
         driverIdCard.setText(rememberedDriver.idCard());
@@ -168,6 +186,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         saveButton.setOnAction(event -> saveConfiguration(true));
         connectButton.setOnAction(event -> toggleConnection());
         configuration.tripToggleButton().setOnAction(event -> toggleTrip());
+        configuration.mapPickerButton().setOnAction(event -> openMapPicker());
         previewButton.setOnAction(event -> togglePreview());
         configuration.browseFfmpegButton().setOnAction(event -> browseFfmpeg());
         configuration.detectFfmpegButton().setOnAction(event -> detectFfmpeg());
@@ -288,6 +307,8 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 tab("告警模拟", createAlarmPanel()),
                 tab("驾驶员", createDriverPanel()),
                 tab("录像", createRecordingPanel()),
+                tab("终端管理", createTerminalManagementPanel()),
+                tab("运单", createWaybillPanel()),
                 tab("车队", createFleetPanel()),
                 tab("日志", logPanel));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -383,6 +404,152 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         return panel;
     }
 
+    private Node createTerminalManagementPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        terminalParametersView.setItems(terminalParameters);
+        terminalParameters.setAll(initialConfig.terminalManagement().parameters().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> "0x%04X = %s".formatted(entry.getKey(), entry.getValue()))
+                .toList());
+        terminalParametersView.setPlaceholder(new Label("尚未配置终端参数"));
+        terminalParametersView.setPrefHeight(180);
+        terminalCommandsView.setItems(terminalCommands);
+        terminalCommandsView.setPlaceholder(new Label("尚无下发记录"));
+        terminalCommandsView.setPrefHeight(100);
+        terminalTextView.setEditable(false);
+        terminalTextView.setWrapText(true);
+        terminalTextView.setPrefRowCount(4);
+        failNextUpgrade.setSelected(initialConfig.terminalManagement().failNextUpgrade());
+        failNextUpgrade.setOnAction(event -> operations.setFailNextUpgrade(failNextUpgrade.isSelected()));
+        upgradeDelayMillis.setText(Integer.toString(
+                initialConfig.terminalManagement().upgradeInstallDelayMillis()));
+        upgradeDelayMillis.setPrefColumnCount(7);
+        Button applyUpgradeDelay = new Button("应用安装延时");
+        applyUpgradeDelay.setOnAction(event -> {
+            try {
+                int delay = Integer.parseInt(upgradeDelayMillis.getText().trim());
+                operations.setUpgradeInstallDelayMillis(delay);
+                recordTerminalCommand("升级安装延时已设为 " + delay + " ms");
+            } catch (RuntimeException failure) {
+                activity.setText("升级安装延时应为 0～60000 毫秒");
+            }
+        });
+        panel.getChildren().addAll(
+                panelTitle("终端参数（0104）"), terminalParametersView,
+                panelTitle("最近下发指令"), terminalCommandsView,
+                new HBox(10, failNextUpgrade, new Label("安装延时(ms)"),
+                        upgradeDelayMillis, applyUpgradeDelay, terminalUpgradeState),
+                panelTitle("平台文本消息（8300）"), terminalTextView);
+        return panel;
+    }
+
+    private void recordTerminalCommand(String detail) {
+        runOnFx(() -> {
+            terminalCommands.add(0, detail);
+            while (terminalCommands.size() > 30) {
+                terminalCommands.removeLast();
+            }
+        });
+    }
+
+    @Override
+    public void onTerminalParametersChanged(Map<Integer, Object> parameters) {
+        runOnFx(() -> {
+            terminalParameters.setAll(parameters.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(entry -> "0x%04X = %s".formatted(entry.getKey(), entry.getValue()))
+                    .toList());
+            recordTerminalCommand("参数表已更新（" + parameters.size() + " 项）");
+        });
+    }
+
+    @Override
+    public void onTerminalManagementEvent(String detail) {
+        recordTerminalCommand(detail);
+    }
+
+    @Override
+    public void onUpgradeEvent(String detail) {
+        runOnFx(() -> {
+            terminalUpgradeState.setText("升级 " + detail);
+            recordTerminalCommand(detail);
+        });
+    }
+
+    @Override
+    public void onTerminalText(String content, boolean urgent) {
+        runOnFx(() -> {
+            String line = (urgent ? "【紧急】" : "") + content;
+            terminalTextView.appendText(line + System.lineSeparator());
+            recordTerminalCommand("收到文本消息" + (urgent ? "（紧急）" : ""));
+        });
+    }
+
+    @Override
+    public void onFailNextUpgradeConsumed() {
+        runOnFx(() -> failNextUpgrade.setSelected(false));
+    }
+
+    private Node createWaybillPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        waybillTemplate.setId("waybill-template");
+        waybillEditor.setId("waybill-editor");
+        autoWaybill.setId("waybill-auto-send");
+        waybillTemplate.getItems().setAll("JSON 货运单", "纯文本运单");
+        waybillTemplate.getSelectionModel().select(0);
+        waybillTemplate.setOnAction(event -> waybillEditor.setText(
+                waybillTemplate.getSelectionModel().getSelectedIndex() == 1
+                        ? io.github.jtplatform.simulator.config.WaybillConfig.TEXT_TEMPLATE
+                        : io.github.jtplatform.simulator.config.WaybillConfig.JSON_TEMPLATE));
+        waybillEditor.setText(initialConfig.waybill().content());
+        waybillEditor.setWrapText(true);
+        waybillEditor.setPrefRowCount(8);
+        autoWaybill.setSelected(initialConfig.waybill().autoSendOnTripStart());
+        Button send = new Button("发送 0701 运单");
+        send.setId("waybill-send");
+        send.setOnAction(event -> {
+            String content = waybillEditor.getText();
+            operations.sendWaybill(content).whenComplete((ignored, failure) -> runOnFx(() -> {
+                if (failure == null) {
+                    waybillState.setText("运单 已发送");
+                    activity.setText("0701 运单已发送");
+                    saveWaybillConfig(content, autoWaybill.isSelected());
+                } else {
+                    waybillState.setText("运单 发送失败");
+                    activity.setText("0701 运单发送失败：" + safeMessage(failure));
+                }
+            }));
+        });
+        autoWaybill.setOnAction(event -> saveWaybillConfig(waybillEditor.getText(), autoWaybill.isSelected()));
+        panel.getChildren().addAll(panelTitle("电子运单（0701）"),
+                new HBox(8, new Label("预置模板"), waybillTemplate), waybillEditor,
+                new HBox(10, autoWaybill, send), waybillState,
+                new Label("正文按 UTF-8 编码发送，支持 JSON 或纯文本。"));
+        return panel;
+    }
+
+    private void saveWaybillConfig(String content, boolean autoSend) {
+        try {
+            SimulatorConfig updated = operations.currentConfig().withWaybill(
+                    new io.github.jtplatform.simulator.config.WaybillConfig(autoSend, content));
+            operations.saveConfig(updated);
+        } catch (IOException | RuntimeException failure) {
+            activity.setText("运单配置保存失败：" + safeMessage(failure));
+        }
+    }
+
+    @Override
+    public void onWaybillEvent(String detail) {
+        runOnFx(() -> {
+            waybillState.setText("运单 " + detail);
+            activity.setText(detail);
+        });
+    }
+
     private Node createDriverPanel() {
         VBox panel = new VBox(10);
         panel.setPadding(new Insets(16));
@@ -472,12 +639,28 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 new Separator(Orientation.VERTICAL), tripState, new Separator(Orientation.VERTICAL),
                 streamState, new Separator(Orientation.VERTICAL), lastReportState,
                 new Separator(Orientation.VERTICAL), recordingState,
+            new Separator(Orientation.VERTICAL), terminalUpgradeState,
+            new Separator(Orientation.VERTICAL), waybillState,
             new Separator(Orientation.VERTICAL), blindspotState,
             new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
         status.getStyleClass().add("status-bar");
         status.setAlignment(Pos.CENTER_LEFT);
         return status;
+    }
+
+    private void openMapPicker() {
+        if (closed.get()) {
+            return;
+        }
+        MapPickerDialog.show(owner(), configuration.currentOriginPoint(),
+                configuration.currentDestinationPoint(), selection -> runOnFx(() -> {
+                    configuration.applyMapSelection(selection);
+                    activity.setText("地图起终点已回填，请保存配置");
+                }), failure -> runOnFx(() -> {
+                    activity.setText("地图不可用，请手输");
+                    showActionError("地图不可用，请手输", failure);
+                }));
     }
 
     private void toggleConnection() {
@@ -541,7 +724,9 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
                 config.maxPayloadBytes(), preservedTrip, driver, previous.alarm(), config.simFormat(),
-                config.recording());
+                config.recording(), config.fleet(), previous.terminalManagement(),
+                new io.github.jtplatform.simulator.config.WaybillConfig(
+                        autoWaybill.isSelected(), waybillEditor.getText()));
     }
 
     private void browseFfmpeg() {

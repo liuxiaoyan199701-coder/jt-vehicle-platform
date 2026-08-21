@@ -165,6 +165,7 @@ class SimulatorViewSmokeTest {
             assertNotNull(view.lookup("#trip-destination-lng"));
             assertNotNull(view.lookup("#trip-round-trip"));
             assertNotNull(view.lookup("#trip-auto-start"));
+            assertNotNull(view.lookup("#trip-map-picker"));
 
             Button trip = button(view, "#trip-toggle");
             assertTrue(trip.isDisabled(), "未连接时不该能开启行程");
