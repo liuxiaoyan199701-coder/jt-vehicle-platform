@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import io.github.jtconsole.ai.vision.AttachmentStore;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.repository.AiConversationRepository;
+import io.github.jtconsole.repository.ConnectionEventRepository;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import java.time.Duration;
@@ -20,7 +21,7 @@ class MaintenanceTasksTest {
     private final ConsoleProperties properties = new ConsoleProperties();
     private final MaintenanceTasks tasks = new MaintenanceTasks(
             mock(StatusRepository.class), mock(EventRepository.class), mock(AttachmentStore.class),
-            conversations, properties);
+            conversations, properties, mock(ConnectionEventRepository.class));
 
     @Test
     void conversationCleanupUsesConfiguredBatchSizeUntilAShortBatch() {
