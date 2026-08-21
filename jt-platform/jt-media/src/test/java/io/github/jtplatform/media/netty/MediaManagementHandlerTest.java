@@ -11,6 +11,8 @@ import io.github.jtplatform.media.config.MediaRuntimeProperties;
 import io.github.jtplatform.media.config.RecordingProperties;
 import io.github.jtplatform.media.frame.FrameAssembler;
 import io.github.jtplatform.media.ingest.FragmentReassembler;
+import io.github.jtplatform.media.ftp.RecordingFtpProperties;
+import io.github.jtplatform.media.ftp.RecordingUploadFileStore;
 import io.github.jtplatform.media.metrics.MediaNodeLoadMonitor;
 import io.github.jtplatform.media.pipeline.FirstFrameListener;
 import io.github.jtplatform.media.pipeline.MediaPipeline;
@@ -99,6 +101,33 @@ class MediaManagementHandlerTest {
         assertTrue(body.matches(".*\"recordingUsableBytes\":[1-9][0-9]*.*"));
         assertTrue(body.matches(".*\"recordingTotalBytes\":[1-9][0-9]*.*"));
         response.release();
+        channel.finishAndReleaseAll();
+    }
+
+    @Test
+    void uploadedRecordingSupportsHeadAndByteRanges() throws Exception {
+        RecordingFtpProperties ftp = new RecordingFtpProperties();
+        ftp.setRoot(temporaryDirectory.resolve("uploads"));
+        RecordingUploadFileStore store = new RecordingUploadFileStore(ftp);
+        Path file = store.resolve("task-1", "evidence.mp4");
+        Files.createDirectories(file.getParent());
+        Files.write(file, new byte[] {1, 2, 3, 4, 5});
+        EmbeddedChannel channel = new EmbeddedChannel(new MediaManagementHandler(
+                MediaPorts.forInstance(4),
+                new MediaNodeLoadMonitor(() -> 0, () -> 0L, Clock.systemUTC()),
+                new MediaRuntimeProperties.Capacity(), null, store, null, null));
+        FullHttpRequest request = request(HttpMethod.HEAD, "/recording-uploads/task-1/evidence.mp4");
+        request.headers().set(HttpHeaderNames.RANGE, "bytes=1-3");
+
+        channel.writeInbound(request);
+
+        io.netty.handler.codec.http.HttpResponse response = channel.readOutbound();
+        assertEquals(206, response.status().code());
+        assertEquals("bytes 1-3/5", response.headers().get(HttpHeaderNames.CONTENT_RANGE));
+        assertEquals("3", response.headers().get(HttpHeaderNames.CONTENT_LENGTH));
+        assertEquals("video/mp4", response.headers().get(HttpHeaderNames.CONTENT_TYPE));
+        io.netty.util.ReferenceCountUtil.release(response);
+        io.netty.util.ReferenceCountUtil.release(channel.readOutbound());
         channel.finishAndReleaseAll();
     }
 

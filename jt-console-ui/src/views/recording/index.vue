@@ -7,11 +7,14 @@ import { useAuthStore } from '@/store/modules/auth';
 import { JT1078Player } from '@jt/player';
 import type { OpenStreamRequest, StreamTicket as PlayerTicket } from '@jt/player';
 import {
+  createRecordingUpload,
+  fetchRecordingUploads,
   fetchVehicles,
   openPlaybackStream,
   searchRecordings,
   type DeviceRecordingResource,
   type RecordingRange,
+  type RecordingUploadTask,
   type Vehicle
 } from '@/service/api';
 
@@ -38,6 +41,9 @@ const deviceReason = ref('');
 const deviceRanges = ref<DeviceRecordingResource[]>([]);
 const searched = ref(false);
 const searching = ref(false);
+const uploadTasks = ref<RecordingUploadTask[]>([]);
+const uploadingKey = ref('');
+const uploadedPlaying = ref<RecordingUploadTask | null>(null);
 
 // 回放
 const playing = ref<null | RecordingRange | DeviceRecordingResource>(null);
@@ -97,6 +103,7 @@ async function search(autoplay = false) {
   deviceAvailable.value = data.device.available;
   deviceReason.value = data.device.reason ?? '';
   deviceRanges.value = data.device.resources ?? [];
+  await refreshUploads();
   if (autoplay && platformRanges.value.length) {
     // 告警入口传入的是 ±5 分钟窗口；从窗口起点开流，而不是从列表第一片自己的起点开流。
     await play({ startTime: start, endTime: end });
@@ -122,6 +129,28 @@ const opener = {
     };
   }
 };
+
+async function refreshUploads() {
+  if (!query.value.deviceId) {
+    uploadTasks.value = [];
+    return;
+  }
+  const { data } = await fetchRecordingUploads(query.value.deviceId);
+  uploadTasks.value = data ?? [];
+}
+
+async function upload(range: DeviceRecordingResource, index: number) {
+  if (!query.value.deviceId) return;
+  uploadingKey.value = `${index}`;
+  const { data, error } = await createRecordingUpload(query.value.deviceId, range);
+  uploadingKey.value = '';
+  if (error || !data) {
+    message.error(error?.message || '上传指令下发失败');
+    return;
+  }
+  message.success('上传任务已下发，等待终端完成');
+  await refreshUploads();
+}
 
 async function play(range: RecordingRange | DeviceRecordingResource) {
   if (!query.value.deviceId) return;
@@ -195,6 +224,14 @@ function fmt(iso: string) {
   return dayjs(iso).format('MM-DD HH:mm:ss');
 }
 
+const uploadStateText: Record<string, string> = {
+  CREATED: '待下发',
+  DISPATCHED: '终端处理中',
+  FILE_RECEIVED: '文件已到达',
+  COMPLETED: '已完成',
+  FAILED: '失败'
+};
+
 const stateText: Record<string, string> = {
   idle: '未开始',
   opening: '正在开流',
@@ -266,13 +303,61 @@ const stateText: Record<string, string> = {
                   通道 {{ range.channel }} · {{ fmt(range.startTime) }} ~ {{ fmt(range.endTime) }}
                   <span class="text-#999">（{{ Math.max(0, dayjs(range.endTime).diff(dayjs(range.startTime), 'second')) }} 秒，{{ range.size }} 字节）</span>
                 </span>
-                <NButton v-if="canPlayback" size="tiny" type="primary" @click="play(range)">回放</NButton>
+                <div v-if="canPlayback" class="flex gap-6px">
+                  <NButton size="tiny" @click="play(range)">回放</NButton>
+                  <NButton
+                    size="tiny"
+                    type="primary"
+                    :loading="uploadingKey === `${index}`"
+                    @click="upload(range, index)"
+                  >上传</NButton>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section v-if="query.deviceId">
+            <div class="mb-6px flex items-center justify-between">
+              <strong>文件上传任务</strong>
+              <NButton size="tiny" @click="refreshUploads">刷新状态</NButton>
+            </div>
+            <NEmpty v-if="uploadTasks.length === 0" description="暂无上传任务" size="small" />
+            <div v-for="task in uploadTasks" :key="task.id" class="recording-row">
+              <div class="flex items-center justify-between gap-8px">
+                <div class="text-13px">
+                  <NTag
+                    size="small"
+                    :type="task.status === 'COMPLETED' ? 'success' : task.status === 'FAILED' ? 'error' : 'info'"
+                  >{{ uploadStateText[task.status] ?? task.status }}</NTag>
+                  <span class="ml-8px">通道 {{ task.channelNo }} · {{ fmt(task.startAt) }} ~ {{ fmt(task.endAt) }}</span>
+                  <span v-if="task.fileName" class="ml-8px text-#999">{{ task.fileName }}</span>
+                </div>
+                <div v-if="task.accessAddress" class="flex gap-6px">
+                  <NButton size="tiny" @click="uploadedPlaying = task">回放文件</NButton>
+                  <NButton tag="a" size="tiny" :href="task.accessAddress" target="_blank" download>下载</NButton>
+                </div>
               </div>
             </div>
           </section>
         </div>
       </NSpin>
     </NCard>
+
+    <NModal
+      :show="Boolean(uploadedPlaying)"
+      preset="card"
+      title="上传录像文件"
+      class="w-860px max-w-[calc(100vw-24px)]"
+      @update:show="value => { if (!value) uploadedPlaying = null; }"
+    >
+      <video
+        v-if="uploadedPlaying?.accessAddress"
+        :src="uploadedPlaying.accessAddress"
+        controls
+        preload="metadata"
+        class="aspect-video w-full rounded bg-black"
+      ></video>
+    </NModal>
 
     <NModal
       v-model:show="playbackVisible"

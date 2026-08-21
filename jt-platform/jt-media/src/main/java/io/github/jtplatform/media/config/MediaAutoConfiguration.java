@@ -8,6 +8,11 @@ import io.github.jtplatform.common.port.StreamSubscriptionPort;
 import io.github.jtplatform.common.service.StreamCoordinator;
 import io.github.jtplatform.delivery.publisher.MessagePublisher;
 import io.github.jtplatform.media.frame.FrameAssembler;
+import io.github.jtplatform.media.ftp.RecordingFtpProperties;
+import io.github.jtplatform.media.ftp.RecordingFtpServer;
+import io.github.jtplatform.media.ftp.RecordingUploadFileStore;
+import io.github.jtplatform.media.ftp.RecordingUploadPublisher;
+import io.github.jtplatform.media.ftp.TemporaryFtpCredentialService;
 import io.github.jtplatform.media.ingest.FragmentReassembler;
 import io.github.jtplatform.media.lifecycle.MediaInstanceHeartbeatLifecycle;
 import io.github.jtplatform.media.metrics.MediaNodeLoadMonitor;
@@ -47,10 +52,64 @@ import org.springframework.core.env.Environment;
         MediaRuntimeProperties.class,
         MediaAuthenticationProperties.class,
         RecordingProperties.class,
+        RecordingFtpProperties.class,
         TalkbackProperties.class
 })
 public class MediaAutoConfiguration {
     private static final Logger LOGGER = LoggerFactory.getLogger(MediaAutoConfiguration.class);
+
+    @Bean
+    @ConditionalOnMissingBean
+    RecordingUploadFileStore recordingUploadFileStore(RecordingFtpProperties properties) {
+        return new RecordingUploadFileStore(properties);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "jt.media.ftp", name = "enabled", havingValue = "true")
+    TemporaryFtpCredentialService temporaryFtpCredentialService(
+            RecordingFtpProperties properties,
+            MediaRuntimeProperties runtime,
+            ReachableAddressResolver addressResolver,
+            ObjectProvider<Clock> clockProvider) {
+        String address = properties.getAdvertisedAddress();
+        if (address == null || address.isBlank()) {
+            address = addressResolver.resolve(runtime.getReachableAddress().toSettings());
+            // 9206 下发地址与 PASV 响应必须一致；只改运行时解析值，不引入固定账号或固定密码。
+            properties.setAdvertisedAddress(address);
+        }
+        return new TemporaryFtpCredentialService(
+                properties, clockProvider.getIfAvailable(Clock::systemUTC), address);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "jt.media.ftp", name = "enabled", havingValue = "true")
+    RecordingUploadPublisher recordingUploadPublisher(
+            MessagePublisher publisher,
+            RecordingFtpProperties properties,
+            MediaRuntimeProperties runtime,
+            ReachableAddressResolver addressResolver,
+            ObjectProvider<Clock> clockProvider,
+            @Value("${jt.instance.number:1}") int instanceNumber) {
+        String address = properties.getAdvertisedAddress();
+        if (address == null || address.isBlank()) {
+            address = addressResolver.resolve(runtime.getReachableAddress().toSettings());
+        }
+        return new RecordingUploadPublisher(publisher, properties,
+                clockProvider.getIfAvailable(Clock::systemUTC), runtime.getInstanceId(),
+                address, io.github.jtplatform.common.model.MediaPorts.forInstance(instanceNumber).management());
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(prefix = "jt.media.ftp", name = "enabled", havingValue = "true")
+    RecordingFtpServer recordingFtpServer(
+            RecordingFtpProperties properties,
+            TemporaryFtpCredentialService credentials,
+            RecordingUploadPublisher publisher) {
+        return new RecordingFtpServer(properties, credentials, publisher);
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -238,6 +297,7 @@ public class MediaAutoConfiguration {
             MediaNodeLoadMonitor loadMonitor,
             MediaRuntimeProperties runtimeProperties,
             RecordingStorageMetrics recordingStorageMetrics,
+            RecordingUploadFileStore recordingUploadFileStore,
             RecordSink recordSink,
             TalkbackService talkbackService,
             RecordingPlaybackService recordingPlaybackService,
@@ -262,6 +322,7 @@ public class MediaAutoConfiguration {
                 loadMonitor,
                 runtimeProperties.getCapacity(),
                 recordingStorageMetrics,
+                recordingUploadFileStore,
                 recordSink,
                 talkbackService,
                 recordingPlaybackService,

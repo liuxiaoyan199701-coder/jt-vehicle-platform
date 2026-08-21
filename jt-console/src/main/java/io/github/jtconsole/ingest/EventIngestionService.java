@@ -13,15 +13,18 @@ public class EventIngestionService {
     private final MediaIngestionService media;
     private final DriverIdentityIngestionService driverIdentity;
     private final WaybillIngestionService waybills;
+    private final RecordingUploadIngestionService recordingUploads;
 
     public EventIngestionService(
             EventRepository events, LocationService locations, MediaIngestionService media,
-            DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills) {
+            DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
+            RecordingUploadIngestionService recordingUploads) {
         this.events = events;
         this.locations = locations;
         this.media = media;
         this.driverIdentity = driverIdentity;
         this.waybills = waybills;
+        this.recordingUploads = recordingUploads;
     }
 
     @Transactional
@@ -38,6 +41,8 @@ public class EventIngestionService {
         driverIdentity.handleIfDriverIdentity(normalized);
         // 电子运单（0701）按归属无损留存原文
         waybills.handleIfWaybill(normalized);
+        // 录像上传完成（1206）与媒体节点文件到达事件投影到同一任务状态机
+        recordingUploads.handle(normalized);
 
         LocationHandlingResult handled = locations.handle(normalized);
         return IngestionResult.committed(handled);

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import io.github.jtconsole.audit.AuditRecorder;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.AlarmRepository;
@@ -30,6 +31,7 @@ import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.live.DeviceOwnershipCache;
 import io.github.jtconsole.iam.OrganizationService;
 import io.github.jtconsole.repository.PlanRepository;
+import io.github.jtconsole.repository.RecordingUploadRepository;
 import io.github.jtconsole.repository.TenantRepository;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.DataScope;
@@ -341,6 +343,11 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        RecordingUploadRepository recordingUploadRepository(JdbcClient jdbc) {
+            return new RecordingUploadRepository(jdbc);
+        }
+
+        @Bean
         VehicleRepository vehicleRepository(JdbcClient jdbc) {
             return new VehicleRepository(jdbc);
         }
@@ -449,10 +456,13 @@ class EventIngestionIntegrationTest {
         @Bean
         EventIngestionService eventIngestionService(
                 EventRepository events, LocationService locations, MediaRepository media,
-                DriverRepository drivers, WaybillRepository waybills) {
+                DriverRepository drivers, WaybillRepository waybills,
+                RecordingUploadRepository recordingUploads) {
             return new EventIngestionService(events, locations, new MediaIngestionService(media),
                     new DriverIdentityIngestionService(drivers),
-                    new WaybillIngestionService(waybills, org.mockito.Mockito.mock(DeviceOwnershipCache.class)));
+                    new WaybillIngestionService(waybills, org.mockito.Mockito.mock(DeviceOwnershipCache.class)),
+                    new RecordingUploadIngestionService(recordingUploads, media,
+                            org.mockito.Mockito.mock(AuditRecorder.class)));
         }
     }
 }

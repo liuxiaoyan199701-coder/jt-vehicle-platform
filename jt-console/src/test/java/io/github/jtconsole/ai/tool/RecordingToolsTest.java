@@ -12,6 +12,7 @@ import io.github.jtconsole.ai.agent.AgentEventSink;
 import io.github.jtconsole.ai.view.ViewBudget;
 import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.iam.IamException;
+import io.github.jtconsole.repository.RecordingUploadRepository;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.support.TestPrincipals;
 import io.github.jtconsole.web.RecordingProxyController;
@@ -23,7 +24,8 @@ import org.junit.jupiter.api.Test;
 
 class RecordingToolsTest {
     private final RecordingProxyController recordings = mock(RecordingProxyController.class);
-    private final RecordingTools tools = new RecordingTools(null, recordings);
+    private final RecordingUploadRepository uploads = mock(RecordingUploadRepository.class);
+    private final RecordingTools tools = new RecordingTools(null, recordings, uploads);
 
     @Test
     void unauthorizedDeviceReturnsNoSourceData() {

@@ -11,6 +11,7 @@ import org.yzh.protocol.codec.JTMessageAdapter;
 import org.yzh.protocol.codec.JTMessageDecoder;
 import org.yzh.protocol.codec.JTMessageEncoder;
 import org.yzh.protocol.commons.MessageId;
+import org.yzh.protocol.t1078.T9206;
 import org.yzh.protocol.t808.T0801;
 
 public class JTMessagePushAdapter extends JTMessageAdapter {
@@ -29,8 +30,14 @@ public class JTMessagePushAdapter extends JTMessageAdapter {
     @Override
     public void encodeLog(Session session, JTMessage message, ByteBuf output) {
         if (LOGGER.isDebugEnabled()) {
-            LOGGER.debug("{} >>> {} hex={}", session, MessageId.getName(message.getMessageId()),
-                    ByteBufUtil.hexDump(output, 0, output.writerIndex()));
+            if (message instanceof T9206) {
+                // 9206 正文含一次性 FTP 用户名和密码，禁止以对象或原始 hex 形式进入日志。
+                LOGGER.debug("{} >>> {} payload=<redacted>",
+                        session, MessageId.getName(message.getMessageId()));
+            } else {
+                LOGGER.debug("{} >>> {} hex={}", session, MessageId.getName(message.getMessageId()),
+                        ByteBufUtil.hexDump(output, 0, output.writerIndex()));
+            }
         }
     }
 

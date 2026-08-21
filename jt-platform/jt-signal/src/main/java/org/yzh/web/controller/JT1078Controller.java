@@ -61,11 +61,6 @@ public class JT1078Controller {
         return messageManager.request(request, T1205.class);
     }
 
-    @PostMapping("/9206")
-    public Mono<T0001> T9206(@RequestBody T9206 request) {
-        return messageManager.request(request, T0001.class);
-    }
-
     @PostMapping("/9207")
     public Mono<T0001> T9207(@RequestBody T9207 request) {
         return messageManager.request(request, T0001.class);

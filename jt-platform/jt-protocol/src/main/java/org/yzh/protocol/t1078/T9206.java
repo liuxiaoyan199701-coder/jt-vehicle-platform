@@ -24,8 +24,10 @@ public class T9206 extends JTMessage {
     private String ip;
     @Field(length = 2, desc = "端口")
     private int port;
+    @ToString.Exclude
     @Field(lengthUnit = 1, desc = "用户名")
     private String username;
+    @ToString.Exclude
     @Field(lengthUnit = 1, desc = "密码")
     private String password;
     @Field(lengthUnit = 1, desc = "文件上传路径")

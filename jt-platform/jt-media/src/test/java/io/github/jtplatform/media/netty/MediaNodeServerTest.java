@@ -218,7 +218,7 @@ class MediaNodeServerTest {
                 "media-" + instanceNumber, null,
                  new MediaNodeLoadMonitor(
                          pipeline::activeStreamCount, rawSink::outboundBytes, Clock.systemUTC()),
-                 new MediaRuntimeProperties.Capacity(), null, new RecordSink(new RecordingProperties()),
+                 new MediaRuntimeProperties.Capacity(), null, null, new RecordSink(new RecordingProperties()),
                  talkbackService, playbackService, null);
     }
 

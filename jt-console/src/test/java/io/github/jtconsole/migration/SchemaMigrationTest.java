@@ -160,7 +160,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(15L);
+        assertThat(userVersion()).isEqualTo(16L);
         for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
             assertThat(scalar("""
                     SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
@@ -178,14 +178,14 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(15L);
+        assertThat(userVersion()).isEqualTo(16L);
     }
 
     @Test
     void waybillMigrationUsesV15AndCreatesExpectedIndexes() {
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(15L);
+        assertThat(userVersion()).isEqualTo(16L);
         assertThat(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='waybill'"))
                 .isEqualTo(1L);
         assertThat(scalar("""
@@ -194,6 +194,19 @@ class SchemaMigrationTest {
                 """)).isEqualTo(1L);
         // V14 留给连接诊断车道；本变更只能直接落 V15。
         assertThat(new V15WaybillMigration().version()).isEqualTo(15);
+    }
+
+    @Test
+    void recordingUploadMigrationUsesV16AndCreatesTaskIndexes() {
+        TestSchema.migrate(jdbc, transactions);
+
+        assertThat(new V16RecordingUploadMigration().version()).isEqualTo(16);
+        assertThat(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='recording_upload_task'"))
+                .isEqualTo(1L);
+        assertThat(scalar("""
+                SELECT COUNT(*) FROM sqlite_master
+                WHERE type='index' AND name='idx_recording_upload_command'
+                """)).isEqualTo(1L);
     }
 
     /** 把库推进到加 AI 表之前的状态，用来模拟真实的升级起点。 */

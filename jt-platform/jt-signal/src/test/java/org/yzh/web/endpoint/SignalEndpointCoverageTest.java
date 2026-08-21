@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.github.jtplatform.common.port.InMemoryDeviceRouter;
+import io.github.jtplatform.signal.command.RecordingUploadCommandController;
 import io.github.yezhihao.netmc.session.Session;
 import java.util.Arrays;
 import java.util.List;
@@ -25,7 +26,8 @@ class SignalEndpointCoverageTest {
     @Test
     void retainsEveryMigratedDownlinkRoute() {
         assertEquals(37, postMappingCount(JT808Controller.class));
-        assertEquals(15, postMappingCount(JT1078Controller.class));
+        assertEquals(15, postMappingCount(JT1078Controller.class)
+                + postMappingCount(RecordingUploadCommandController.class));
     }
 
     @Test
@@ -34,6 +36,9 @@ class SignalEndpointCoverageTest {
                 recordComponentNames(JT1078Controller.LiveCommand.class));
         assertEquals(List.of("deviceId", "channel", "startTime", "endTime"),
                 recordComponentNames(JT1078Controller.PlaybackCommand.class));
+        assertFalse(recordComponentNames(RecordingUploadCommandController.UploadCommand.class)
+                .stream().anyMatch(name -> name.equals("username") || name.equals("password")
+                        || name.equals("ip") || name.equals("port")));
     }
 
     @Test

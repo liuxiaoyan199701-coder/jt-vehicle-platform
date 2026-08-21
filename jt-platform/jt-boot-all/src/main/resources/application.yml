@@ -50,6 +50,15 @@ jt:
       max-frame-bytes: 4096
       max-queued-frames-per-participant: 10
       max-pending-device-writes: 10
+    ftp:
+      enabled: true
+      bind-address: 0.0.0.0
+      advertised-address: ${JT_FTP_ADVERTISED_ADDRESS:}
+      port: ${JT_FTP_PORT:2121}
+      passive-ports: ${JT_FTP_PASSIVE_PORTS:30000-30009}
+      root: recordings/uploads
+      credential-ttl: 30m
+      access-base-url: ${JT_RECORDING_UPLOAD_BASE_URL:}
     recording:
       realtime-enabled: false
       playback-enabled: false

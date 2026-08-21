@@ -1,6 +1,7 @@
 package io.github.jtconsole.ai.tool;
 
 import io.github.jtconsole.iam.IamException;
+import io.github.jtconsole.repository.RecordingUploadRepository;
 import io.github.jtconsole.repository.TimeBounds;
 import io.github.jtconsole.web.RecordingProxyController;
 import java.time.Duration;
@@ -21,10 +22,14 @@ public class RecordingTools {
 
     private final ToolRunner runner;
     private final RecordingProxyController recordings;
+    private final RecordingUploadRepository uploads;
 
-    public RecordingTools(ToolRunner runner, RecordingProxyController recordings) {
+    public RecordingTools(
+            ToolRunner runner, RecordingProxyController recordings,
+            RecordingUploadRepository uploads) {
         this.runner = runner;
         this.recordings = recordings;
+        this.uploads = uploads;
     }
 
     @Tool(name = "query_recordings",
@@ -75,6 +80,14 @@ public class RecordingTools {
             answer.put("device", sourceSummary(
                     result.device().available(), result.device().reason(),
                     result.device().resources(), "resources"));
+            answer.put("uploadTasks", uploads.findByDevice(
+                    deviceId.trim(), SUMMARY_LIMIT, session.scope()).stream()
+                    .map(task -> Map.of(
+                            "taskId", task.id(),
+                            "status", task.status(),
+                            "fileArrived", task.accessAddress() != null,
+                            "updatedAt", task.updatedAt()))
+                    .toList());
             answer.put("playback", "本工具不能开流；要看录像请前往录像回放页。");
             return answer;
         } catch (IamException invisible) {

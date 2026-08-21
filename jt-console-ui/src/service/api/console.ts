@@ -440,6 +440,53 @@ export function fetchRecordingsAround(deviceId: string, at: string, channel = 1)
   });
 }
 
+export interface RecordingUploadTask {
+  id: string;
+  deviceId: string;
+  commandSerialNo: number | null;
+  channelNo: number;
+  startAt: string;
+  endAt: string;
+  status: 'CREATED' | 'DISPATCHED' | 'FILE_RECEIVED' | 'COMPLETED' | 'FAILED';
+  resultCode: number | null;
+  fileName: string | null;
+  fileSize: number | null;
+  accessAddress: string | null;
+  contentType: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function createRecordingUpload(
+  deviceId: string,
+  resource: DeviceRecordingResource,
+  condition = 7
+) {
+  return request<RecordingUploadTask>({
+    url: '/recording-uploads',
+    method: 'post',
+    data: {
+      deviceId,
+      channel: resource.channel,
+      startTime: resource.startTime,
+      endTime: resource.endTime,
+      warnBit1: resource.warnBit % 0x1_0000_0000,
+      warnBit2: Math.floor(resource.warnBit / 0x1_0000_0000),
+      mediaType: resource.mediaType,
+      streamType: resource.streamType,
+      storageType: resource.storageType,
+      condition
+    }
+  });
+}
+
+export function fetchRecordingUploads(deviceId: string, limit = 50) {
+  return request<RecordingUploadTask[]>({
+    url: '/recording-uploads',
+    params: { deviceId, limit }
+  });
+}
+
 export interface RecordingStorageMetrics {
   recordingOccupiedBytes: number;
   recordingUsableBytes: number;

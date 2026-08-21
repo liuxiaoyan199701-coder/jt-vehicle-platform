@@ -8,6 +8,7 @@ import io.github.jtplatform.common.port.StreamSubscriptionPort;
 import io.github.jtplatform.media.config.LegacyMediaPortValidator;
 import io.github.jtplatform.media.config.MediaRuntimeProperties;
 import io.github.jtplatform.media.config.MediaServerProperties;
+import io.github.jtplatform.media.ftp.RecordingUploadFileStore;
 import io.github.jtplatform.media.metrics.MediaNodeLoadMonitor;
 import io.github.jtplatform.media.pipeline.MediaPipeline;
 import io.github.jtplatform.media.protocol.Jt1078RtpDecoder;
@@ -52,6 +53,7 @@ public final class MediaNodeServer implements SmartLifecycle {
     private final MediaNodeLoadMonitor loadMonitor;
     private final MediaRuntimeProperties.Capacity capacity;
     private final RecordingStorageMetrics recordingStorageMetrics;
+    private final RecordingUploadFileStore recordingUploadFileStore;
     private final RecordSink recordSink;
     private final TalkbackService talkbackService;
     private final RecordingPlaybackService recordingPlaybackService;
@@ -76,6 +78,7 @@ public final class MediaNodeServer implements SmartLifecycle {
             MediaNodeLoadMonitor loadMonitor,
             MediaRuntimeProperties.Capacity capacity,
             RecordingStorageMetrics recordingStorageMetrics,
+            RecordingUploadFileStore recordingUploadFileStore,
             RecordSink recordSink,
             TalkbackService talkbackService,
             RecordingPlaybackService recordingPlaybackService,
@@ -94,6 +97,7 @@ public final class MediaNodeServer implements SmartLifecycle {
         this.loadMonitor = Objects.requireNonNull(loadMonitor, "loadMonitor");
         this.capacity = Objects.requireNonNull(capacity, "capacity");
         this.recordingStorageMetrics = recordingStorageMetrics;
+        this.recordingUploadFileStore = recordingUploadFileStore;
         this.recordSink = Objects.requireNonNull(recordSink, "recordSink");
         this.talkbackService = Objects.requireNonNull(talkbackService, "talkbackService");
         this.recordingPlaybackService = Objects.requireNonNull(
@@ -180,7 +184,8 @@ public final class MediaNodeServer implements SmartLifecycle {
                 channel.pipeline().addLast("http", new HttpServerCodec());
                 channel.pipeline().addLast("httpAggregate", new HttpObjectAggregator(16 * 1024));
                 channel.pipeline().addLast("health", new MediaManagementHandler(
-                        ports, loadMonitor, capacity, recordingStorageMetrics, recordSink, pipeline));
+                        ports, loadMonitor, capacity, recordingStorageMetrics,
+                        recordingUploadFileStore, recordSink, pipeline));
             }
         }), port);
     }

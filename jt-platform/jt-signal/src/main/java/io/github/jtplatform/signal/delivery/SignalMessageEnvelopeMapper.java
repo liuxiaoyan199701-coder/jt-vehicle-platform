@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import org.yzh.protocol.basics.JTMessage;
+import org.yzh.protocol.t1078.T1206;
 import org.yzh.protocol.t808.T0701;
 import org.yzh.web.model.entity.DeviceDO;
 import org.yzh.web.model.enums.SessionKey;
@@ -52,6 +53,19 @@ public final class SignalMessageEnvelopeMapper {
             payload.put(key, value);
         });
         String deviceId = resolveDeviceId(session, message);
+        if (message instanceof T1206 completed) {
+            return new MessageEnvelope(
+                    "recording-upload-complete:" + deviceId + ':'
+                            + completed.getResponseSerialNo() + ':' + completed.getResult(),
+                    deviceId,
+                    Integer.toUnsignedLong(message.getMessageId()),
+                    message.getSerialNo(),
+                    protocolVersion(message),
+                    clock.instant(),
+                    instanceId,
+                    typeClassifier.classify(message),
+                    payload);
+        }
         if (message instanceof T0701 waybill) {
             byte[] data = waybill.getData() == null ? new byte[0] : waybill.getData();
             payload.put("rawBase64", Base64.getEncoder().encodeToString(data));
