@@ -496,6 +496,9 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         VBox panel = new VBox(10);
         panel.setPadding(new Insets(16));
         panel.getStyleClass().add("control-panel");
+        waybillTemplate.setId("waybill-template");
+        waybillEditor.setId("waybill-editor");
+        autoWaybill.setId("waybill-auto-send");
         waybillTemplate.getItems().setAll("JSON 货运单", "纯文本运单");
         waybillTemplate.getSelectionModel().select(0);
         waybillTemplate.setOnAction(event -> waybillEditor.setText(
@@ -507,6 +510,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         waybillEditor.setPrefRowCount(8);
         autoWaybill.setSelected(initialConfig.waybill().autoSendOnTripStart());
         Button send = new Button("发送 0701 运单");
+        send.setId("waybill-send");
         send.setOnAction(event -> {
             String content = waybillEditor.getText();
             operations.sendWaybill(content).whenComplete((ignored, failure) -> runOnFx(() -> {
@@ -720,7 +724,9 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
                 config.maxPayloadBytes(), preservedTrip, driver, previous.alarm(), config.simFormat(),
-                config.recording(), config.fleet(), previous.terminalManagement(), previous.waybill());
+                config.recording(), config.fleet(), previous.terminalManagement(),
+                new io.github.jtplatform.simulator.config.WaybillConfig(
+                        autoWaybill.isSelected(), waybillEditor.getText()));
     }
 
     private void browseFfmpeg() {

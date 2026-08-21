@@ -54,6 +54,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
     private volatile SignalClient signalClient;
     private volatile boolean closed;
     private volatile long signalGeneration;
+    private volatile boolean waybillSentForTrip;
 
     public SimulatorRuntime() throws IOException {
         this(new ConfigStore(), new FfmpegDiscovery());
@@ -180,14 +181,6 @@ public final class SimulatorRuntime implements SimulatorOperations {
     public void startTrip() {
         ensureOpen();
         tripController.start();
-        SimulatorConfig snapshot = currentConfig.get();
-        if (snapshot.waybill().autoSendOnTripStart()) {
-            sendWaybill(snapshot.waybill().content()).whenComplete((ignored, failure) -> {
-                if (failure != null) {
-                    log.warn("waybill", "行程自动上报运单失败: " + safeMessage(failure));
-                }
-            });
-        }
     }
 
     @Override
@@ -205,6 +198,16 @@ public final class SimulatorRuntime implements SimulatorOperations {
     private void onTripState(TripViewState state) {
         if (closed) {
             return;
+        }
+        if (!state.running()) {
+            waybillSentForTrip = false;
+        } else if (!waybillSentForTrip && currentConfig.get().waybill().autoSendOnTripStart()) {
+            waybillSentForTrip = true;
+            sendWaybill(currentConfig.get().waybill().content()).whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    log.warn("waybill", "行程自动上报运单失败: " + safeMessage(failure));
+                }
+            });
         }
         listener.onTripState(state);
     }
