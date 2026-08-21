@@ -22,7 +22,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.yzh.protocol.t1078.codec.Jt1078FragmentFlag;
+import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import org.yzh.protocol.t1078.codec.Jt1078WireConstants;
 
 class Jt1078TcpWriterTest {
@@ -90,6 +93,25 @@ class Jt1078TcpWriterTest {
         assertTrue(packets.stream().allMatch(packet -> packet.timestamp() == 9_876));
         assertTrue(packets.stream().allMatch(packet -> packet.payloadType() == Jt1078WireConstants.PT_H264));
         assertArrayEquals(accessUnit, concatenatePayloads(packets));
+    }
+
+    @ParameterizedTest
+    @EnumSource(Jt1078SimFormat.class)
+    void forwardsEachSimFormatIntoTheRtpHeaderAndDeviceIdWidth(Jt1078SimFormat format) throws Exception {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try (Jt1078TcpWriter writer = Jt1078TcpWriter.forOutput(
+                output, "12345678901234567890", 1, 1_400, 0, format)) {
+            writer.write(new MediaFrame(MediaFrameType.AUDIO, 123, filled(8, (byte) 0x7f)));
+        }
+
+        byte[] packet = output.toByteArray();
+        assertEquals(format.rtpHeaderByte(), Byte.toUnsignedInt(packet[4]));
+        assertEquals(4 + 1 + 1 + 2 + format.simBytes() + 1 + 1 + 8 + 2 + 8, packet.length);
+        String significant = format.simDigits() == 12 ? "901234567890" : "12345678901234567890";
+        assertEquals(Integer.parseInt(significant.substring(0, 2), 16),
+                Byte.toUnsignedInt(packet[8]));
+        assertEquals(Integer.parseInt(significant.substring(2, 4), 16),
+                Byte.toUnsignedInt(packet[9]));
     }
 
     @Test

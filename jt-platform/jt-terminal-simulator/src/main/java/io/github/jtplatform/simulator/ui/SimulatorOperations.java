@@ -1,6 +1,8 @@
 package io.github.jtplatform.simulator.ui;
 
+import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.signal.AlarmDefinition;
 import io.github.jtplatform.simulator.diagnostics.LogEntry;
 import io.github.jtplatform.simulator.signal.SignalState;
 import io.github.jtplatform.simulator.trip.TripViewState;
@@ -33,7 +35,26 @@ public interface SimulatorOperations extends AutoCloseable {
 
     SignalState signalState();
 
+    default SimulatorConfig currentConfig() {
+        return SimulatorConfig.defaults();
+    }
+
     MediaViewState mediaState();
+
+    default void setAlarm(AlarmDefinition alarm, boolean enabled) {
+    }
+
+    default void clearAlarms() {
+    }
+
+    default void setOverspeedKph(double speedKph) {
+    }
+
+    default CompletionStage<Void> sendDriverCard(
+            DriverConfig driver, io.github.jtplatform.simulator.signal.SignalClient.DriverAction action) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+                new IllegalStateException("driver simulation is not available"));
+    }
 
     List<LogEntry> recentLogs();
 

@@ -3,7 +3,11 @@ package io.github.jtplatform.simulator.ui;
 import io.github.jtplatform.simulator.config.Jt808Version;
 import io.github.jtplatform.simulator.config.RegistrationConfig;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.AlarmConfig;
+import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.TripConfig;
+import io.github.jtplatform.simulator.config.RecordingConfig;
+import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import io.github.jtplatform.simulator.config.VideoProfile;
 import io.github.jtplatform.simulator.trip.CoordinateTransform;
 import io.github.jtplatform.simulator.trip.GeoPoint;
@@ -39,7 +43,36 @@ public record SimulatorFormData(
         String previewHeight,
         String previewFrameRate,
         String maxPayloadBytes,
-        TripFormData trip) {
+        TripFormData trip,
+        Jt1078SimFormat simFormat,
+        String driverName,
+        String driverIdCard,
+        String driverLicenseNo,
+        String driverInstitution,
+        String driverValidPeriod,
+        String overspeedKph,
+        String recordingCount,
+        String recordingStart,
+        String recordingEnd,
+        String recordingChannel) {
+
+    /** 兼容新增表单字段前的测试/调用方构造方式。 */
+    public SimulatorFormData(
+            String signalHost, String signalPort, Jt808Version version, String mobileNo,
+            String deviceId, String channel, String provinceId, String cityId,
+            String makerId, String deviceModel, String plateColor, String plateNo,
+            String imei, String softwareVersion, String ffmpegPath, String cameraName,
+            String microphoneName, ProfileFormData mainProfile, ProfileFormData subProfile,
+            String previewWidth, String previewHeight, String previewFrameRate,
+            String maxPayloadBytes, TripFormData trip) {
+        this(signalHost, signalPort, version, mobileNo, deviceId, channel, provinceId, cityId,
+                makerId, deviceModel, plateColor, plateNo, imei, softwareVersion, ffmpegPath,
+                cameraName, microphoneName, mainProfile, subProfile, previewWidth, previewHeight,
+                previewFrameRate, maxPayloadBytes, trip, Jt1078SimFormat.STANDARD,
+                "", "", "", "", "", Integer.toString(AlarmConfig.DEFAULT_OVERSPEED_KPH),
+                Integer.toString(RecordingConfig.DEFAULT_RESOURCE_COUNT),
+                RecordingConfig.DEFAULT_START_TIME, RecordingConfig.DEFAULT_END_TIME, "1");
+    }
 
     public SimulatorFormData {
         signalHost = normalize(signalHost);
@@ -65,6 +98,17 @@ public record SimulatorFormData(
         previewFrameRate = normalize(previewFrameRate);
         maxPayloadBytes = normalize(maxPayloadBytes);
         trip = trip == null ? TripFormData.from(TripConfig.defaults()) : trip;
+        simFormat = simFormat == null ? Jt1078SimFormat.STANDARD : simFormat;
+        driverName = normalize(driverName);
+        driverIdCard = normalize(driverIdCard);
+        driverLicenseNo = normalize(driverLicenseNo);
+        driverInstitution = normalize(driverInstitution);
+        driverValidPeriod = normalize(driverValidPeriod);
+        overspeedKph = normalize(overspeedKph);
+        recordingCount = normalize(recordingCount);
+        recordingStart = normalize(recordingStart);
+        recordingEnd = normalize(recordingEnd);
+        recordingChannel = normalize(recordingChannel);
     }
 
     public static SimulatorFormData from(SimulatorConfig config) {
@@ -94,7 +138,12 @@ public record SimulatorFormData(
                 Integer.toString(config.previewHeight()),
                 Integer.toString(config.previewFps()),
                 Integer.toString(config.maxPayloadBytes()),
-                TripFormData.from(config.trip()));
+                TripFormData.from(config.trip()), config.simFormat(),
+                config.driver().name(), config.driver().idCard(), config.driver().licenseNo(),
+                config.driver().institution(), config.driver().licenseValidPeriod(),
+                Integer.toString(config.alarm().overspeedKph()),
+                Integer.toString(config.recording().resourceCount()), config.recording().startTime(),
+                config.recording().endTime(), Integer.toString(config.recording().channel()));
     }
 
     public ConfigValidation validate() {
@@ -141,6 +190,12 @@ public record SimulatorFormData(
                 "预览帧率", 1, 30, errors);
         Integer checkedPayload = integer(maxPayloadBytes, ConfigField.MAX_PAYLOAD_BYTES,
                 "单片载荷", 1, 65_535, errors);
+        Integer checkedOverspeed = integer(overspeedKph, ConfigField.OVERSPEED_KPH,
+                "超速联动速度", 1, 300, errors);
+        Integer checkedRecordingCount = integer(recordingCount, ConfigField.RECORDING_COUNT,
+                "模拟录像条数", 0, 100, errors);
+        Integer checkedRecordingChannel = integer(recordingChannel, ConfigField.RECORDING_CHANNEL,
+                "录像通道", 1, 255, errors);
 
         TripConfig checkedTrip = trip(errors);
 
@@ -175,7 +230,13 @@ public record SimulatorFormData(
                     checkedPreviewHeight,
                     checkedPreviewFps,
                     checkedPayload,
-                    checkedTrip);
+                    checkedTrip,
+                    new DriverConfig(driverName, driverIdCard, driverLicenseNo,
+                            driverInstitution, driverValidPeriod),
+                    new AlarmConfig(0, checkedOverspeed),
+                    simFormat,
+                    new RecordingConfig(checkedRecordingCount, recordingStart, recordingEnd,
+                            checkedRecordingChannel));
             return new ConfigValidation(Optional.of(config), Map.of());
         } catch (IllegalArgumentException unexpected) {
             return new ConfigValidation(

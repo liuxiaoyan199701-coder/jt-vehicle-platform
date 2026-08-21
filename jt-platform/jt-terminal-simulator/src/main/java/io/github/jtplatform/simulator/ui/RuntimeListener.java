@@ -25,4 +25,13 @@ public interface RuntimeListener {
 
     default void onError(String context, Throwable error) {
     }
+
+    default void onLocationReported(java.time.Instant timestamp) {
+    }
+
+    default void onDriverAction(String detail) {
+    }
+
+    default void onRecordingEvent(String detail) {
+    }
 }

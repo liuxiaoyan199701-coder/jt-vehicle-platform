@@ -1,6 +1,7 @@
 package io.github.jtplatform.simulator.ui;
 
 import io.github.jtplatform.simulator.config.Jt808Version;
+import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
 import io.github.jtplatform.simulator.media.DirectShowDevice;
 import io.github.jtplatform.simulator.media.DirectShowDevices;
@@ -71,6 +72,11 @@ final class ConfigurationPane extends VBox {
     private final TextField subBitrate = text(ConfigField.SUB_BITRATE);
     private final TextField subGop = text(ConfigField.SUB_GOP);
     private final TextField maxPayloadBytes = text(ConfigField.MAX_PAYLOAD_BYTES);
+    private final ComboBox<Jt1078SimFormat> simFormat = combo(ConfigField.SIM_FORMAT);
+    private final TextField recordingCount = text(ConfigField.RECORDING_COUNT);
+    private final TextField recordingStart = text(ConfigField.RECORDING_START);
+    private final TextField recordingEnd = text(ConfigField.RECORDING_END);
+    private final TextField recordingChannel = text(ConfigField.RECORDING_CHANNEL);
 
     private final CheckBox tripAutoStart = check(ConfigField.TRIP_AUTO_START, "连接成功后自动开始");
     private final TextField tripAmapKey = text(ConfigField.TRIP_AMAP_KEY);
@@ -123,6 +129,18 @@ final class ConfigurationPane extends VBox {
         setMaxWidth(540);
 
         version.getItems().setAll(Jt808Version.values());
+        simFormat.getItems().setAll(Jt1078SimFormat.values());
+        simFormat.setConverter(new StringConverter<>() {
+            @Override public String toString(Jt1078SimFormat value) {
+                return value == null ? "" : switch (value) {
+                    case STANDARD -> "标准 12 位";
+                    case EXTENDED -> "扩展 20 位 · 置 X 位";
+                    case NON_STANDARD_20 -> "野生 20 位 · 不置 X 位";
+                };
+            }
+            @Override public Jt1078SimFormat fromString(String value) { return null; }
+        });
+        simFormat.setTooltip(new Tooltip("野生 20 位用于复现不守标准的设备，验证平台自动识别"));
         version.setConverter(new StringConverter<>() {
             @Override
             public String toString(Jt808Version value) {
@@ -163,7 +181,8 @@ final class ConfigurationPane extends VBox {
         Tab tripTab = tab("行程", tripContent());
         Tab captureTab = tab("采集", captureContent());
         Tab encodingTab = tab("编码", encodingContent());
-        tabs.getTabs().setAll(connectionTab, tripTab, captureTab, encodingTab);
+        Tab recordingTab = tab("录像", recordingContent());
+        tabs.getTabs().setAll(connectionTab, tripTab, captureTab, encodingTab, recordingTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
@@ -188,7 +207,9 @@ final class ConfigurationPane extends VBox {
                 ConfigField.MAIN_FRAME_RATE, ConfigField.MAIN_BITRATE, ConfigField.MAIN_GOP,
                 ConfigField.SUB_WIDTH, ConfigField.SUB_HEIGHT,
                 ConfigField.SUB_FRAME_RATE, ConfigField.SUB_BITRATE, ConfigField.SUB_GOP,
-                ConfigField.MAX_PAYLOAD_BYTES);
+                ConfigField.MAX_PAYLOAD_BYTES, ConfigField.SIM_FORMAT);
+        mapTab(recordingTab, ConfigField.RECORDING_COUNT, ConfigField.RECORDING_START,
+                ConfigField.RECORDING_END, ConfigField.RECORDING_CHANNEL);
 
         validationSummary.getStyleClass().add("validation-summary");
         validationSummary.setManaged(false);
@@ -306,7 +327,25 @@ final class ConfigurationPane extends VBox {
 
         GridPane packet = grid();
         row(packet, 0, "1078 单片载荷", ConfigField.MAX_PAYLOAD_BYTES, maxPayloadBytes);
-        content.getChildren().addAll(sectionTitle("报文"), packet);
+        row(packet, 1, "SIM 形态", ConfigField.SIM_FORMAT, simFormat);
+        Label simHint = new Label("野生 20 位用于复现不守标准的设备，验证平台自动识别");
+        simHint.getStyleClass().add("field-hint");
+        simHint.setWrapText(true);
+        content.getChildren().addAll(sectionTitle("报文"), packet, simHint);
+        return scroll(content);
+    }
+
+    private Node recordingContent() {
+        VBox content = tabContent();
+        GridPane fields = grid();
+        row(fields, 0, "模拟资源条数", ConfigField.RECORDING_COUNT, recordingCount);
+        row(fields, 1, "开始时间", ConfigField.RECORDING_START, recordingStart);
+        row(fields, 2, "结束时间", ConfigField.RECORDING_END, recordingEnd);
+        row(fields, 3, "逻辑通道", ConfigField.RECORDING_CHANNEL, recordingChannel);
+        Label hint = new Label("时间可填 HH:mm；NOW-2H/NOW 表示最近两小时，跨午夜时结束时间按次日计算。");
+        hint.getStyleClass().add("field-hint");
+        hint.setWrapText(true);
+        content.getChildren().addAll(sectionTitle("合成录像资源"), fields, hint);
         return scroll(content);
     }
 
@@ -368,7 +407,10 @@ final class ConfigurationPane extends VBox {
                         tripDestinationLng.getText(),
                         tripSpeed.getText(),
                         tripReportInterval.getText(),
-                        tripRoundTrip.isSelected()));
+                        tripRoundTrip.isSelected()),
+                simFormat.getValue(), "", "", "", "", "", "80",
+                recordingCount.getText(), recordingStart.getText(), recordingEnd.getText(),
+                recordingChannel.getText());
     }
 
     void apply(SimulatorFormData data) {
@@ -398,6 +440,11 @@ final class ConfigurationPane extends VBox {
         previewHeight.setText(data.previewHeight());
         previewFrameRate.setText(data.previewFrameRate());
         maxPayloadBytes.setText(data.maxPayloadBytes());
+        simFormat.setValue(data.simFormat());
+        recordingCount.setText(data.recordingCount());
+        recordingStart.setText(data.recordingStart());
+        recordingEnd.setText(data.recordingEnd());
+        recordingChannel.setText(data.recordingChannel());
         TripFormData trip = data.trip();
         tripAutoStart.setSelected(trip.autoStart());
         tripAmapKey.setText(trip.amapKey());

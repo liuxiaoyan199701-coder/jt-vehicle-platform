@@ -17,4 +17,10 @@ public interface SignalListener {
     /** 非致命诊断输出（如 FFmpeg stderr 行），用于界面日志面板 */
     default void onDiagnostic(String message) {
     }
+
+    default void onLocationReported(java.time.Instant timestamp) {
+    }
+
+    default void onRecordingEvent(String detail) {
+    }
 }

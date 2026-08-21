@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.yzh.protocol.t1078.codec.Jt1078Frame;
+import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import org.yzh.protocol.t1078.codec.Jt1078PacketBatch;
 import org.yzh.protocol.t1078.codec.Jt1078PacketEncoder;
 import org.yzh.protocol.t1078.codec.Jt1078WireConstants;
@@ -24,7 +25,7 @@ public final class Jt1078TcpWriter implements AutoCloseable {
     private final String mobileNo;
     private final int channel;
     private final int maxPayloadBytes;
-    private final Jt1078PacketEncoder encoder = new Jt1078PacketEncoder();
+    private final Jt1078PacketEncoder encoder;
 
     private int sequence;
     private long previousVideoTimestamp = -1L;
@@ -37,7 +38,8 @@ public final class Jt1078TcpWriter implements AutoCloseable {
             String mobileNo,
             int channel,
             int maxPayloadBytes,
-            int initialSequence) {
+            int initialSequence,
+            Jt1078SimFormat simFormat) {
         this.output = new BufferedOutputStream(Objects.requireNonNull(output, "output"));
         this.connection = Objects.requireNonNull(connection, "connection");
         this.mobileNo = Objects.requireNonNull(mobileNo, "mobileNo");
@@ -55,6 +57,7 @@ public final class Jt1078TcpWriter implements AutoCloseable {
             throw new IllegalArgumentException("initialSequence must be in range 0..65535");
         }
         this.channel = channel;
+        this.encoder = new Jt1078PacketEncoder(Objects.requireNonNull(simFormat, "simFormat"));
         this.maxPayloadBytes = maxPayloadBytes;
         this.sequence = initialSequence;
     }
@@ -64,7 +67,8 @@ public final class Jt1078TcpWriter implements AutoCloseable {
             String mobileNo,
             int channel,
             int maxPayloadBytes) throws IOException {
-        return connect(target, mobileNo, channel, maxPayloadBytes, DEFAULT_CONNECT_TIMEOUT);
+        return connect(target, mobileNo, channel, maxPayloadBytes, DEFAULT_CONNECT_TIMEOUT,
+                Jt1078SimFormat.STANDARD);
     }
 
     public static Jt1078TcpWriter connect(
@@ -73,6 +77,17 @@ public final class Jt1078TcpWriter implements AutoCloseable {
             int channel,
             int maxPayloadBytes,
             Duration timeout) throws IOException {
+        return connect(target, mobileNo, channel, maxPayloadBytes, timeout,
+                Jt1078SimFormat.STANDARD);
+    }
+
+    public static Jt1078TcpWriter connect(
+            MediaTarget target,
+            String mobileNo,
+            int channel,
+            int maxPayloadBytes,
+            Duration timeout,
+            Jt1078SimFormat simFormat) throws IOException {
         Objects.requireNonNull(target, "target");
         Objects.requireNonNull(timeout, "timeout");
         if (timeout.isNegative() || timeout.isZero() || timeout.toMillis() > Integer.MAX_VALUE) {
@@ -84,7 +99,7 @@ public final class Jt1078TcpWriter implements AutoCloseable {
             socket.setTcpNoDelay(true);
             socket.setKeepAlive(true);
             return new Jt1078TcpWriter(
-                    socket.getOutputStream(), socket, mobileNo, channel, maxPayloadBytes, 0);
+                    socket.getOutputStream(), socket, mobileNo, channel, maxPayloadBytes, 0, simFormat);
         } catch (IOException | RuntimeException failure) {
             try {
                 socket.close();
@@ -102,7 +117,19 @@ public final class Jt1078TcpWriter implements AutoCloseable {
             int maxPayloadBytes,
             int initialSequence) {
         return new Jt1078TcpWriter(
-                output, output, mobileNo, channel, maxPayloadBytes, initialSequence);
+                output, output, mobileNo, channel, maxPayloadBytes, initialSequence,
+                Jt1078SimFormat.STANDARD);
+    }
+
+    static Jt1078TcpWriter forOutput(
+            OutputStream output,
+            String mobileNo,
+            int channel,
+            int maxPayloadBytes,
+            int initialSequence,
+            Jt1078SimFormat simFormat) {
+        return new Jt1078TcpWriter(
+                output, output, mobileNo, channel, maxPayloadBytes, initialSequence, simFormat);
     }
 
     public WriteResult write(MediaFrame mediaFrame) throws IOException {
