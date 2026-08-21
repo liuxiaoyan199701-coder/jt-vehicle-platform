@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.jtplatform.simulator.config.Jt808Version;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.TerminalManagementConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -34,8 +35,15 @@ import org.yzh.protocol.t1078.T9102;
 import org.yzh.protocol.t808.T0001;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
+import org.yzh.protocol.t808.T0104;
+import org.yzh.protocol.t808.T0108;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0201_0500;
 import org.yzh.protocol.t808.T8100;
+import org.yzh.protocol.t808.T8103;
+import org.yzh.protocol.t808.T8105;
+import org.yzh.protocol.t808.T8108;
+import org.yzh.protocol.t808.T8300;
 
 class SignalClientTest {
     private static final SignalClient.Timing FAST_TIMING = new SignalClient.Timing(
@@ -115,6 +123,118 @@ class SignalClientTest {
                 assertEquals(1, commands.opens.get());
                 assertEquals(1, commands.controls.get());
                 assertEquals(SignalState.ONLINE, client.state());
+            }
+        }
+    }
+
+    @Test
+    void storesParametersAnswersQueriesAndReconnectsAfterReset() throws Exception {
+        RecordingListener listener = new RecordingListener(2);
+        Consumer<FakePeer> manageAndReset = peer -> {
+            authenticate(peer);
+            JTMessage authenticated = peer.readUntil(message -> message.getMessageId() == JT808.终端心跳);
+
+            T8103 set = platform(new T8103().addParameter(0x0001, 1L)
+                    .addParameter(0x0055, 95L), authenticated, 600);
+            peer.write(set);
+            assertGeneralResponse(peer.readUntil(message -> message instanceof T0001),
+                    set, T0001.Success);
+
+            JTMessage query = platform(new JTMessage(), authenticated, 601);
+            query.setMessageId(JT808.查询终端参数);
+            peer.write(query);
+            T0104 response = assertInstanceOf(T0104.class,
+                    peer.readUntil(message -> message instanceof T0104));
+            assertEquals(set.getSerialNo() + 1, response.getResponseSerialNo());
+            assertEquals(1L, response.getParameters().get(0x0001));
+            assertEquals(95L, response.getParameters().get(0x0055));
+
+            T8105 reset = platform(new T8105().setCommand(4).setParameter(""), authenticated, 602);
+            peer.write(reset);
+            assertGeneralResponse(peer.readUntil(message -> message instanceof T0001),
+                    reset, T0001.Success);
+        };
+        Consumer<FakePeer> authenticateAfterReset = peer -> {
+            authenticate(peer);
+            peer.readUntil(message -> message.getMessageId() == JT808.终端心跳);
+        };
+
+        try (FakeSignalServer server = new FakeSignalServer(manageAndReset, authenticateAfterReset);
+                SignalClient client = new SignalClient(
+                        config(Jt808Version.V2013, server.port()), new RecordingCommandHandler(),
+                        listener, LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+            server.await(Duration.ofSeconds(8));
+            assertTrue(listener.online.await(2, TimeUnit.SECONDS));
+            assertEquals(1L, client.terminalParameters().get(0x0001));
+            assertTrue(listener.states.contains(SignalState.RECONNECT_WAIT));
+        }
+    }
+
+    @Test
+    void answersImmediateLocationAndDeliversUrgentText() throws Exception {
+        RecordingListener listener = new RecordingListener();
+        LocationSource source = now -> new LocationFix(
+                31.230416D, 121.473701D, 12, 60, 87, 100,
+                LocalDateTime.of(2026, 8, 21, 8, 0));
+        CompletableFuture<T0201_0500> queried = new CompletableFuture<>();
+        try (FakeSignalServer server = new FakeSignalServer(peer -> {
+            authenticate(peer);
+            T0200 location = assertInstanceOf(T0200.class,
+                    peer.readUntil(message -> message instanceof T0200));
+            JTMessage query = platform(new JTMessage(), location, 710);
+            query.setMessageId(JT808.位置信息查询);
+            peer.write(query);
+            queried.complete(assertInstanceOf(T0201_0500.class,
+                    peer.readUntil(message -> message instanceof T0201_0500)));
+
+            T8300 text = platform(new T8300().setSign(1).setType(1).setContent("立即停车"),
+                    location, 711);
+            peer.write(text);
+            assertGeneralResponse(peer.readUntil(message -> message instanceof T0001),
+                    text, T0001.Success);
+        }); SignalClient client = new SignalClient(
+                config(Jt808Version.V2013, server.port()), new RecordingCommandHandler(), listener,
+                source, FAST_TIMING, () -> 0.5d)) {
+            client.connect();
+            T0201_0500 response = queried.get(5, TimeUnit.SECONDS);
+            assertEquals(710, response.getResponseSerialNo());
+            assertEquals(31_230_416, response.getLatitude());
+            server.await(Duration.ofSeconds(5));
+            assertEquals("立即停车", listener.terminalText);
+            assertTrue(listener.terminalTextUrgent);
+        }
+    }
+
+    @Test
+    void reportsConfiguredUpgradeSuccessAndFailureResults() throws Exception {
+        assertUpgradeResult(false, 0);
+        assertUpgradeResult(true, 1);
+    }
+
+    private static void assertUpgradeResult(boolean fail, int expectedResult) throws Exception {
+        CompletableFuture<T0108> result = new CompletableFuture<>();
+        try (FakeSignalServer server = new FakeSignalServer(peer -> {
+            authenticate(peer);
+            JTMessage context = peer.readUntil(message -> message.getMessageId() == JT808.终端心跳);
+            T8108 upgrade = platform(new T8108()
+                    .setType(T8108.Terminal)
+                    .setMakerId("JT")
+                    .setVersion("2.0")
+                    .setPacket(new byte[] {1, 2, 3, 4}), context, 700);
+            peer.write(upgrade);
+            result.complete(assertInstanceOf(T0108.class,
+                    peer.readUntil(message -> message instanceof T0108)));
+        })) {
+            SimulatorConfig base = config(Jt808Version.V2013, server.port());
+            SimulatorConfig configured = base.withTerminalManagement(
+                    new TerminalManagementConfig(base.terminalManagement().parameters(), 0, fail));
+            try (SignalClient client = new SignalClient(
+                    configured, new RecordingCommandHandler(), new RecordingListener(),
+                    LocationSource.NONE, FAST_TIMING, () -> 0.5d)) {
+                client.connect();
+                assertEquals(expectedResult, result.get(5, TimeUnit.SECONDS).getResult());
+                server.await(Duration.ofSeconds(5));
             }
         }
     }
@@ -496,6 +616,8 @@ class SignalClientTest {
         private final List<SignalState> states = java.util.Collections.synchronizedList(new ArrayList<>());
         private final List<String> reconnectDetails = java.util.Collections.synchronizedList(new ArrayList<>());
         private final List<String> errors = java.util.Collections.synchronizedList(new ArrayList<>());
+        private volatile String terminalText;
+        private volatile boolean terminalTextUrgent;
 
         private RecordingListener() {
             this(1, 0);
@@ -526,6 +648,12 @@ class SignalClientTest {
         public void onError(String context, Throwable error) {
             errors.add(context);
             this.error.countDown();
+        }
+
+        @Override
+        public void onTerminalText(String content, boolean urgent) {
+            terminalText = content;
+            terminalTextUrgent = urgent;
         }
     }
 

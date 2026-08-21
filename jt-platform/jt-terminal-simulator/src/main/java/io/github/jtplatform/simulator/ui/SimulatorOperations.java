@@ -80,6 +80,12 @@ public interface SimulatorOperations extends AutoCloseable {
         return 0;
     }
 
+    default void setFailNextUpgrade(boolean enabled) {
+    }
+
+    default void setUpgradeInstallDelayMillis(int delayMillis) {
+    }
+
     default CompletionStage<Void> sendDriverCard(
             DriverConfig driver, io.github.jtplatform.simulator.signal.SignalClient.DriverAction action) {
         return java.util.concurrent.CompletableFuture.failedFuture(

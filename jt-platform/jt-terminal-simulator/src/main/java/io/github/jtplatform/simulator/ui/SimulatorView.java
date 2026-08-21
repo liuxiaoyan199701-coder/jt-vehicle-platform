@@ -37,6 +37,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextArea;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.cell.PropertyValueFactory;
@@ -81,6 +82,16 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label streamState = new Label("推流 空闲");
     private final Label recordingState = new Label("录像 未收到指令");
     private final Label blindspotState = new Label("盲区 未进入 · 缓存 0 点");
+    private final Label terminalUpgradeState = new Label("升级 未收到包");
+    private final ListView<String> terminalParametersView = new ListView<>();
+    private final ListView<String> terminalCommandsView = new ListView<>();
+    private final TextArea terminalTextView = new TextArea();
+    private final javafx.collections.ObservableList<String> terminalParameters =
+            FXCollections.observableArrayList();
+    private final javafx.collections.ObservableList<String> terminalCommands =
+            FXCollections.observableArrayList();
+    private final CheckBox failNextUpgrade = new CheckBox("下次升级模拟失败");
+    private final TextField upgradeDelayMillis = new TextField();
     private final TableView<FleetRuntime.FleetMemberState> fleetTable = new TableView<>();
     private final javafx.collections.ObservableList<FleetRuntime.FleetMemberState> fleetRows =
             FXCollections.observableArrayList();
@@ -154,6 +165,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         streamState.getStyleClass().add("status-item");
         recordingState.getStyleClass().add("status-item");
         blindspotState.getStyleClass().add("status-item");
+        terminalUpgradeState.getStyleClass().add("status-item");
         DriverConfig rememberedDriver = initialConfig.driver();
         driverName.setText(rememberedDriver.name());
         driverIdCard.setText(rememberedDriver.idCard());
@@ -288,6 +300,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 tab("告警模拟", createAlarmPanel()),
                 tab("驾驶员", createDriverPanel()),
                 tab("录像", createRecordingPanel()),
+                tab("终端管理", createTerminalManagementPanel()),
                 tab("车队", createFleetPanel()),
                 tab("日志", logPanel));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -383,6 +396,94 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         return panel;
     }
 
+    private Node createTerminalManagementPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        terminalParametersView.setItems(terminalParameters);
+        terminalParameters.setAll(initialConfig.terminalManagement().parameters().entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> "0x%04X = %s".formatted(entry.getKey(), entry.getValue()))
+                .toList());
+        terminalParametersView.setPlaceholder(new Label("尚未配置终端参数"));
+        terminalParametersView.setPrefHeight(180);
+        terminalCommandsView.setItems(terminalCommands);
+        terminalCommandsView.setPlaceholder(new Label("尚无下发记录"));
+        terminalCommandsView.setPrefHeight(100);
+        terminalTextView.setEditable(false);
+        terminalTextView.setWrapText(true);
+        terminalTextView.setPrefRowCount(4);
+        failNextUpgrade.setSelected(initialConfig.terminalManagement().failNextUpgrade());
+        failNextUpgrade.setOnAction(event -> operations.setFailNextUpgrade(failNextUpgrade.isSelected()));
+        upgradeDelayMillis.setText(Integer.toString(
+                initialConfig.terminalManagement().upgradeInstallDelayMillis()));
+        upgradeDelayMillis.setPrefColumnCount(7);
+        Button applyUpgradeDelay = new Button("应用安装延时");
+        applyUpgradeDelay.setOnAction(event -> {
+            try {
+                int delay = Integer.parseInt(upgradeDelayMillis.getText().trim());
+                operations.setUpgradeInstallDelayMillis(delay);
+                recordTerminalCommand("升级安装延时已设为 " + delay + " ms");
+            } catch (RuntimeException failure) {
+                activity.setText("升级安装延时应为 0～60000 毫秒");
+            }
+        });
+        panel.getChildren().addAll(
+                panelTitle("终端参数（0104）"), terminalParametersView,
+                panelTitle("最近下发指令"), terminalCommandsView,
+                new HBox(10, failNextUpgrade, new Label("安装延时(ms)"),
+                        upgradeDelayMillis, applyUpgradeDelay, terminalUpgradeState),
+                panelTitle("平台文本消息（8300）"), terminalTextView);
+        return panel;
+    }
+
+    private void recordTerminalCommand(String detail) {
+        runOnFx(() -> {
+            terminalCommands.add(0, detail);
+            while (terminalCommands.size() > 30) {
+                terminalCommands.removeLast();
+            }
+        });
+    }
+
+    @Override
+    public void onTerminalParametersChanged(Map<Integer, Object> parameters) {
+        runOnFx(() -> {
+            terminalParameters.setAll(parameters.entrySet().stream()
+                    .sorted(Map.Entry.comparingByKey())
+                    .map(entry -> "0x%04X = %s".formatted(entry.getKey(), entry.getValue()))
+                    .toList());
+            recordTerminalCommand("参数表已更新（" + parameters.size() + " 项）");
+        });
+    }
+
+    @Override
+    public void onTerminalManagementEvent(String detail) {
+        recordTerminalCommand(detail);
+    }
+
+    @Override
+    public void onUpgradeEvent(String detail) {
+        runOnFx(() -> {
+            terminalUpgradeState.setText("升级 " + detail);
+            recordTerminalCommand(detail);
+        });
+    }
+
+    @Override
+    public void onTerminalText(String content, boolean urgent) {
+        runOnFx(() -> {
+            String line = (urgent ? "【紧急】" : "") + content;
+            terminalTextView.appendText(line + System.lineSeparator());
+            recordTerminalCommand("收到文本消息" + (urgent ? "（紧急）" : ""));
+        });
+    }
+
+    @Override
+    public void onFailNextUpgradeConsumed() {
+        runOnFx(() -> failNextUpgrade.setSelected(false));
+    }
+
     private Node createDriverPanel() {
         VBox panel = new VBox(10);
         panel.setPadding(new Insets(16));
@@ -472,6 +573,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 new Separator(Orientation.VERTICAL), tripState, new Separator(Orientation.VERTICAL),
                 streamState, new Separator(Orientation.VERTICAL), lastReportState,
                 new Separator(Orientation.VERTICAL), recordingState,
+            new Separator(Orientation.VERTICAL), terminalUpgradeState,
             new Separator(Orientation.VERTICAL), blindspotState,
             new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
@@ -541,7 +643,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
                 config.maxPayloadBytes(), preservedTrip, driver, previous.alarm(), config.simFormat(),
-                config.recording());
+                config.recording(), config.fleet(), previous.terminalManagement());
     }
 
     private void browseFfmpeg() {

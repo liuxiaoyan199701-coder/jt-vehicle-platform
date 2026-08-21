@@ -32,7 +32,8 @@ public final class FleetIdentityDeriver {
                 template.cameraName(), template.microphoneName(), template.mainProfile(),
                 template.subProfile(), template.previewWidth(), template.previewHeight(),
                 template.previewFps(), template.maxPayloadBytes(), template.trip(),
-                template.driver(), template.alarm(), template.simFormat(), template.recording());
+                template.driver(), template.alarm(), template.simFormat(), template.recording(),
+                template.fleet(), template.terminalManagement());
     }
 
     private static String incrementDigits(String value, int increment, String field) {

@@ -263,6 +263,28 @@ public final class SimulatorRuntime implements SimulatorOperations {
         return signalClient == null ? 0 : signalClient.blindspotCachedCount();
     }
 
+    @Override
+    public void setFailNextUpgrade(boolean enabled) {
+        updateTerminalManagement(currentConfig.get().terminalManagement().withFailNextUpgrade(enabled));
+    }
+
+    @Override
+    public void setUpgradeInstallDelayMillis(int delayMillis) {
+        updateTerminalManagement(currentConfig.get().terminalManagement()
+                .withUpgradeInstallDelayMillis(delayMillis));
+    }
+
+    private void updateTerminalManagement(
+            io.github.jtplatform.simulator.config.TerminalManagementConfig management) {
+        synchronized (configLock) {
+            SimulatorConfig updated = currentConfig.get().withTerminalManagement(management);
+            persistRuntimeConfig(updated);
+            if (signalClient != null) {
+                signalClient.setTerminalManagement(updated.terminalManagement());
+            }
+        }
+    }
+
     private void onFleetState(FleetRuntime.FleetMemberState state) {
         listener.onFleetState(state);
     }
@@ -303,12 +325,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
         }
         synchronized (configLock) {
             SimulatorConfig previous = currentConfig.get();
-            SimulatorConfig updated = new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
-                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
-                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
-                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), AlarmConfig.defaults(),
-                    previous.simFormat(), previous.recording());
+            SimulatorConfig updated = previous.withAlarm(AlarmConfig.defaults());
             persistRuntimeConfig(updated);
         }
     }
@@ -326,12 +343,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
         synchronized (configLock) {
             SimulatorConfig previous = currentConfig.get();
             AlarmConfig alarm = new AlarmConfig(previous.alarm().warnBits(), (int) Math.round(speedKph));
-            persistRuntimeConfig(new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
-                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
-                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
-                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), alarm, previous.simFormat(),
-                    previous.recording()));
+            persistRuntimeConfig(previous.withAlarm(alarm));
         }
     }
 
@@ -350,12 +362,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
             int bits = enabled ? previous.alarm().warnBits() | alarm.mask()
                     : previous.alarm().warnBits() & ~alarm.mask();
             AlarmConfig next = new AlarmConfig(bits, previous.alarm().overspeedKph());
-            currentConfig.set(new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
-                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
-                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
-                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), next, previous.simFormat(),
-                    previous.recording()));
+            currentConfig.set(previous.withAlarm(next));
         }
     }
 
@@ -369,12 +376,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
         }
         synchronized (configLock) {
             SimulatorConfig previous = currentConfig.get();
-            SimulatorConfig updated = new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
-                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
-                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
-                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), driver, previous.alarm(), previous.simFormat(),
-                    previous.recording());
+            SimulatorConfig updated = previous.withDriver(driver);
             currentConfig.set(updated);
             try {
                 configStore.save(updated);
@@ -656,6 +658,50 @@ public final class SimulatorRuntime implements SimulatorOperations {
             if (currentSignal(generation)) {
                 log.info("signal", detail);
                 listener.onBlindspotEvent(detail);
+            }
+        }
+
+        @Override
+        public void onTerminalParametersChanged(java.util.Map<Integer, Object> parameters) {
+            if (currentSignal(generation)) {
+                synchronized (configLock) {
+                    SimulatorConfig previous = currentConfig.get();
+                    persistRuntimeConfig(previous.withTerminalManagement(
+                            previous.terminalManagement().withParameters(parameters)));
+                }
+                listener.onTerminalParametersChanged(parameters);
+            }
+        }
+
+        @Override
+        public void onTerminalManagementEvent(String detail) {
+            if (currentSignal(generation)) {
+                log.info("terminal", detail);
+                listener.onTerminalManagementEvent(detail);
+            }
+        }
+
+        @Override
+        public void onUpgradeEvent(String detail) {
+            if (currentSignal(generation)) {
+                log.info("terminal", detail);
+                listener.onUpgradeEvent(detail);
+            }
+        }
+
+        @Override
+        public void onTerminalText(String content, boolean urgent) {
+            if (currentSignal(generation)) {
+                log.info("terminal", (urgent ? "紧急 " : "") + content);
+                listener.onTerminalText(content, urgent);
+            }
+        }
+
+        @Override
+        public void onFailNextUpgradeConsumed() {
+            if (currentSignal(generation)) {
+                setFailNextUpgrade(false);
+                listener.onFailNextUpgradeConsumed();
             }
         }
     }
