@@ -4,6 +4,8 @@ import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.audit.AuditRecorder;
 import io.github.jtconsole.gateway.DeviceDisconnectClient;
 import io.github.jtconsole.ingest.RecentEventLog;
+import io.github.jtconsole.operations.ConnectionDiagnosticsService;
+import io.github.jtconsole.security.DataScope;
 import io.github.jtconsole.live.DeviceOwnershipCache;
 import io.github.jtconsole.live.LiveBroadcaster;
 import io.github.jtconsole.security.Permissions;
@@ -30,18 +32,33 @@ public class DiagnosticsController {
     private final AuditRecorder audits;
     private final DeviceOwnershipCache ownership;
     private final DeviceDisconnectClient disconnects;
+    private final ConnectionDiagnosticsService connections;
 
     public DiagnosticsController(
             RecentEventLog recentEvents,
             LiveBroadcaster broadcaster,
             AuditRecorder audits,
             DeviceOwnershipCache ownership,
-            DeviceDisconnectClient disconnects) {
+            DeviceDisconnectClient disconnects,
+            ConnectionDiagnosticsService connections) {
         this.recentEvents = recentEvents;
         this.broadcaster = broadcaster;
         this.audits = audits;
         this.ownership = ownership;
         this.disconnects = disconnects;
+        this.connections = connections;
+    }
+
+    @GetMapping("/connection-log")
+    @RequirePermission(Permissions.VEHICLE_LIST)
+    public ApiResponse<Map<String, Object>> connectionLog(
+            @RequestParam String deviceId,
+            @RequestParam(required = false) String start,
+            @RequestParam(required = false) String end,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int pageSize,
+            DataScope scope) {
+        return ApiResponse.ok(connections.query(deviceId, start, end, page, pageSize, scope));
     }
 
     /**

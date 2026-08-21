@@ -20,6 +20,7 @@ public class ConsoleProperties {
     private Upgrade upgrade = new Upgrade();
     private Geo geo = new Geo();
     private Audit audit = new Audit();
+    private ConnectionDiagnostics connectionDiagnostics = new ConnectionDiagnostics();
     private Registration registration = new Registration();
     private Tenancy tenancy = new Tenancy();
     private Duration offlineTimeout = Duration.ofMinutes(5);
@@ -63,6 +64,14 @@ public class ConsoleProperties {
 
     public void setAudit(Audit audit) {
         this.audit = audit;
+    }
+
+    public ConnectionDiagnostics getConnectionDiagnostics() {
+        return connectionDiagnostics;
+    }
+
+    public void setConnectionDiagnostics(ConnectionDiagnostics connectionDiagnostics) {
+        this.connectionDiagnostics = connectionDiagnostics;
     }
 
     public Registration getRegistration() {
@@ -765,6 +774,22 @@ public class ConsoleProperties {
         public void setCleanupCron(String cleanupCron) {
             this.cleanupCron = cleanupCron;
         }
+    }
+
+    public static class ConnectionDiagnostics {
+        private Duration retention = Duration.ofDays(14);
+        private int cleanupBatchSize = 500;
+        private int cleanupMaxBatches = 100;
+        private String cleanupCron = "0 41 3 * * *";
+
+        public Duration getRetention() { return retention; }
+        public void setRetention(Duration retention) { this.retention = retention; }
+        public int getCleanupBatchSize() { return cleanupBatchSize; }
+        public void setCleanupBatchSize(int value) { cleanupBatchSize = Math.max(1, value); }
+        public int getCleanupMaxBatches() { return cleanupMaxBatches; }
+        public void setCleanupMaxBatches(int value) { cleanupMaxBatches = Math.max(1, value); }
+        public String getCleanupCron() { return cleanupCron; }
+        public void setCleanupCron(String value) { cleanupCron = value; }
     }
 
     public static class Audit {

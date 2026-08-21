@@ -1,6 +1,7 @@
 package io.github.jtconsole.ingest;
 
 import io.github.jtconsole.repository.EventRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,17 +15,29 @@ public class EventIngestionService {
     private final DriverIdentityIngestionService driverIdentity;
     private final WaybillIngestionService waybills;
     private final RecordingUploadIngestionService recordingUploads;
+    private final ConnectionEventIngestionService connections;
 
+    /** 测试便利构造：不带连接事件投影（连接类信封会走常规路径被忽略）。 */
     public EventIngestionService(
             EventRepository events, LocationService locations, MediaIngestionService media,
             DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
             RecordingUploadIngestionService recordingUploads) {
+        this(events, locations, media, driverIdentity, waybills, recordingUploads, null);
+    }
+
+    @Autowired
+    public EventIngestionService(
+            EventRepository events, LocationService locations, MediaIngestionService media,
+            DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
+            RecordingUploadIngestionService recordingUploads,
+            ConnectionEventIngestionService connections) {
         this.events = events;
         this.locations = locations;
         this.media = media;
         this.driverIdentity = driverIdentity;
         this.waybills = waybills;
         this.recordingUploads = recordingUploads;
+        this.connections = connections;
     }
 
     @Transactional
@@ -35,6 +48,9 @@ public class EventIngestionService {
             return IngestionResult.duplicate();
         }
 
+        if (connections != null && connections.handle(normalized)) {
+            return new IngestionResult("committed", "connection", null);
+        }
         // 多媒体上传先落元数据，再走位置/在线时间的常规处理
         media.handleIfMediaUpload(normalized);
         // 驾驶员身份识别（0702）落事件与驾驶区间

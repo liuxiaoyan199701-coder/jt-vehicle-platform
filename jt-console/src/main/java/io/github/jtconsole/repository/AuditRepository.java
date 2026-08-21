@@ -1,6 +1,7 @@
 package io.github.jtconsole.repository;
 
 import io.github.jtconsole.domain.AuditEntry;
+import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -55,6 +56,42 @@ public class AuditRepository {
         params.add(query.size());
         params.add(Math.max(0, (query.page() - 1) * query.size()));
         return jdbc.sql(sql.toString()).params(params).query(AuditRepository::map).list();
+    }
+
+    /** 体检只读取指定设备的只读审计事实，租户条件由 DataScope 强制加入。 */
+    public List<AuditEntryView> findDeviceActions(
+            String deviceId, List<String> actions, String from, String to, DataScope scope) {
+        if (scope.empty() || actions.isEmpty()) {
+            return List.of();
+        }
+        StringBuilder sql = new StringBuilder(
+                "SELECT occurred_at, action, result, path, detail FROM audit_log WHERE resource_id = ?");
+        List<Object> params = new ArrayList<>();
+        params.add(deviceId);
+        if (!scope.isPlatform()) {
+            sql.append(" AND tenant_id = ?");
+            params.add(scope.tenantId());
+        } else if (scope.tenantId() != null) {
+            sql.append(" AND tenant_id = ?");
+            params.add(scope.tenantId());
+        }
+        sql.append(" AND action IN (")
+                .append(String.join(", ", java.util.Collections.nCopies(actions.size(), "?"))).append(')');
+        params.addAll(actions);
+        if (from != null && !from.isBlank()) {
+            sql.append(" AND occurred_at >= ?");
+            params.add(TimeBounds.lower(from));
+        }
+        if (to != null && !to.isBlank()) {
+            sql.append(" AND occurred_at <= ?");
+            params.add(TimeBounds.upper(to));
+        }
+        sql.append(" ORDER BY occurred_at DESC LIMIT 100");
+        return jdbc.sql(sql.toString()).params(params)
+                .query((rs, row) -> new AuditEntryView(
+                        rs.getString("occurred_at"), rs.getString("action"), rs.getString("result"),
+                        rs.getString("path"), rs.getString("detail")))
+                .list();
     }
 
     public int count(AuditQuery query) {
@@ -135,6 +172,9 @@ public class AuditRepository {
      * 审计检索条件。{@code tenantId} 由服务层按会话强制填入，
      * MUST NOT 直接取自请求参数，否则租户可以查到别人的审计。
      */
+    public record AuditEntryView(
+            String occurredAt, String action, String result, String path, String detail) {}
+
     public record AuditQuery(
             Long tenantId,
             String username,

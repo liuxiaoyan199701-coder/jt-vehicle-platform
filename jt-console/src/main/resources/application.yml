@@ -99,6 +99,11 @@ jt:
         directory: ${JT_AI_ATTACHMENT_DIR:data/console/ai-attachments}
         max-size: ${JT_AI_ATTACHMENT_MAX_SIZE:8MB}
         retention: ${JT_AI_ATTACHMENT_RETENTION:30d}
+    connection-diagnostics:
+      retention: ${JT_CONSOLE_CONNECTION_RETENTION:14d}
+      cleanup-batch-size: ${JT_CONSOLE_CONNECTION_CLEANUP_BATCH:500}
+      cleanup-max-batches: ${JT_CONSOLE_CONNECTION_CLEANUP_MAX_BATCHES:100}
+      cleanup-cron: ${JT_CONSOLE_CONNECTION_CLEANUP_CRON:0 41 3 * * *}
     audit:
       # 审计写入永不阻塞业务：队列满时丢弃并计数，可在 /api/diagnostics 观察积压。
       queue-capacity: ${JT_CONSOLE_AUDIT_QUEUE_CAPACITY:4096}

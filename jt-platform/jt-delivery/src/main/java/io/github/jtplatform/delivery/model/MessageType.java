@@ -19,6 +19,7 @@ public enum MessageType {
     WAYBILL("waybill", DeliveryReliability.AT_LEAST_ONCE),
     TERMINAL_PARAMETER("terminal-parameter", DeliveryReliability.AT_LEAST_ONCE),
     CONTROL_RESULT("control-result", DeliveryReliability.AT_LEAST_ONCE),
+    CONNECTION("connection", DeliveryReliability.AT_LEAST_ONCE),
     TRANSPARENT_DATA("transparent-data", DeliveryReliability.AT_LEAST_ONCE),
     OTHER("other", DeliveryReliability.AT_LEAST_ONCE);
 

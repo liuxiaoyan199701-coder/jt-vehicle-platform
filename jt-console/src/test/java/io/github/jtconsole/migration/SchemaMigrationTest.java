@@ -113,6 +113,21 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void databaseAtV15StillAppliesConnectionEventsV17() {
+        jdbc.sql("PRAGMA user_version = 15").update();
+
+        new SchemaMigrationRunner(
+                jdbc, transactions, List.of(new V17ConnectionEventsMigration()))
+                .afterPropertiesSet();
+
+        assertThat(userVersion()).isEqualTo(17L);
+        assertThat(scalar("""
+                SELECT COUNT(*) FROM sqlite_master
+                WHERE type = 'table' AND name = 'connection_event'
+                """)).isEqualTo(1L);
+    }
+
+    @Test
     void failedMigrationRollsBackAndLeavesTheVersionUnchanged() {
         SchemaMigration failing = new SchemaMigration() {
             @Override
@@ -160,7 +175,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(16L);
+        assertThat(userVersion()).isEqualTo(17L);
         for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
             assertThat(scalar("""
                     SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
@@ -178,14 +193,14 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(16L);
+        assertThat(userVersion()).isEqualTo(17L);
     }
 
     @Test
     void waybillMigrationUsesV15AndCreatesExpectedIndexes() {
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(16L);
+        assertThat(userVersion()).isEqualTo(17L);
         assertThat(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='waybill'"))
                 .isEqualTo(1L);
         assertThat(scalar("""

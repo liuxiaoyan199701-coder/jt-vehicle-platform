@@ -3,6 +3,7 @@ package org.yzh.web.endpoint;
 import io.github.jtplatform.signal.auth.DeviceAuthenticationDecision;
 import io.github.jtplatform.signal.auth.DeviceAuthenticationService;
 import io.github.jtplatform.signal.delivery.SignalMessageDispatcher;
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
 import io.github.jtplatform.signal.session.RegistrationTokenStore;
 import io.github.yezhihao.netmc.core.annotation.Async;
 import io.github.yezhihao.netmc.core.annotation.AsyncBatch;
@@ -12,6 +13,7 @@ import io.github.yezhihao.netmc.session.Session;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.commons.JT808;
@@ -86,16 +88,28 @@ public class JT808Endpoint {
     private final RegistrationTokenStore registrationTokens;
     private final DeviceAuthenticationService deviceAuthenticationService;
     private final SignalMessageDispatcher messageDispatcher;
+    private final ConnectionEventEmitter diagnostics;
 
     public JT808Endpoint(
             FileService fileService,
             RegistrationTokenStore registrationTokens,
             DeviceAuthenticationService deviceAuthenticationService,
             SignalMessageDispatcher messageDispatcher) {
+        this(fileService, registrationTokens, deviceAuthenticationService, messageDispatcher, null);
+    }
+
+    @Autowired
+    public JT808Endpoint(
+            FileService fileService,
+            RegistrationTokenStore registrationTokens,
+            DeviceAuthenticationService deviceAuthenticationService,
+            SignalMessageDispatcher messageDispatcher,
+            ConnectionEventEmitter diagnostics) {
         this.fileService = fileService;
         this.registrationTokens = registrationTokens;
         this.deviceAuthenticationService = deviceAuthenticationService;
         this.messageDispatcher = messageDispatcher;
+        this.diagnostics = diagnostics;
     }
 
     @Mapping(types = 终端通用应答, desc = "终端通用应答")
@@ -124,6 +138,12 @@ public class JT808Endpoint {
 
     @Mapping(types = 终端注册, desc = "终端注册")
     public T8100 T0100(T0100 message, Session session) {
+        // 注册即使被拒也保留诊断键，后续断开/协议错误必须与本次注册事件归于同一设备。
+        session.setAttribute(SessionKey.DiagnosticDeviceId, message.getDeviceId());
+        // TCP 建立时协议头尚未解出设备号；到首条注册报文才能把连接建立事件绑定到真实终端。
+        if (diagnostics != null) {
+            diagnostics.connected(message.getDeviceId(), session.getRemoteAddressStr());
+        }
         DeviceDO presentedDevice = new DeviceDO()
                 .setProtocolVersion(message.getProtocolVersion())
                 .setMobileNo(message.getClientId())
@@ -136,6 +156,7 @@ public class JT808Endpoint {
         if (!decision.allowed()) {
             session.removeAttribute(SessionKey.Device);
             response.setResultCode(T8100.NotFoundTerminal);
+            emitRegistration(message, session, response.getResultCode());
             return response;
         }
 
@@ -143,6 +164,7 @@ public class JT808Endpoint {
         session.setAttribute(SessionKey.Device, device);
         response.setToken(registrationTokens.issue(device));
         response.setResultCode(T8100.Success);
+        emitRegistration(message, session, response.getResultCode());
         return response;
     }
 
@@ -162,6 +184,7 @@ public class JT808Endpoint {
         if (!decision.allowed()) {
             session.removeAttribute(SessionKey.Device);
             response.setResultCode(T0001.Failure);
+            emitAuthentication(presentedDevice.getDeviceId(), session, false);
             return response;
         }
 
@@ -169,7 +192,35 @@ public class JT808Endpoint {
         session.setAttribute(SessionKey.Device, device);
         session.register(device.getDeviceId(), message);
         response.setResultCode(T0001.Success);
+        emitAuthentication(device.getDeviceId(), session, true);
         return response;
+    }
+
+    private void emitRegistration(T0100 message, Session session, int resultCode) {
+        if (diagnostics == null) {
+            return;
+        }
+        // 注册归档查询以 T0100 的终端设备号为键；事件必须使用同一键，建档后的新事件才能正确归户。
+        diagnostics.registerResult(message.getDeviceId(), resultCode,
+                registrationReason(resultCode), session.getRemoteAddressStr());
+    }
+
+    private void emitAuthentication(String deviceId, Session session, boolean success) {
+        if (diagnostics != null) {
+            diagnostics.authResult(deviceId, success,
+                    success ? "鉴权成功" : "鉴权失败", session.getRemoteAddressStr());
+        }
+    }
+
+    static String registrationReason(int code) {
+        return switch (code) {
+            case T8100.Success -> "注册成功";
+            case T8100.AlreadyRegisteredVehicle -> "车辆已被注册";
+            case T8100.NotFoundVehicle -> "数据库中无该车辆";
+            case T8100.AlreadyRegisteredTerminal -> "终端已被注册";
+            case T8100.NotFoundTerminal -> "数据库中无该终端";
+            default -> "注册被拒";
+        };
     }
 
     @Mapping(types = 查询终端参数应答, desc = "查询终端参数应答")

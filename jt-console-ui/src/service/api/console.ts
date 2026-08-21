@@ -209,6 +209,36 @@ export interface VehiclePeriodOperations {
   alarmCount: number;
 }
 
+export interface ConnectionEventItem {
+  id: number;
+  eventId: string;
+  deviceId: string;
+  tenantId: number | null;
+  kind: string;
+  reasonCode: number | null;
+  reason: string | null;
+  remoteAddr: string | null;
+  repeatCount: number;
+  eventTime: string;
+  receivedAt: string;
+}
+
+export interface ConnectionLogResult {
+  deviceId: string;
+  summary: {
+    eventCount: number;
+    lastConnectedAt: string | null;
+    disconnectReasons: Record<string, number>;
+    registrationFailures: Record<string, number>;
+    authenticationFailures: Record<string, number>;
+    note?: string;
+  };
+  timeline: ConnectionEventItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface VehicleOperationsProfile {
   /** 未建档设备为 null：状态、轨迹与告警仍按 deviceId 聚合返回 */
   vehicle: Vehicle | null;
@@ -286,6 +316,13 @@ export function deleteVehicle(deviceId: string) {
 
 export function fetchVehicleProfile(deviceId: string) {
   return request<VehicleOperationsProfile>({ url: `/vehicles/${encodePathSegment(deviceId)}/profile` });
+}
+
+export function fetchConnectionLog(deviceId: string, start?: string, end?: string) {
+  return request<ConnectionLogResult>({
+    url: '/diagnostics/connection-log',
+    params: { deviceId, start, end, page: 1, pageSize: 100 }
+  });
 }
 
 // ---------------- 车队管理 ----------------

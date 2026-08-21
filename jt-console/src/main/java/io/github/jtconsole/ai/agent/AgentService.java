@@ -2,6 +2,7 @@ package io.github.jtconsole.ai.agent;
 
 import io.github.jtconsole.ai.action.ConfirmationPolicy;
 import io.github.jtconsole.ai.tool.ActionTools;
+import io.github.jtconsole.ai.tool.DiagnosticsTools;
 import io.github.jtconsole.ai.tool.FleetTools;
 import io.github.jtconsole.ai.tool.GeoTools;
 import io.github.jtconsole.ai.tool.OperationsTools;
@@ -65,6 +66,7 @@ public class AgentService {
             ObjectProvider<GeoTools> geoTools,
             RecordingTools recordingTools,
             WaybillTools waybillTools,
+            DiagnosticsTools diagnosticsTools,
             ActionTools actionTools,
             ViewTools viewTools) {
         this.chatModel = chatModel;
@@ -72,7 +74,8 @@ public class AgentService {
         this.dates = dates;
         this.properties = properties;
         List<ToolCallback> callbacks = new ArrayList<>(Arrays.asList(ToolCallbacks.from(
-                fleetTools, operationsTools, recordingTools, waybillTools, actionTools, viewTools)));
+                fleetTools, operationsTools, recordingTools, waybillTools, diagnosticsTools,
+                actionTools, viewTools)));
         // 地名检索依赖高德 Web 服务 key；未配置时 GeoTools 本身不装配，AI 也看不到该工具。
         geoTools.ifAvailable(tool -> callbacks.addAll(Arrays.asList(ToolCallbacks.from(tool))));
         this.toolCallbacks = List.copyOf(callbacks);
