@@ -98,7 +98,7 @@ final class ConfigurationPane extends VBox {
     private final Button detectFfmpeg = new Button("检测 FFmpeg");
     private final Button refreshDevices = new Button("刷新设备");
     private final Button tripToggle = new Button("开始行程");
-    private final Button mapPicker = new Button("地图选点");
+    private final Button mapPicker = new Button("在地图上选点");
     private final ProgressIndicator tripProgress = new ProgressIndicator();
     private final Label tripHint = new Label();
     private final Label validationSummary = new Label();
@@ -277,10 +277,14 @@ final class ConfigurationPane extends VBox {
         row(endpoints, 2, "终点纬度", ConfigField.TRIP_DESTINATION_LAT, tripDestinationLat);
         row(endpoints, 3, "终点经度", ConfigField.TRIP_DESTINATION_LNG, tripDestinationLng);
         Label endpointHint = new Label(
-                "坐标为高德坐标系（GCJ-02），可直接从高德地图拾取；四项全部留空即使用内置路线。");
+                "推荐用「在地图上选点」直接标记；也可手工填写高德坐标系（GCJ-02）经纬度，"
+                        + "四项全部留空即使用内置路线。");
         endpointHint.getStyleClass().add("field-hint");
         endpointHint.setWrapText(true);
-        content.getChildren().addAll(sectionTitle("起点与终点"), endpoints, endpointHint);
+        // 选点入口紧贴坐标区标题：手输的四个框太显眼，入口放在页尾会被当成不存在。
+        HBox endpointHeader = new HBox(12, sectionTitle("起点与终点"), mapPicker);
+        endpointHeader.setAlignment(Pos.CENTER_LEFT);
+        content.getChildren().addAll(endpointHeader, endpointHint, endpoints);
 
         GridPane parameters = grid();
         row(parameters, 0, "速度 (km/h)", ConfigField.TRIP_SPEED, tripSpeed);
@@ -289,7 +293,7 @@ final class ConfigurationPane extends VBox {
         row(parameters, 3, "自动开始", ConfigField.TRIP_AUTO_START, tripAutoStart);
         content.getChildren().addAll(sectionTitle("行驶参数"), parameters);
 
-        HBox actions = new HBox(8, tripProgress, mapPicker, tripToggle);
+        HBox actions = new HBox(8, tripProgress, tripToggle);
         actions.setAlignment(Pos.CENTER_RIGHT);
         content.getChildren().addAll(actions, tripHint);
         return scroll(content);
