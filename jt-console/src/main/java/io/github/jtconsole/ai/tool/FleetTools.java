@@ -1,6 +1,7 @@
 package io.github.jtconsole.ai.tool;
 
 import io.github.jtconsole.domain.FleetSummary;
+import io.github.jtconsole.domain.AlarmRule;
 import io.github.jtconsole.domain.Geofence;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.domain.Tenant;
@@ -9,6 +10,9 @@ import io.github.jtconsole.geo.ReverseGeocoder;
 import io.github.jtconsole.operations.DashboardService;
 import io.github.jtconsole.operations.FleetService;
 import io.github.jtconsole.operations.GeofenceService;
+import io.github.jtconsole.operations.ReportService;
+import io.github.jtconsole.operations.RuleService;
+import io.github.jtconsole.operations.UpgradeService;
 import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.repository.StatusRepository;
 import io.github.jtconsole.repository.TenantRepository;
@@ -45,6 +49,9 @@ public class FleetTools {
     private final VehicleService vehicles;
     private final FleetService fleets;
     private final GeofenceService geofences;
+    private final RuleService rules;
+    private final ReportService reports;
+    private final UpgradeService upgrades;
     private final TenantRepository tenants;
 
     public FleetTools(
@@ -55,6 +62,9 @@ public class FleetTools {
             VehicleService vehicles,
             FleetService fleets,
             GeofenceService geofences,
+            RuleService rules,
+            ReportService reports,
+            UpgradeService upgrades,
             TenantRepository tenants) {
         this.runner = runner;
         this.geocoder = geocoder;
@@ -63,6 +73,9 @@ public class FleetTools {
         this.vehicles = vehicles;
         this.fleets = fleets;
         this.geofences = geofences;
+        this.rules = rules;
+        this.reports = reports;
+        this.upgrades = upgrades;
         this.tenants = tenants;
     }
 
@@ -195,7 +208,9 @@ public class FleetTools {
     }
 
     @Tool(name = "list_geofences",
-            description = "列出电子围栏的名称、中心、半径、限速与启停状态。回答「有哪些围栏」时用它。"
+            description = "列出电子围栏的 id、名称、形状（circle/rectangle/polygon/route）、顶点、"
+                    + "半径/走廊宽、限速与启停状态。回答「有哪些围栏」时用它；"
+                    + "后续要修改或删除某个围栏时必须用返回的 id。"
                     + "本工具不判断车辆是否在围栏内——那需要实时位置，不属于它的能力。")
     String listGeofences(ToolContext context) {
         ToolSession session = ToolSession.from(context);
@@ -204,6 +219,64 @@ public class FleetTools {
                     .map(FleetTools::geofenceBrief)
                     .toList();
             return ToolResults.page("geofences", rows, MAX_LIST, rows.size());
+        });
+    }
+
+    @Tool(name = "list_alarm_rules",
+            description = "列出告警规则的数字 id、类型、阈值、持续时长、级别与启停状态。"
+                    + "回答「有哪些告警规则」时用它；后续修改或删除某条规则时必须用返回的 id。"
+                    + "规则类型：SPEED_LIMIT 超速阈值、IDLE_TIMEOUT 怠速超时、FATIGUE_DRIVING 疲劳驾驶。")
+    String listAlarmRules(ToolContext context) {
+        ToolSession session = ToolSession.from(context);
+        return runner.run(session, "list_alarm_rules", "查询告警规则", () -> {
+            List<Map<String, Object>> rows = rules.findAll(session.scope()).stream()
+                    .map(FleetTools::ruleBrief)
+                    .toList();
+            return ToolResults.page("rules", rows, MAX_LIST, rows.size());
+        });
+    }
+
+    @Tool(name = "list_vehicle_report",
+            description = "按起止日期返回车辆运营报表：每辆车的总里程、活跃天数、告警总数、最高速，"
+                    + "按里程降序。回答「这个月哪台车跑得最多」「这段时间里程/告警统计」时用它。"
+                    + "日期用 yyyy-MM-dd，跨度不能超过 92 天。")
+    String vehicleReport(
+            @ToolParam(description = "开始日期 yyyy-MM-dd") String start,
+            @ToolParam(description = "结束日期 yyyy-MM-dd") String end,
+            ToolContext context) {
+        ToolSession session = ToolSession.from(context);
+        return runner.run(session, "list_vehicle_report", "查询车辆运营报表", () -> {
+            List<Map<String, Object>> rows = reports.vehicleReport(start, end, session.scope())
+                    .stream().map(row -> {
+                        Map<String, Object> r = new LinkedHashMap<>();
+                        r.put("deviceId", row.deviceId());
+                        r.put("plateNo", row.plateNo());
+                        r.put("totalDistanceKm", row.totalDistanceKm());
+                        r.put("activeDays", row.activeDays());
+                        r.put("totalAlarms", row.totalAlarms());
+                        r.put("maxSpeedKph", row.maxSpeedKph());
+                        return r;
+                    }).toList();
+            return ToolResults.page("vehicles", rows, MAX_LIST, rows.size());
+        });
+    }
+
+    @Tool(name = "list_upgrade_packages",
+            description = "列出升级包的数字 id、名称、版本、制造商与大小。回答「有哪些升级包」时用它；"
+                    + "后续要对某台车下发升级包时必须用返回的 packageId。")
+    String listUpgradePackages(ToolContext context) {
+        ToolSession session = ToolSession.from(context);
+        return runner.run(session, "list_upgrade_packages", "查询升级包", () -> {
+            List<Map<String, Object>> rows = upgrades.list().stream().map(pkg -> {
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("packageId", pkg.id());
+                row.put("name", pkg.name());
+                row.put("version", pkg.version());
+                row.put("makerId", pkg.makerId());
+                row.put("sizeBytes", pkg.sizeBytes());
+                return row;
+            }).toList();
+            return ToolResults.page("packages", rows, MAX_LIST, rows.size());
         });
     }
 
@@ -350,11 +423,28 @@ public class FleetTools {
         return row;
     }
 
-    /** 刻意不返回 {@code vehicleIds}：一个围栏可能绑几百台车，那串 ID 对回答问题毫无帮助。 */
+    /** 不返回 {@code vehicleIds}：一个围栏可能绑几百台车，那串 ID 对回答问题毫无帮助。 */
+    private static Map<String, Object> ruleBrief(AlarmRule rule) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", rule.id());
+        row.put("name", rule.name());
+        row.put("type", rule.type().wireValue());
+        row.put("thresholdKph", rule.thresholdKph());
+        row.put("durationMinutes", rule.durationMinutes());
+        row.put("level", rule.level().name());
+        row.put("enabled", rule.enabled());
+        row.put("assignedVehicleCount", rule.assignedVehicleCount());
+        return row;
+    }
+
+    /** 不返回 {@code vehicleIds}：一个围栏可能绑几百台车，那串 ID 对回答问题毫无帮助。 */
     private static Map<String, Object> geofenceBrief(Geofence geofence) {
         Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", geofence.id());
         row.put("name", geofence.name());
+        row.put("shape", geofence.shape().wireValue());
         row.put("radiusMeters", geofence.radiusMeters());
+        row.put("points", geofence.points());
         row.put("enabled", geofence.enabled());
         row.put("speedLimitKph", geofence.speedLimitKph());
         row.put("assignedVehicleCount", geofence.assignedVehicleCount());

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.AlarmRepository;
+import io.github.jtconsole.repository.AlarmRuleRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
@@ -22,6 +23,7 @@ import io.github.jtconsole.operations.AlarmService;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.operations.DailyStatService;
 import io.github.jtconsole.operations.GeofenceService;
+import io.github.jtconsole.operations.RuleService;
 import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.live.DeviceOwnershipCache;
 import io.github.jtconsole.iam.OrganizationService;
@@ -361,6 +363,11 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        AlarmRuleRepository alarmRuleRepository(JdbcClient jdbc) {
+            return new AlarmRuleRepository(jdbc);
+        }
+
+        @Bean
         DailyStatRepository dailyStatRepository(JdbcClient jdbc) {
             return new DailyStatRepository(jdbc);
         }
@@ -399,6 +406,13 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        RuleService ruleService(
+                AlarmRuleRepository rules, VehicleRepository vehicles,
+                AlarmService alarms, AlarmRepository alarmConditions) {
+            return new RuleService(rules, vehicles, alarms, alarmConditions);
+        }
+
+        @Bean
         LocationProjection locationProjection(
                 TrackRepository tracks, StatusRepository statuses, DailyStatService stats,
                 ObjectMapper objectMapper) {
@@ -416,8 +430,8 @@ class EventIngestionIntegrationTest {
         LocationService locationService(
                 StatusRepository statuses, LocationProjection projection,
                 BatchLocationService batches, AlarmService alarms, GeofenceService geofences,
-                DeviceAttributeRepository attributes) {
-            return new LocationService(statuses, projection, batches, alarms, geofences, attributes);
+                RuleService rules, DeviceAttributeRepository attributes) {
+            return new LocationService(statuses, projection, batches, alarms, geofences, rules, attributes);
         }
 
         @Bean

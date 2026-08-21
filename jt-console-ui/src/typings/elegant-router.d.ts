@@ -30,7 +30,10 @@ declare module "@elegant-router/types" {
     "login": "/login";
     "media": "/media";
     "monitor": "/monitor";
+    "ota": "/ota";
     "register": "/register";
+    "report": "/report";
+    "rule": "/rule";
     "system": "/system";
     "system_audit": "/system/audit";
     "system_config": "/system/config";
@@ -87,7 +90,10 @@ declare module "@elegant-router/types" {
     | "login"
     | "media"
     | "monitor"
+    | "ota"
     | "register"
+    | "report"
+    | "rule"
     | "system"
     | "track"
     | "vehicle"
@@ -119,7 +125,10 @@ declare module "@elegant-router/types" {
     | "home"
     | "media"
     | "monitor"
+    | "ota"
     | "register"
+    | "report"
+    | "rule"
     | "system_audit"
     | "system_config"
     | "system_department"

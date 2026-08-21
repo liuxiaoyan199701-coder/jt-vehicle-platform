@@ -7,6 +7,9 @@ import io.github.jtconsole.migration.V2DefaultTenantMigration;
 import io.github.jtconsole.migration.V3TrackPointUniquenessMigration;
 import io.github.jtconsole.migration.V4AiSchemaMigration;
 import io.github.jtconsole.migration.V5SessionPersistenceMigration;
+import io.github.jtconsole.migration.V10GeofenceShapeMigration;
+import io.github.jtconsole.migration.V11AlarmRuleMigration;
+import io.github.jtconsole.migration.V12UpgradePackageMigration;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -29,7 +32,8 @@ public final class TestSchema {
         List<SchemaMigration> migrations = List.of(
                 new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
                 new V3TrackPointUniquenessMigration(), new V4AiSchemaMigration(),
-                new V5SessionPersistenceMigration());
+                new V5SessionPersistenceMigration(), new V10GeofenceShapeMigration(),
+                new V11AlarmRuleMigration(), new V12UpgradePackageMigration());
         new SchemaMigrationRunner(jdbc, transactionManager, migrations).afterPropertiesSet();
     }
 

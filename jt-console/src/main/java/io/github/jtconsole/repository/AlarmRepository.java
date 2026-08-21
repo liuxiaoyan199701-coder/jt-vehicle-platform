@@ -129,6 +129,14 @@ public class AlarmRepository {
                 .param(Timestamps.now()).param(deviceId).param(source.name()).param(key).update();
     }
 
+    public void deactivateByKey(AlarmSource source, String key) {
+        jdbc.sql("""
+                        UPDATE alarm_condition_state SET active = 0, updated_at = ?
+                        WHERE source = ? AND alarm_key = ? AND active = 1
+                        """)
+                .param(Timestamps.now()).param(source.name()).param(key).update();
+    }
+
     public void deactivateGeofenceConditions(long geofenceId) {
         jdbc.sql("""
                         UPDATE alarm_condition_state SET active = 0, updated_at = ?

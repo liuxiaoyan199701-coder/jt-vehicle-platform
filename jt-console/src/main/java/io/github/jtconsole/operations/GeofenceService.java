@@ -4,7 +4,9 @@ import io.github.jtconsole.domain.AlarmDefinition;
 import io.github.jtconsole.domain.AlarmSource;
 import io.github.jtconsole.domain.Geofence;
 import io.github.jtconsole.domain.GeofenceCandidate;
+import io.github.jtconsole.domain.GeofenceShape;
 import io.github.jtconsole.geo.CoordTransform;
+import io.github.jtconsole.geo.GeofenceGeometry;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
 import io.github.jtconsole.repository.VehicleRepository;
@@ -12,6 +14,7 @@ import io.github.jtconsole.security.AuthorizedPrincipal;
 import io.github.jtconsole.security.DataScope;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -53,7 +56,8 @@ public class GeofenceService {
         Geofence value = validate(input);
         long id = geofences.insert(new Geofence(
                 null, value.name(), value.centerGcjLat(), value.centerGcjLng(),
-                value.radiusMeters(), value.color(), value.enabled(), value.alertOnEnter(),
+                value.radiusMeters(), value.shape(), value.points(),
+                value.color(), value.enabled(), value.alertOnEnter(),
                 value.alertOnExit(), value.speedLimitKph(), value.vehicleIds(),
                 0, tenantId, null, null));
         if (!value.vehicleIds().isEmpty()) {
@@ -130,8 +134,7 @@ public class GeofenceService {
         int created = 0;
         String occurredAt = receivedAt;
         for (GeofenceCandidate fence : geofences.findEnabledForDevice(deviceId)) {
-            boolean inside = CoordTransform.distanceMeters(
-                    gcjLat, gcjLng, fence.centerGcjLat(), fence.centerGcjLng()) <= fence.radiusMeters();
+            boolean inside = inside(gcjLat, gcjLng, fence);
             Optional<Boolean> previous = geofences.presence(fence.id(), deviceId);
             if (previous.isPresent() && previous.get() != inside) {
                 if (inside && fence.alertOnEnter()) {
@@ -161,6 +164,16 @@ public class GeofenceService {
         return created;
     }
 
+    private static boolean inside(double lat, double lng, GeofenceCandidate fence) {
+        return switch (fence.shape()) {
+            case CIRCLE -> CoordTransform.distanceMeters(
+                    lat, lng, fence.centerGcjLat(), fence.centerGcjLng()) <= fence.radiusMeters();
+            case RECTANGLE, POLYGON -> GeofenceGeometry.pointInPolygon(lat, lng, fence.points());
+            case ROUTE -> GeofenceGeometry.distanceToPolylineMeters(lat, lng, fence.points())
+                    <= fence.radiusMeters();
+        };
+    }
+
     private void resetRuntime(long id, boolean deleting) {
         geofences.deletePresence(id);
         if (deleting) alarms.deleteGeofenceConditions(id);
@@ -169,24 +182,45 @@ public class GeofenceService {
 
     private static boolean runtimeRulesChanged(Geofence previous, Geofence next) {
         return previous.enabled() != next.enabled()
+                || previous.shape() != next.shape()
                 || Double.compare(previous.centerGcjLat(), next.centerGcjLat()) != 0
                 || Double.compare(previous.centerGcjLng(), next.centerGcjLng()) != 0
                 || Double.compare(previous.radiusMeters(), next.radiusMeters()) != 0
-                || !java.util.Objects.equals(previous.speedLimitKph(), next.speedLimitKph());
+                || !Objects.equals(previous.points(), next.points())
+                || !Objects.equals(previous.speedLimitKph(), next.speedLimitKph());
     }
 
     private static Geofence validate(Geofence input) {
         if (input == null) throw new IllegalArgumentException("围栏不能为空");
         String name = input.name() == null ? "" : input.name().trim();
         if (name.isEmpty() || name.length() > 100) throw new IllegalArgumentException("围栏名称不合法");
-        if (!Double.isFinite(input.centerGcjLat()) || input.centerGcjLat() < -90 || input.centerGcjLat() > 90
-                || !Double.isFinite(input.centerGcjLng()) || input.centerGcjLng() < -180 || input.centerGcjLng() > 180) {
-            throw new IllegalArgumentException("围栏中心坐标不合法");
+
+        GeofenceShape shape = input.shape() == null ? GeofenceShape.CIRCLE : input.shape();
+        List<double[]> points = validatePoints(shape, input.points());
+
+        double centerLat = 0;
+        double centerLng = 0;
+        double radius = 0;
+        if (shape == GeofenceShape.CIRCLE) {
+            if (!Double.isFinite(input.centerGcjLat()) || input.centerGcjLat() < -90 || input.centerGcjLat() > 90
+                    || !Double.isFinite(input.centerGcjLng()) || input.centerGcjLng() < -180 || input.centerGcjLng() > 180) {
+                throw new IllegalArgumentException("围栏中心坐标不合法");
+            }
+            if (!Double.isFinite(input.radiusMeters()) || input.radiusMeters() <= 0
+                    || input.radiusMeters() > 1_000_000) {
+                throw new IllegalArgumentException("围栏半径不合法");
+            }
+            centerLat = input.centerGcjLat();
+            centerLng = input.centerGcjLng();
+            radius = input.radiusMeters();
+        } else if (shape == GeofenceShape.ROUTE) {
+            if (!Double.isFinite(input.radiusMeters()) || input.radiusMeters() <= 0
+                    || input.radiusMeters() > 1_000_000) {
+                throw new IllegalArgumentException("路线走廊半宽不合法");
+            }
+            radius = input.radiusMeters();
         }
-        if (!Double.isFinite(input.radiusMeters()) || input.radiusMeters() <= 0
-                || input.radiusMeters() > 1_000_000) {
-            throw new IllegalArgumentException("围栏半径不合法");
-        }
+
         String color = input.color() == null ? "" : input.color().trim();
         if (!COLOR.matcher(color).matches()) throw new IllegalArgumentException("围栏颜色不合法");
         if (input.speedLimitKph() != null
@@ -194,11 +228,35 @@ public class GeofenceService {
                 || input.speedLimitKph() > 500)) {
             throw new IllegalArgumentException("围栏限速不合法");
         }
-        return new Geofence(input.id(), name, input.centerGcjLat(), input.centerGcjLng(),
-                input.radiusMeters(), color.toUpperCase(), input.enabled(), input.alertOnEnter(),
+        return new Geofence(input.id(), name, centerLat, centerLng, radius, shape, points,
+                color.toUpperCase(), input.enabled(), input.alertOnEnter(),
                 input.alertOnExit(), input.speedLimitKph(), input.vehicleIds(),
                 input.assignedVehicleCount(), input.tenantId(),
                 input.createdAt(), input.updatedAt());
+    }
+
+    private static List<double[]> validatePoints(GeofenceShape shape, List<double[]> raw) {
+        List<double[]> points = raw == null ? List.of() : List.copyOf(raw);
+        if (shape == GeofenceShape.CIRCLE) {
+            return List.of();
+        }
+        if (shape == GeofenceShape.RECTANGLE && points.size() != 2) {
+            throw new IllegalArgumentException("矩形围栏需要两个对角顶点");
+        }
+        if (shape == GeofenceShape.POLYGON && points.size() < 3) {
+            throw new IllegalArgumentException("多边形围栏至少需要 3 个顶点");
+        }
+        if (shape == GeofenceShape.ROUTE && points.size() < 2) {
+            throw new IllegalArgumentException("路线围栏至少需要 2 个途经点");
+        }
+        for (double[] point : points) {
+            if (point == null || point.length != 2
+                    || !Double.isFinite(point[0]) || point[0] < -90 || point[0] > 90
+                    || !Double.isFinite(point[1]) || point[1] < -180 || point[1] > 180) {
+                throw new IllegalArgumentException("围栏顶点坐标不合法");
+            }
+        }
+        return points;
     }
 
     private static List<String> normalizeVehicleIds(List<String> values) {

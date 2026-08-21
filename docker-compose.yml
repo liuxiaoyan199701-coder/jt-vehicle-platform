@@ -60,6 +60,9 @@ services:
       MAX_OUTBOUND_BPS: ${MAX_OUTBOUND_BPS:-50000000}
       # 拍照/附件等多媒体文件的浏览器访问前缀，由 nginx 的 /files/multimedia/ 反代到网关
       MULTIMEDIA_ACCESS_BASE_URL: ${MULTIMEDIA_ACCESS_BASE_URL:-http://localhost}
+      # 共享注册表后端：memory（默认，零依赖）或 redis（需要下面的 redis 服务）
+      JT_REGISTRY_TYPE: ${JT_REGISTRY_TYPE:-memory}
+      JT_REGISTRY_REDIS_HOST: ${JT_REGISTRY_REDIS_HOST:-redis}
     ports:
       # JT/T 808 终端信令
       - "7100:7100/tcp"
@@ -80,6 +83,23 @@ services:
       retries: 12
       start_period: 40s
 
+  # 可选：共享注册表的 Redis 后端。本地体验默认不启用（走 memory）。
+  # 需要时：docker compose --profile redis up -d
+  # 并把 JT_REGISTRY_TYPE=redis 传给 gateway（见上）。
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
   # 前端与统一入口
   web:
     build:
@@ -96,3 +116,4 @@ services:
 volumes:
   console-data:
   gateway-data:
+  redis-data:

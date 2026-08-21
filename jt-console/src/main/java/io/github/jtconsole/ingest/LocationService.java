@@ -3,6 +3,7 @@ package io.github.jtconsole.ingest;
 import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.operations.AlarmService;
 import io.github.jtconsole.operations.GeofenceService;
+import io.github.jtconsole.operations.RuleService;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import java.time.Instant;
@@ -30,6 +31,7 @@ public class LocationService {
     private final BatchLocationService batches;
     private final AlarmService alarms;
     private final GeofenceService geofences;
+    private final RuleService rules;
     private final DeviceAttributeRepository deviceAttributes;
 
     public LocationService(
@@ -38,12 +40,14 @@ public class LocationService {
             BatchLocationService batches,
             AlarmService alarms,
             GeofenceService geofences,
+            RuleService rules,
             DeviceAttributeRepository deviceAttributes) {
         this.statuses = statuses;
         this.projection = projection;
         this.batches = batches;
         this.alarms = alarms;
         this.geofences = geofences;
+        this.rules = rules;
         this.deviceAttributes = deviceAttributes;
     }
 
@@ -93,6 +97,8 @@ public class LocationService {
         syncAlarms(sample);
         geofences.evaluate(deviceId, sample.deviceTime(), receivedAt,
                 sample.gcjLat(), sample.gcjLng(), sample.speedKph());
+        rules.evaluate(deviceId, sample.deviceTime(), receivedAt,
+                sample.gcjLat(), sample.gcjLng(), sample.speedKph(), sample.accOn());
 
         return new LocationHandlingResult("located",
                 liveUpdate(sample, alarms.activeCount(deviceId)));

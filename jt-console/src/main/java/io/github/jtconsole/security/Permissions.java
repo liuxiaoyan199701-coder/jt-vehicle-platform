@@ -33,6 +33,8 @@ public final class Permissions {
 
     public static final String ALARM_LIST = "alarm:list";
     public static final String ALARM_HANDLE = "alarm:handle";
+    public static final String RULE_LIST = "alarm-rule:list";
+    public static final String RULE_MANAGE = "alarm-rule:manage";
 
     public static final String MEDIA_LIST = "media:list";
     public static final String COMMAND_SEND = "command:send";
@@ -80,6 +82,8 @@ public final class Permissions {
 
             read("alarm", ALARM_LIST, "查看告警", 1),
             write("alarm", ALARM_HANDLE, "确认与关闭告警", 2),
+            read("alarm-rule", RULE_LIST, "查看告警规则", 3),
+            write("alarm-rule", RULE_MANAGE, "管理告警规则", 4),
 
             read("media", MEDIA_LIST, "查看多媒体文件", 1),
             write("command", COMMAND_SEND, "下发终端指令", 1),
@@ -120,6 +124,7 @@ public final class Permissions {
             FLEET_LIST, FLEET_MANAGE,
             GEOFENCE_LIST, GEOFENCE_MANAGE,
             ALARM_LIST, ALARM_HANDLE,
+            RULE_LIST, RULE_MANAGE,
             MEDIA_LIST, COMMAND_SEND, VIDEO_PLAY,
             AI_CHAT, AI_REPORT_VIEW);
 
@@ -132,6 +137,7 @@ public final class Permissions {
     public static final Set<String> TENANT_VIEWER_PERMISSIONS = Set.of(
             DASHBOARD_VIEW, MONITOR_VIEW, TRACK_VIEW,
             VEHICLE_LIST, FLEET_LIST, GEOFENCE_LIST, ALARM_LIST, MEDIA_LIST,
+            RULE_LIST,
             AI_REPORT_VIEW);
 
     private Permissions() {

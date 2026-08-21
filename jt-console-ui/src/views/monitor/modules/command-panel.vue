@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import {
   fetchRecentMedia,
+  queryTerminalInfo,
   sendDeviceCommand,
   type LiveStatus,
   type MediaFileItem
@@ -43,6 +44,10 @@ const callbackSending = ref(false);
 // ---------------- 临时位置跟踪 ----------------
 const track = ref({ interval: 5, validity: 300 });
 const trackSending = ref(false);
+
+// ---------------- 终端信息 ----------------
+const terminalInfo = ref('');
+const infoLoading = ref(false);
 
 const resolutionOptions = [
   { label: '320×240', value: 1 },
@@ -152,6 +157,20 @@ async function sendCallback() {
 
 async function sendTrackFollow() {
   await run('track-follow', { ...track.value }, trackSending);
+}
+
+async function queryTerminal(kind: 'query-params' | 'query-attributes') {
+  const deviceId = requireDevice();
+  if (!deviceId) return;
+  infoLoading.value = true;
+  const { data, error } = await queryTerminalInfo(kind, deviceId);
+  infoLoading.value = false;
+  if (error || !data) {
+    message.error(error?.message || '查询失败');
+    terminalInfo.value = '';
+    return;
+  }
+  terminalInfo.value = JSON.stringify(data, null, 2);
 }
 
 const ptzDirections = [
@@ -325,6 +344,25 @@ const adjustActions = [
           <span class="text-12px text-#999">
             有效期内终端按设定间隔上报位置，监控页无需刷新即可看到密集轨迹。
           </span>
+        </div>
+      </NTabPane>
+
+      <!-- ============ 终端信息 ============ -->
+      <NTabPane name="info" tab="终端信息">
+        <div class="flex flex-col gap-12px py-8px">
+          <NSpace>
+            <NButton size="small" :loading="infoLoading" @click="queryTerminal('query-params')">查询终端参数</NButton>
+            <NButton size="small" :loading="infoLoading" @click="queryTerminal('query-attributes')">查询终端属性</NButton>
+          </NSpace>
+          <NInput
+            v-if="terminalInfo"
+            type="textarea"
+            :value="terminalInfo"
+            :rows="14"
+            readonly
+            class="font-mono!"
+          />
+          <NEmpty v-else description="点击上方按钮查询终端参数（8104）或属性（8107）" class="py-16px" />
         </div>
       </NTabPane>
     </NTabs>

@@ -17,6 +17,7 @@ public class ConsoleProperties {
     private Operations operations = new Operations();
     private Ingest ingest = new Ingest();
     private Ai ai = new Ai();
+    private Upgrade upgrade = new Upgrade();
     private Geo geo = new Geo();
     private Audit audit = new Audit();
     private Registration registration = new Registration();
@@ -38,6 +39,14 @@ public class ConsoleProperties {
 
     public void setAi(Ai ai) {
         this.ai = ai;
+    }
+
+    public Upgrade getUpgrade() {
+        return upgrade;
+    }
+
+    public void setUpgrade(Upgrade upgrade) {
+        this.upgrade = upgrade;
     }
 
     public Geo getGeo() {
@@ -834,6 +843,32 @@ public class ConsoleProperties {
 
         public void setCaptchaMaxEntries(int captchaMaxEntries) {
             this.captchaMaxEntries = captchaMaxEntries;
+        }
+    }
+
+    /**
+     * OTA 升级包存储。文件落盘、元数据入库。
+     */
+    public static class Upgrade {
+        /** 存储根目录。与多媒体、AI 附件目录分开，生命周期与归属都不同。 */
+        private Path directory = Path.of("data", "console", "upgrade-packages");
+        /** 单个升级包大小上限。升级包是二进制固件，默认 64MB。 */
+        private DataSize maxSize = DataSize.ofMegabytes(64);
+
+        public Path getDirectory() {
+            return directory;
+        }
+
+        public void setDirectory(Path directory) {
+            this.directory = directory;
+        }
+
+        public DataSize getMaxSize() {
+            return maxSize;
+        }
+
+        public void setMaxSize(DataSize maxSize) {
+            this.maxSize = maxSize;
         }
     }
 

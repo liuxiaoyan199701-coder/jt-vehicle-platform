@@ -208,8 +208,9 @@ curl --fail --silent http://127.0.0.1:7810/health
 
 当前分进程实现的边界必须在部署前确认：
 
-- API 角色集中保存媒体实例、流和一次性 token 的内存状态，媒体角色通过内部 HTTP 访问它。
-- `jt.registry.type=redis` 尚未实现，当前 API 角色必须保持单实例，API 重启会丢失上述运行时状态。
+- API 角色集中保存媒体实例、流和一次性 token 的状态，媒体角色通过内部 HTTP 访问它。
+- 注册表后端可选 `memory`（默认）与 `redis`。`memory` 下 API 角色必须保持单实例、重启丢失状态；
+  启用 `redis` 后状态落 Redis，API 可重启不丢状态、可多实例共享（见 13.4）。
 - API 角色当前只配置一个 `jt.signal.command-base-url`，设备会话路由也保存在 signal 进程本地，因此当前
   版本只支持一个活动 signal 角色。不要把多个 signal 实例放到负载均衡后宣称无状态高可用。
 - media 角色可以按实例号 `1..9` 扩展。每个实例有独立端口段、实例 ID、可达地址和本地存储。
@@ -849,6 +850,8 @@ jt:
 
 ### 13.4 共享注册表
 
+默认零依赖：流注册表、媒体实例注册表与一次性 token 都存在进程内存里。
+
 ```yaml
 jt:
   registry:
@@ -856,8 +859,27 @@ jt:
 ```
 
 standalone 使用进程内存；cluster 的 API 角色持有集中内存状态，media 通过
-`jt.cluster.api-base-url` 访问。当前没有可启用的 Redis 实现，不要配置 `redis`，也不要把 API 扩到多个
-副本。需要 API 高可用或跨 signal 的设备会话路由时，应先实现并验证外部共享注册表及定向转发。
+`jt.cluster.api-base-url` 访问。`memory` 下 API 角色必须保持单实例，API 重启会丢失全部运行时状态。
+
+需要 API 高可用（重启不丢流状态、多 API 实例共享）时，改用 Redis 后端：
+
+```yaml
+jt:
+  registry:
+    type: redis
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      password: ""
+      database: 0
+      key-prefix: "jt:registry:"
+```
+
+Redis 只在 API 角色（及 standalone）被访问，媒体角色仍经内部 HTTP 访问 API，不直连 Redis。
+媒体实例心跳以带 TTL 的键落 Redis，过期自动摘除，不依赖 API 进程内的定时清理。`type=redis` 但
+Redis 不可达时会在启动阶段明确失败，绝不静默降级回 memory。
+
+回滚：把 `jt.registry.type` 改回 `memory` 即可，代价是退回 API 单实例 + 重启丢状态。
 
 ## 14. 上线检查清单
 

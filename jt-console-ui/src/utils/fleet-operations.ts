@@ -121,6 +121,8 @@ export function normalizeGeofences(items: Geofence[] | null | undefined): Geofen
     ...item,
     radiusMeters: numberOrZero(item.radiusMeters),
     assignedVehicleCount: numberOrZero(item.assignedVehicleCount),
+    shape: item.shape ?? 'circle',
+    points: item.points ?? [],
     vehicleIds: [...new Set(item.vehicleIds ?? [])]
   }));
 }

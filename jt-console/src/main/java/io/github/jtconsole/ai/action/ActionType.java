@@ -37,17 +37,26 @@ public enum ActionType {
     FLEET_MEMBERS("fleet_members", "调整车队成员", Permissions.FLEET_MANAGE, false,
             List.of("id", "deviceIds"), List.of()),
     GEOFENCE_CREATE("geofence_create", "创建电子围栏", Permissions.GEOFENCE_MANAGE, false,
-            List.of("name", "centerGcjLat", "centerGcjLng", "radiusMeters"),
-            List.of("color", "enabled", "alertOnEnter", "alertOnExit", "speedLimitKph",
+            List.of("name"),
+            List.of("shape", "centerGcjLat", "centerGcjLng", "radiusMeters", "points",
+                    "color", "enabled", "alertOnEnter", "alertOnExit", "speedLimitKph",
                     "vehicleIds", "tenantId")),
     GEOFENCE_UPDATE("geofence_update", "修改电子围栏", Permissions.GEOFENCE_MANAGE, false,
             List.of("id"),
-            List.of("name", "centerGcjLat", "centerGcjLng", "radiusMeters", "color", "enabled",
-                    "alertOnEnter", "alertOnExit", "speedLimitKph", "vehicleIds")),
+            List.of("name", "shape", "centerGcjLat", "centerGcjLng", "radiusMeters", "points",
+                    "color", "enabled", "alertOnEnter", "alertOnExit", "speedLimitKph", "vehicleIds")),
     ALARM_ACKNOWLEDGE("alarm_acknowledge", "确认告警", Permissions.ALARM_HANDLE, false,
             List.of("alarmId"), List.of("note")),
     ALARM_CLOSE("alarm_close", "关闭告警", Permissions.ALARM_HANDLE, false,
             List.of("alarmId"), List.of("note")),
+    RULE_CREATE("rule_create", "创建告警规则", Permissions.RULE_MANAGE, false,
+            List.of("name", "type", "thresholdKph"),
+            List.of("durationMinutes", "level", "enabled", "vehicleIds", "tenantId")),
+    RULE_UPDATE("rule_update", "修改告警规则", Permissions.RULE_MANAGE, false,
+            List.of("id"),
+            List.of("name", "type", "thresholdKph", "durationMinutes", "level", "enabled", "vehicleIds")),
+    RULE_DELETE("rule_delete", "删除告警规则", Permissions.RULE_MANAGE, true,
+            List.of("id"), List.of()),
 
     // ---- 不可逆或影响运行：永远需要确认 ----
 
@@ -76,6 +85,9 @@ public enum ActionType {
      */
     TAKE_PHOTO("take_photo", "让终端立即拍照", Permissions.COMMAND_SEND, true,
             List.of("deviceId"), List.of("channel", "count", "resolution")),
+    /** 下发升级包会改写路上那台车的固件，且可能致其短时不可用，永远需要确认。 */
+    UPGRADE("upgrade", "下发升级包", Permissions.COMMAND_SEND, true,
+            List.of("deviceId", "packageId"), List.of()),
 
     // ---- 平台级：只有平台管理员可见 ----
 
@@ -137,10 +149,17 @@ public enum ActionType {
             case "plateColor" -> "（中文：蓝色/黄色/白色/绿色/黑色）";
             case "channelCount" -> "（数字，摄像头路数，默认 1）";
             case "alarmId" -> "（数字，来自告警查询结果）";
+            case "packageId" -> "（数字，来自升级包查询结果）";
             case "deviceIds", "vehicleIds" -> "（设备号字符串数组）";
-            case "centerGcjLat", "centerGcjLng" -> "（数字，GCJ-02 坐标）";
-            case "radiusMeters", "speedLimitKph" -> "（数字）";
+            case "centerGcjLat", "centerGcjLng" -> "（数字，GCJ-02 坐标；圆形围栏必填）";
+            case "radiusMeters", "speedLimitKph" -> "（数字；radiusMeters 为圆形半径或路线走廊半宽）";
+            case "shape" -> "（circle 圆形（默认）/ rectangle 矩形 / polygon 多边形 / route 路线）";
+            case "points" -> "（GCJ-02 坐标数组 [[lat,lng],...]；矩形 2 个对角点、多边形至少 3 个顶点、路线至少 2 个途经点）";
             case "enabled", "alertOnEnter", "alertOnExit" -> "（true/false）";
+            case "type" -> "（SPEED_LIMIT 超速阈值 / IDLE_TIMEOUT 怠速超时 / FATIGUE_DRIVING 疲劳驾驶）";
+            case "thresholdKph" -> "（数字，km/h；超速为下限、怠速为低速上界、疲劳为高速下界）";
+            case "durationMinutes" -> "（数字，分钟；怠速/疲劳的持续时长，超速规则填 0）";
+            case "level" -> "（LOW / MEDIUM / HIGH / CRITICAL）";
             case "code" -> "（英文或数字编码，全局唯一）";
             default -> "";
         };

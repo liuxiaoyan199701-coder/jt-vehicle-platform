@@ -6,6 +6,10 @@ import io.github.jtplatform.api.auth.JwtStreamRequestAuthenticator;
 import io.github.jtplatform.api.auth.Rs256JwtVerifier;
 import io.github.jtplatform.api.auth.StreamRequestAuthenticator;
 import io.github.jtplatform.api.stream.StreamOpenService;
+import io.github.jtplatform.boot.redis.RedisMediaInstanceRegistry;
+import io.github.jtplatform.boot.redis.RedisRegistrySupport;
+import io.github.jtplatform.boot.redis.RedisStreamRegistry;
+import io.github.jtplatform.boot.redis.RedisStreamTokenStore;
 import io.github.jtplatform.common.auth.InMemoryStreamTokenStore;
 import io.github.jtplatform.common.auth.StreamTokenStore;
 import io.github.jtplatform.common.config.DefaultReachableAddressResolver;
@@ -27,6 +31,7 @@ import io.github.jtplatform.common.port.StreamRegistry;
 import io.github.jtplatform.common.port.StreamSubscriptionPort;
 import io.github.jtplatform.common.service.MediaScheduler;
 import io.github.jtplatform.common.service.StreamCoordinator;
+import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.concurrent.Executors;
@@ -39,6 +44,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 @Configuration(proxyBeanMethods = false)
 public class CoreRuntimeConfiguration {
@@ -56,18 +62,27 @@ public class CoreRuntimeConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(StreamRegistry.class)
-    StreamRegistry streamRegistry(JtPlatformProperties properties) {
-        if (properties.getRegistry().getType() != JtPlatformProperties.RegistryType.MEMORY) {
-            throw new IllegalStateException("Only the memory registry is available in this release");
+    StreamRegistry streamRegistry(
+            JtPlatformProperties properties,
+            Clock clock,
+            ObjectProvider<StringRedisTemplate> redisTemplate,
+            ObjectProvider<RedisRegistrySupport> redisSupport) {
+        if (properties.getRegistry().getType() == JtPlatformProperties.RegistryType.REDIS) {
+            return new RedisStreamRegistry(redisTemplate.getObject(), redisSupport.getObject(), clock,
+                    properties.getMedia().getPendingTimeout(), properties.getCluster().getStatePollInterval());
         }
         return new InMemoryStreamRegistry();
     }
 
     @Bean
     @ConditionalOnMissingBean(MediaInstanceRegistry.class)
-    MediaInstanceRegistry mediaInstanceRegistry(JtPlatformProperties properties) {
-        if (properties.getRegistry().getType() != JtPlatformProperties.RegistryType.MEMORY) {
-            throw new IllegalStateException("Only the memory registry is available in this release");
+    MediaInstanceRegistry mediaInstanceRegistry(
+            JtPlatformProperties properties,
+            ObjectProvider<StringRedisTemplate> redisTemplate,
+            ObjectProvider<RedisRegistrySupport> redisSupport) {
+        if (properties.getRegistry().getType() == JtPlatformProperties.RegistryType.REDIS) {
+            return new RedisMediaInstanceRegistry(redisTemplate.getObject(), redisSupport.getObject(),
+                    properties.getMedia().getHeartbeatTtl());
         }
         return new InMemoryMediaInstanceRegistry();
     }
@@ -153,7 +168,15 @@ public class CoreRuntimeConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(StreamTokenStore.class)
-    StreamTokenStore streamTokenStore() {
+    StreamTokenStore streamTokenStore(
+            JtPlatformProperties properties,
+            Clock clock,
+            ObjectProvider<StringRedisTemplate> redisTemplate,
+            ObjectProvider<RedisRegistrySupport> redisSupport) {
+        if (properties.getRegistry().getType() == JtPlatformProperties.RegistryType.REDIS) {
+            return new RedisStreamTokenStore(redisTemplate.getObject(), redisSupport.getObject(),
+                    new SecureRandom(), clock);
+        }
         return new InMemoryStreamTokenStore();
     }
 

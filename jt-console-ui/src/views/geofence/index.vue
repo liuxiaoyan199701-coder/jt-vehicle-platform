@@ -18,6 +18,21 @@ import { normalizeGeofences } from '@/utils/fleet-operations';
 
 defineOptions({ name: 'GeofenceIndex' });
 
+type GeoPoint = [number, number];
+type GeofenceShape = 'circle' | 'rectangle' | 'polygon' | 'route';
+
+const SHAPE_LABEL: Record<GeofenceShape, string> = {
+  circle: '圆形',
+  rectangle: '矩形',
+  polygon: '多边形',
+  route: '路线'
+};
+
+const shapeOptions = (Object.keys(SHAPE_LABEL) as GeofenceShape[]).map(value => ({
+  label: SHAPE_LABEL[value],
+  value
+}));
+
 const message = useMessage();
 const appStore = useAppStore();
 const mapContainer = ref<HTMLElement | null>(null);
@@ -30,14 +45,17 @@ const editorVisible = ref(false);
 const isEdit = ref(false);
 const submitting = ref(false);
 const keyword = ref('');
-const circle = shallowRef<any>(null);
-const centerMarker = shallowRef<any>(null);
+const overlays = shallowRef<any[]>([]);
+const drawing = ref(false);
+const mouseTool = shallowRef<any>(null);
 
 const form = reactive<GeofenceMutation>({
   name: '',
   centerGcjLat: 39.90923,
   centerGcjLng: 116.397428,
   radiusMeters: 500,
+  shape: 'circle',
+  points: [],
   color: '#18a058',
   enabled: true,
   alertOnEnter: true,
@@ -70,7 +88,7 @@ onMounted(async () => {
 });
 
 watch(
-  () => [form.centerGcjLng, form.centerGcjLat, form.radiusMeters, form.color] as const,
+  () => [form.centerGcjLng, form.centerGcjLat, form.radiusMeters, form.color, form.shape, form.points] as const,
   () => {
     if (editorVisible.value) renderEditorPreview();
   }
@@ -88,65 +106,162 @@ async function load() {
   vehicles.value = vehicleResult.data ?? [];
 }
 
-function renderAllGeofences() {
-  if (!ready.value || !map.value) return;
-  clearPreview();
-  const overlays = geofences.value.map(item => new AMap.value.Circle({
-    center: [item.centerGcjLng, item.centerGcjLat],
-    radius: item.radiusMeters,
-    strokeColor: item.color,
-    strokeWeight: selectedId.value === item.id ? 4 : 2,
-    strokeOpacity: item.enabled ? 0.9 : 0.45,
-    fillColor: item.color,
-    fillOpacity: item.enabled ? 0.14 : 0.05,
-    bubble: true,
-    extData: item.id
-  }));
-  overlays.forEach((overlay, index) => {
-    overlay.on('click', () => selectGeofence(geofences.value[index]));
-    map.value.add(overlay);
-  });
-  circle.value = overlays;
-  if (overlays.length > 0) map.value.setFitView(overlays, false, [50, 50, 50, 50]);
+function toAmapPath(points: GeoPoint[]): [number, number][] {
+  return points.map(([lat, lng]) => [lng, lat]);
 }
 
-function clearPreview() {
+function rectangleCorners(points: GeoPoint[]): [number, number][] {
+  const [[lat1, lng1], [lat2, lng2]] = points;
+  return [[lng1, lat1], [lng2, lat1], [lng2, lat2], [lng1, lat2]];
+}
+
+function createShapeOverlay(
+  item: Pick<Geofence, 'shape' | 'points' | 'centerGcjLat' | 'centerGcjLng' | 'radiusMeters' | 'color'>,
+  strokeWeight: number
+) {
+  if (item.shape === 'circle') {
+    return new AMap.value.Circle({
+      center: [item.centerGcjLng, item.centerGcjLat],
+      radius: Math.max(1, item.radiusMeters || 1),
+      strokeColor: item.color,
+      strokeWeight,
+      strokeOpacity: 0.9,
+      fillColor: item.color,
+      fillOpacity: 0.14
+    });
+  }
+  if (item.shape === 'route') {
+    return new AMap.value.Polyline({
+      path: toAmapPath(item.points ?? []),
+      strokeColor: item.color,
+      strokeWeight,
+      strokeOpacity: 0.9,
+      lineJoin: 'round'
+    });
+  }
+  const path = item.shape === 'rectangle' ? rectangleCorners(item.points ?? []) : toAmapPath(item.points ?? []);
+  return new AMap.value.Polygon({
+    path,
+    strokeColor: item.color,
+    strokeWeight,
+    strokeOpacity: 0.9,
+    fillColor: item.color,
+    fillOpacity: 0.14
+  });
+}
+
+function renderAllGeofences() {
+  if (!ready.value || !map.value) return;
+  clearOverlays();
+  const created = geofences.value.map(item => {
+    const overlay = createShapeOverlay(item, selectedId.value === item.id ? 4 : 2);
+    overlay.on('click', () => selectGeofence(item));
+    map.value.add(overlay);
+    return overlay;
+  });
+  overlays.value = created;
+  if (created.length > 0) map.value.setFitView(created, false, [50, 50, 50, 50]);
+}
+
+function clearOverlays() {
   if (!map.value) return;
-  const overlays = Array.isArray(circle.value) ? circle.value : circle.value ? [circle.value] : [];
-  if (overlays.length) map.value.remove(overlays);
-  if (centerMarker.value) map.value.remove(centerMarker.value);
-  circle.value = null;
-  centerMarker.value = null;
+  if (overlays.value.length) map.value.remove(overlays.value);
+  overlays.value = [];
 }
 
 function renderEditorPreview() {
   if (!ready.value || !map.value) return;
-  clearPreview();
-  const center: [number, number] = [Number(form.centerGcjLng), Number(form.centerGcjLat)];
-  if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) return;
-  circle.value = new AMap.value.Circle({
-    center,
-    radius: Math.max(1, Number(form.radiusMeters) || 1),
-    strokeColor: form.color,
-    strokeWeight: 3,
-    fillColor: form.color,
-    fillOpacity: 0.16,
-    bubble: true
-  });
-  centerMarker.value = new AMap.value.Marker({ position: center, title: form.name || '围栏圆心' });
-  map.value.add([circle.value, centerMarker.value]);
-  map.value.setFitView([circle.value], false, [80, 80, 80, 80]);
+  clearOverlays();
+  if (form.shape === 'circle') {
+    const center: [number, number] = [Number(form.centerGcjLng), Number(form.centerGcjLat)];
+    if (!Number.isFinite(center[0]) || !Number.isFinite(center[1])) return;
+    const circle = new AMap.value.Circle({
+      center,
+      radius: Math.max(1, Number(form.radiusMeters) || 1),
+      strokeColor: form.color,
+      strokeWeight: 3,
+      fillColor: form.color,
+      fillOpacity: 0.16
+    });
+    const marker = new AMap.value.Marker({ position: center, title: form.name || '围栏圆心' });
+    map.value.add([circle, marker]);
+    overlays.value = [circle, marker];
+    map.value.setFitView([circle], false, [80, 80, 80, 80]);
+    return;
+  }
+  if ((form.points ?? []).length === 0) return;
+  const overlay = createShapeOverlay({ ...form, centerGcjLat: 0, centerGcjLng: 0 }, 3);
+  map.value.add(overlay);
+  overlays.value = [overlay];
+  map.value.setFitView([overlay], false, [80, 80, 80, 80]);
 }
 
 function handleMapClick(event: any) {
-  if (!editorVisible.value || !event?.lnglat) return;
+  if (!editorVisible.value || form.shape !== 'circle' || !event?.lnglat) return;
   form.centerGcjLng = Number(event.lnglat.getLng().toFixed(6));
   form.centerGcjLat = Number(event.lnglat.getLat().toFixed(6));
 }
 
+function startDrawing() {
+  if (!ready.value || !map.value || form.shape === 'circle') return;
+  stopDrawing();
+  const tool = new AMap.value.MouseTool(map.value);
+  mouseTool.value = tool;
+  const style = {
+    strokeColor: form.color,
+    strokeWeight: 3,
+    fillColor: form.color,
+    fillOpacity: 0.16
+  };
+  if (form.shape === 'rectangle') {
+    tool.rectangle(style);
+  } else if (form.shape === 'polygon') {
+    tool.polygon(style);
+  } else {
+    tool.polyline({ strokeColor: form.color, strokeWeight: 3, strokeOpacity: 0.9 });
+  }
+  tool.on('draw', (event: any) => {
+    form.points = extractPoints(event.obj, form.shape);
+    drawing.value = false;
+    tool.close(true);
+    mouseTool.value = null;
+    renderEditorPreview();
+  });
+  drawing.value = true;
+}
+
+function extractPoints(obj: any, shape: GeofenceShape): GeoPoint[] {
+  if (shape === 'rectangle') {
+    const bounds = obj.getBounds();
+    return [
+      [Number(bounds.getSouthWest().getLat().toFixed(6)), Number(bounds.getSouthWest().getLng().toFixed(6))],
+      [Number(bounds.getNorthEast().getLat().toFixed(6)), Number(bounds.getNorthEast().getLng().toFixed(6))]
+    ];
+  }
+  const path = (obj.getPath() as any[]) ?? [];
+  const points: GeoPoint[] = path.map(p => [Number(p.getLat().toFixed(6)), Number(p.getLng().toFixed(6))]);
+  if (shape === 'polygon' && points.length > 1) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (first[0] === last[0] && first[1] === last[1]) points.pop();
+  }
+  return points;
+}
+
+function stopDrawing() {
+  if (mouseTool.value) mouseTool.value.close(true);
+  mouseTool.value = null;
+  drawing.value = false;
+}
+
+function clearPoints() {
+  stopDrawing();
+  form.points = [];
+}
+
 function selectGeofence(item: Geofence) {
   selectedId.value = item.id;
-  if (ready.value && map.value) {
+  if (ready.value && map.value && item.shape === 'circle') {
     map.value.setZoomAndCenter(15, [item.centerGcjLng, item.centerGcjLat]);
   }
 }
@@ -154,12 +269,15 @@ function selectGeofence(item: Geofence) {
 function openCreate() {
   isEdit.value = false;
   selectedId.value = null;
+  stopDrawing();
   const center = map.value?.getCenter?.();
   Object.assign(form, {
     name: '',
     centerGcjLat: center?.getLat?.() ?? 39.90923,
     centerGcjLng: center?.getLng?.() ?? 116.397428,
     radiusMeters: 500,
+    shape: 'circle',
+    points: [],
     color: '#18a058',
     enabled: true,
     alertOnEnter: true,
@@ -174,11 +292,14 @@ function openCreate() {
 function openEdit(item: Geofence) {
   isEdit.value = true;
   selectedId.value = item.id;
+  stopDrawing();
   Object.assign(form, {
     name: item.name,
     centerGcjLat: item.centerGcjLat,
     centerGcjLng: item.centerGcjLng,
     radiusMeters: item.radiusMeters,
+    shape: item.shape,
+    points: (item.points ?? []).map(([lat, lng]) => [lat, lng] as GeoPoint),
     color: item.color,
     enabled: item.enabled,
     alertOnEnter: item.alertOnEnter,
@@ -191,15 +312,25 @@ function openEdit(item: Geofence) {
 }
 
 function closeEditor() {
+  stopDrawing();
   editorVisible.value = false;
   renderAllGeofences();
 }
 
 function validate() {
   if (!form.name.trim()) return '请填写围栏名称';
-  if (!Number.isFinite(form.centerGcjLat) || form.centerGcjLat < -90 || form.centerGcjLat > 90) return '纬度必须在 -90 到 90 之间';
-  if (!Number.isFinite(form.centerGcjLng) || form.centerGcjLng < -180 || form.centerGcjLng > 180) return '经度必须在 -180 到 180 之间';
-  if (!Number.isFinite(form.radiusMeters) || form.radiusMeters <= 0) return '半径必须大于 0';
+  if (form.shape === 'circle') {
+    if (!Number.isFinite(form.centerGcjLat) || form.centerGcjLat < -90 || form.centerGcjLat > 90) return '纬度必须在 -90 到 90 之间';
+    if (!Number.isFinite(form.centerGcjLng) || form.centerGcjLng < -180 || form.centerGcjLng > 180) return '经度必须在 -180 到 180 之间';
+    if (!Number.isFinite(form.radiusMeters) || form.radiusMeters <= 0) return '半径必须大于 0';
+  } else if (form.shape === 'rectangle') {
+    if ((form.points ?? []).length !== 2) return '请在地图上绘制矩形的两个对角点';
+  } else if (form.shape === 'polygon') {
+    if ((form.points ?? []).length < 3) return '多边形至少需要 3 个顶点';
+  } else if (form.shape === 'route') {
+    if ((form.points ?? []).length < 2) return '路线至少需要 2 个途经点';
+    if (!Number.isFinite(form.radiusMeters) || form.radiusMeters <= 0) return '路线走廊半宽必须大于 0';
+  }
   if (form.speedLimitKph != null && (!Number.isFinite(form.speedLimitKph) || form.speedLimitKph <= 0)) return '限速必须大于 0';
   return '';
 }
@@ -213,6 +344,8 @@ async function submit() {
   const payload: GeofenceMutation = {
     ...form,
     name: form.name.trim(),
+    shape: form.shape,
+    points: (form.points ?? []).map(([lat, lng]) => [lat, lng] as GeoPoint),
     vehicleIds: [...new Set(form.vehicleIds)]
   };
   submitting.value = true;
@@ -255,6 +388,12 @@ async function remove(item: Geofence) {
   await load();
   renderAllGeofences();
 }
+
+function shapeSummary(item: Geofence) {
+  if (item.shape === 'circle') return `半径 ${item.radiusMeters} m`;
+  if (item.shape === 'route') return `走廊 ${item.radiusMeters} m · ${(item.points ?? []).length} 点`;
+  return `${(item.points ?? []).length} 顶点`;
+}
 </script>
 
 <template>
@@ -291,7 +430,7 @@ async function remove(item: Geofence) {
                 <NSwitch :value="item.enabled" size="small" @click.stop @update:value="value => toggleEnabled(item, value)" />
               </div>
               <div class="mt-3px text-12px text-gray-500">
-                半径 {{ item.radiusMeters }} m · {{ item.assignedVehicleCount }} 台车
+                {{ SHAPE_LABEL[item.shape] }} · {{ shapeSummary(item) }} · {{ item.assignedVehicleCount }} 台车
               </div>
               <div class="mt-3px flex flex-wrap gap-4px">
                 <NTag v-if="item.alertOnEnter" size="tiny">进入</NTag>
@@ -320,17 +459,45 @@ async function remove(item: Geofence) {
 
     <NDrawer :show="editorVisible" :width="appStore.isMobile ? '100%' : 480" placement="right" @update:show="closeEditor">
       <NDrawerContent :title="isEdit ? '编辑围栏' : '新增围栏'" closable>
-        <NAlert type="info" :bordered="false" class="mb-12px">点击地图可设置圆心，地图坐标按 GCJ-02 保存。</NAlert>
+        <NAlert type="info" :bordered="false" class="mb-12px">
+          {{ form.shape === 'circle' ? '点击地图可设置圆心，坐标按 GCJ-02 保存。' : '点击「开始绘制」后在地图上画出形状，画完即提交顶点。' }}
+        </NAlert>
         <NForm label-placement="top">
           <NFormItem label="围栏名称" required><NInput v-model:value="form.name" maxlength="80" show-count /></NFormItem>
-          <NGrid :cols="2" :x-gap="10">
-            <NGi><NFormItem label="纬度" required><NInputNumber v-model:value="form.centerGcjLat" :min="-90" :max="90" :precision="6" class="w-full" /></NFormItem></NGi>
-            <NGi><NFormItem label="经度" required><NInputNumber v-model:value="form.centerGcjLng" :min="-180" :max="180" :precision="6" class="w-full" /></NFormItem></NGi>
-          </NGrid>
-          <NGrid :cols="2" :x-gap="10">
-            <NGi><NFormItem label="半径 (m)" required><NInputNumber v-model:value="form.radiusMeters" :min="1" :max="100000" class="w-full" /></NFormItem></NGi>
-            <NGi><NFormItem label="显示颜色"><NColorPicker v-model:value="form.color" :modes="['hex']" /></NFormItem></NGi>
-          </NGrid>
+          <NFormItem label="形状" required>
+            <NSelect v-model:value="form.shape" :options="shapeOptions" @update:value="clearPoints" />
+          </NFormItem>
+          <template v-if="form.shape === 'circle'">
+            <NGrid :cols="2" :x-gap="10">
+              <NGi><NFormItem label="纬度" required><NInputNumber v-model:value="form.centerGcjLat" :min="-90" :max="90" :precision="6" class="w-full" /></NFormItem></NGi>
+              <NGi><NFormItem label="经度" required><NInputNumber v-model:value="form.centerGcjLng" :min="-180" :max="180" :precision="6" class="w-full" /></NFormItem></NGi>
+            </NGrid>
+            <NGrid :cols="2" :x-gap="10">
+              <NGi><NFormItem label="半径 (m)" required><NInputNumber v-model:value="form.radiusMeters" :min="1" :max="100000" class="w-full" /></NFormItem></NGi>
+              <NGi><NFormItem label="显示颜色"><NColorPicker v-model:value="form.color" :modes="['hex']" /></NFormItem></NGi>
+            </NGrid>
+          </template>
+          <template v-else>
+            <NFormItem :label="form.shape === 'route' ? '走廊半宽 (m)' : '顶点'">
+              <div class="flex flex-col gap-8px">
+                <NSpace>
+                  <NButton size="small" :type="drawing ? 'warning' : 'primary'" @click="startDrawing">
+                    {{ drawing ? '绘制中，点地图完成' : '开始绘制' }}
+                  </NButton>
+                  <NButton size="small" :disabled="!(form.points ?? []).length" @click="clearPoints">清除</NButton>
+                </NSpace>
+                <span class="text-12px text-gray-500">已选 {{ (form.points ?? []).length }} 个顶点</span>
+                <NInputNumber
+                  v-if="form.shape === 'route'"
+                  v-model:value="form.radiusMeters"
+                  :min="1"
+                  :max="100000"
+                  class="w-full"
+                />
+                <NColorPicker v-model:value="form.color" :modes="['hex']" />
+              </div>
+            </NFormItem>
+          </template>
           <NFormItem label="规则">
             <NSpace vertical>
               <NSwitch v-model:value="form.enabled"><template #checked>已启用</template><template #unchecked>已停用</template></NSwitch>

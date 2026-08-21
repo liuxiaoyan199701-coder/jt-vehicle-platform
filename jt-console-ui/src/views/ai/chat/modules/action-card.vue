@@ -52,6 +52,7 @@ const ROUTES: Record<string, (params: any) => { url: string; method: 'post' | 'p
       resolution: p.resolution ?? 2
     }
   }),
+  upgrade: p => ({ url: '/commands/upgrade', method: 'post', body: p }),
   tenant_create: p => ({ url: '/platform/tenants', method: 'post', body: p }),
   tenant_update: p => ({ url: `/platform/tenants/${p.id}`, method: 'put', body: p }),
   tenant_disable: p => ({ url: `/platform/tenants/${p.id}/disable`, method: 'post', body: p }),

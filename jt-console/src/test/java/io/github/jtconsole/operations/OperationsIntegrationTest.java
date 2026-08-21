@@ -14,6 +14,7 @@ import io.github.jtconsole.domain.AlarmEvent;
 import io.github.jtconsole.domain.AlarmLevel;
 import io.github.jtconsole.domain.AlarmSource;
 import io.github.jtconsole.domain.Geofence;
+import io.github.jtconsole.domain.GeofenceShape;
 import io.github.jtconsole.domain.Vehicle;
 import io.github.jtconsole.domain.VehicleDailyStat;
 import io.github.jtconsole.ingest.EventIngestionService;
@@ -444,6 +445,7 @@ class OperationsIntegrationTest {
     private Geofence fence(
             Long id, String name, List<String> deviceIds, boolean enabled, Double speedLimit) {
         return new Geofence(id, name, 39.90, 116.40, 1000,
+                GeofenceShape.CIRCLE, List.of(),
                 "#1677FF", enabled, true, true, speedLimit,
                 deviceIds, deviceIds.size(), TENANT_ID, null, null);
     }

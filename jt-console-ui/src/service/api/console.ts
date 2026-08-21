@@ -82,7 +82,7 @@ export interface StreamTicket {
 
 export type AlarmStatus = 'OPEN' | 'ACKNOWLEDGED' | 'CLOSED';
 export type AlarmLevel = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
-export type AlarmSource = 'PROTOCOL' | 'GEOFENCE';
+export type AlarmSource = 'PROTOCOL' | 'GEOFENCE' | 'RULE';
 
 export interface AlarmEvent {
   id: number;
@@ -133,6 +133,8 @@ export interface Geofence {
   centerGcjLat: number;
   centerGcjLng: number;
   radiusMeters: number;
+  shape: 'circle' | 'rectangle' | 'polygon' | 'route';
+  points: [number, number][];
   color: string;
   enabled: boolean;
   alertOnEnter: boolean;
@@ -150,6 +152,8 @@ export type GeofenceMutation = Pick<
   | 'centerGcjLat'
   | 'centerGcjLng'
   | 'radiusMeters'
+  | 'shape'
+  | 'points'
   | 'color'
   | 'enabled'
   | 'alertOnEnter'
@@ -416,6 +420,67 @@ export function deleteGeofence(id: number) {
   return request<void>({ url: `/geofences/${encodePathSegment(id)}`, method: 'delete' });
 }
 
+export type AlarmRuleType = 'SPEED_LIMIT' | 'IDLE_TIMEOUT' | 'FATIGUE_DRIVING';
+
+export interface AlarmRule {
+  id: number;
+  name: string;
+  type: AlarmRuleType;
+  thresholdKph: number;
+  durationMinutes: number;
+  level: AlarmLevel;
+  enabled: boolean;
+  vehicleIds: string[];
+  assignedVehicleCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type AlarmRuleMutation = Pick<
+  AlarmRule,
+  'name' | 'type' | 'thresholdKph' | 'durationMinutes' | 'level' | 'enabled' | 'vehicleIds'
+>;
+
+export function fetchAlarmRules() {
+  return request<AlarmRule[]>({ url: '/alarm-rules' });
+}
+
+export function createAlarmRule(rule: AlarmRuleMutation) {
+  return request<AlarmRule>({ url: '/alarm-rules', method: 'post', data: rule });
+}
+
+export function updateAlarmRule(id: number, rule: AlarmRuleMutation) {
+  return request<AlarmRule>({ url: `/alarm-rules/${encodePathSegment(id)}`, method: 'put', data: rule });
+}
+
+export function setAlarmRuleEnabled(id: number, enabled: boolean) {
+  return request<AlarmRule>({
+    url: `/alarm-rules/${encodePathSegment(id)}/enabled`,
+    method: 'put',
+    data: { enabled }
+  });
+}
+
+export function deleteAlarmRule(id: number) {
+  return request<void>({ url: `/alarm-rules/${encodePathSegment(id)}`, method: 'delete' });
+}
+
+export interface VehicleReportRow {
+  deviceId: string;
+  plateNo: string;
+  totalDistanceKm: number;
+  activeDays: number;
+  totalAlarms: number;
+  maxSpeedKph: number;
+}
+
+export function fetchVehicleReport(start: string, end: string) {
+  return request<VehicleReportRow[]>({
+    url: '/reports/vehicles',
+    params: { start, end }
+  });
+}
+
 // ---------------- 远程控制（下行指令代理） ----------------
 
 export type CommandName =
@@ -425,7 +490,10 @@ export type CommandName =
   | 'vehicle-control'
   | 'photo'
   | 'callback'
-  | 'track-follow';
+  | 'track-follow'
+  | 'query-params'
+  | 'query-attributes'
+  | 'upgrade';
 
 /** 指令应答：后端已把 T0001/T0805/T0201_0500 统一成 message + success */
 export interface CommandResult {
@@ -438,6 +506,49 @@ export interface CommandResult {
 
 export function sendDeviceCommand(command: CommandName, payload: Record<string, unknown>) {
   return request<CommandResult>({ url: `/commands/${command}`, method: 'post', data: payload });
+}
+
+export function queryTerminalInfo(command: 'query-params' | 'query-attributes', deviceId: string) {
+  return request<Record<string, unknown>>({
+    url: `/commands/${command}`,
+    method: 'post',
+    data: { deviceId }
+  });
+}
+
+export interface UpgradePackage {
+  id: number;
+  name: string;
+  version: string;
+  makerId: string;
+  fileName: string;
+  filePath: string;
+  sizeBytes: number;
+  sha256: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function fetchUpgradePackages() {
+  return request<UpgradePackage[]>({ url: '/upgrade-packages' });
+}
+
+export function uploadUpgradePackage(file: File, name: string, version: string, makerId: string) {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('name', name);
+  form.append('version', version);
+  form.append('makerId', makerId);
+  return request<UpgradePackage>({
+    url: '/upgrade-packages',
+    method: 'post',
+    data: form,
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+}
+
+export function deleteUpgradePackage(id: number) {
+  return request<void>({ url: `/upgrade-packages/${encodePathSegment(id)}`, method: 'delete' });
 }
 
 // ---------------- 多媒体（拍照结果） ----------------

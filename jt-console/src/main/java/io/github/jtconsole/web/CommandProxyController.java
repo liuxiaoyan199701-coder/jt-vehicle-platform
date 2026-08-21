@@ -3,11 +3,14 @@ package io.github.jtconsole.web;
 import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.audit.AuditContext;
 import io.github.jtconsole.audit.Audited;
+import io.github.jtconsole.domain.UpgradePackage;
+import io.github.jtconsole.operations.UpgradeService;
 import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
 import io.github.jtconsole.security.DataScope;
 import io.github.jtconsole.security.Permissions;
 import io.github.jtconsole.security.RequirePermission;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -49,16 +52,19 @@ public class CommandProxyController {
     private final ObjectMapper objectMapper;
     private final DeviceAttributeRepository deviceAttributes;
     private final VehicleService vehicles;
+    private final UpgradeService upgrades;
 
     public CommandProxyController(
             RestClient commandGatewayRestClient,
             ObjectMapper objectMapper,
             DeviceAttributeRepository deviceAttributes,
-            VehicleService vehicles) {
+            VehicleService vehicles,
+            UpgradeService upgrades) {
         this.gateway = commandGatewayRestClient;
         this.objectMapper = objectMapper;
         this.deviceAttributes = deviceAttributes;
         this.vehicles = vehicles;
+        this.upgrades = upgrades;
     }
 
     /**
@@ -87,6 +93,9 @@ public class CommandProxyController {
             case "photo" -> photoCommand(body);
             case "callback" -> callbackCommand(body);
             case "track-follow" -> trackFollowCommand(body);
+            case "query-params" -> new Prepared("/device/8104", base(requireDeviceId(body)));
+            case "query-attributes" -> new Prepared("/device/8107", base(requireDeviceId(body)));
+            case "upgrade" -> upgradeCommand(body);
             default -> throw new IllegalArgumentException("未知指令：" + command);
         };
 
@@ -98,6 +107,10 @@ public class CommandProxyController {
                     .body(new ParameterizedTypeReference<Map<String, Object>>() {});
             LOGGER.info("Command {} to {} accepted, response {}",
                     command, prepared.request().get("clientId"), describeReply(reply));
+            // 查询类指令直接透传终端上报的数据（参数表/属性），不做「已确认」翻译。
+            if (command.equals("query-params") || command.equals("query-attributes")) {
+                return ApiResponse.ok(reply == null ? Map.of() : reply);
+            }
             return ApiResponse.ok(result(reply, command));
         } catch (RestClientResponseException failure) {
             GatewayError error = parseGatewayError(failure);
@@ -265,6 +278,29 @@ public class CommandProxyController {
         request.put("interval", interval);
         request.put("validityPeriod", validity);
         return new Prepared("/device/8202", request);
+    }
+
+    /**
+     * 下发升级包 0x8108：{@code {deviceId, packageId}}。
+     * 包体在服务端按 packageId 读取，前端不直传二进制；packet 以 base64 编码进 8108。
+     */
+    private Prepared upgradeCommand(Map<String, Object> body) {
+        String deviceId = requireDeviceId(body);
+        Object packageIdValue = body.get("packageId");
+        if (!(packageIdValue instanceof Number number)) {
+            throw new IllegalArgumentException("packageId 必须是数字");
+        }
+        long packageId = number.longValue();
+        UpgradePackage pkg = upgrades.find(packageId)
+                .orElseThrow(() -> new IllegalArgumentException("升级包不存在"));
+        byte[] bytes = upgrades.loadBytes(packageId);
+
+        Map<String, Object> request = base(deviceId);
+        request.put("type", 0);  // 升级类型：0 = 终端
+        request.put("makerId", pkg.makerId());
+        request.put("version", pkg.version());
+        request.put("packet", Base64.getEncoder().encodeToString(bytes));
+        return new Prepared("/device/8108", request);
     }
 
     // ---------------- 响应加工 ----------------

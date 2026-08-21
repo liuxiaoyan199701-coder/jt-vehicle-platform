@@ -29,6 +29,18 @@ public record AlarmDefinition(String type, String title, AlarmLevel level) {
         return new AlarmDefinition("geofenceOverspeed", "围栏内超速", AlarmLevel.HIGH);
     }
 
+    public static AlarmDefinition ruleSpeedLimit(String title, AlarmLevel level) {
+        return new AlarmDefinition("ruleSpeedLimit", title, level);
+    }
+
+    public static AlarmDefinition ruleIdleTimeout(String title, AlarmLevel level) {
+        return new AlarmDefinition("ruleIdleTimeout", title, level);
+    }
+
+    public static AlarmDefinition ruleFatigueDriving(String title, AlarmLevel level) {
+        return new AlarmDefinition("ruleFatigueDriving", title, level);
+    }
+
     private static Map<String, AlarmDefinition> definitions() {
         Map<String, AlarmDefinition> values = new LinkedHashMap<>();
         add(values, "emergency", "紧急报警", AlarmLevel.CRITICAL);

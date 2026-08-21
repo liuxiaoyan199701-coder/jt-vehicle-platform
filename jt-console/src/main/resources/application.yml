@@ -26,10 +26,11 @@ spring:
 
   servlet:
     multipart:
-      # 只有 AI 对话的图片会走 multipart。上限比 jt.console.ai.attachment.max-size 略大，
+      # AI 对话图片与 OTA 升级包都走 multipart。升级包可达 64MB，容器上限取两者较大值；
+      # 各自的业务上限仍由业务层（AttachmentStore / UpgradePackageStore）把守，
       # 让超限由业务层给出中文提示，而不是被容器以一个没有上下文的 413 拦掉。
-      max-file-size: ${JT_AI_ATTACHMENT_MAX_SIZE:8MB}
-      max-request-size: 12MB
+      max-file-size: ${JT_MULTIPART_MAX_SIZE:128MB}
+      max-request-size: 140MB
 
 jt:
   console:

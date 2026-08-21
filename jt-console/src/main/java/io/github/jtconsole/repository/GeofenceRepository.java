@@ -3,27 +3,33 @@ package io.github.jtconsole.repository;
 import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.Geofence;
 import io.github.jtconsole.domain.GeofenceCandidate;
+import io.github.jtconsole.domain.GeofenceShape;
 import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.json.JsonMapper;
 
 @Repository
 public class GeofenceRepository {
 
     private static final String SELECT = """
             SELECT g.id, g.name, g.center_gcj_lat, g.center_gcj_lng, g.radius_meters,
+                   g.shape, g.points,
                    g.color, g.enabled, g.alert_on_enter, g.alert_on_exit, g.speed_limit_kph,
                    g.tenant_id, g.created_at, g.updated_at,
                    (SELECT COUNT(*) FROM geofence_vehicle gv WHERE gv.geofence_id = g.id) assigned_count
             FROM geofence g
             """;
     private final JdbcClient jdbc;
+    private final JsonMapper mapper = JsonMapper.builder().build();
 
     public GeofenceRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
@@ -56,13 +62,14 @@ public class GeofenceRepository {
         GeneratedKeyHolder key = new GeneratedKeyHolder();
         jdbc.sql("""
                         INSERT INTO geofence (
-                            name, center_gcj_lat, center_gcj_lng, radius_meters, color,
+                            name, center_gcj_lat, center_gcj_lng, radius_meters, shape, points, color,
                             enabled, alert_on_enter, alert_on_exit, speed_limit_kph,
                             tenant_id, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """)
                 .param(value.name()).param(value.centerGcjLat()).param(value.centerGcjLng())
-                .param(value.radiusMeters()).param(value.color()).param(value.enabled() ? 1 : 0)
+                .param(value.radiusMeters()).param(value.shape().wireValue())
+                .param(serializePoints(value.points())).param(value.color()).param(value.enabled() ? 1 : 0)
                 .param(value.alertOnEnter() ? 1 : 0).param(value.alertOnExit() ? 1 : 0)
                 .param(value.speedLimitKph()).param(value.tenantId())
                 .param(now).param(now).update(key);
@@ -74,12 +81,13 @@ public class GeofenceRepository {
     public int update(long id, Geofence value) {
         return jdbc.sql("""
                         UPDATE geofence SET name = ?, center_gcj_lat = ?, center_gcj_lng = ?,
-                            radius_meters = ?, color = ?, enabled = ?, alert_on_enter = ?,
-                            alert_on_exit = ?, speed_limit_kph = ?, updated_at = ?
+                            radius_meters = ?, shape = ?, points = ?, color = ?, enabled = ?,
+                            alert_on_enter = ?, alert_on_exit = ?, speed_limit_kph = ?, updated_at = ?
                         WHERE id = ?
                         """)
                 .param(value.name()).param(value.centerGcjLat()).param(value.centerGcjLng())
-                .param(value.radiusMeters()).param(value.color()).param(value.enabled() ? 1 : 0)
+                .param(value.radiusMeters()).param(value.shape().wireValue())
+                .param(serializePoints(value.points())).param(value.color()).param(value.enabled() ? 1 : 0)
                 .param(value.alertOnEnter() ? 1 : 0).param(value.alertOnExit() ? 1 : 0)
                 .param(value.speedLimitKph()).param(Timestamps.now()).param(id).update();
     }
@@ -118,7 +126,8 @@ public class GeofenceRepository {
     public List<GeofenceCandidate> findEnabledForDevice(String deviceId) {
         return jdbc.sql("""
                         SELECT g.id, g.name, g.center_gcj_lat, g.center_gcj_lng,
-                               g.radius_meters, g.alert_on_enter, g.alert_on_exit, g.speed_limit_kph
+                               g.radius_meters, g.shape, g.points,
+                               g.alert_on_enter, g.alert_on_exit, g.speed_limit_kph
                         FROM geofence g JOIN geofence_vehicle gv ON gv.geofence_id = g.id
                         WHERE gv.device_id = ? AND g.enabled = 1 ORDER BY g.id
                         """)
@@ -126,6 +135,8 @@ public class GeofenceRepository {
                 .query((rs, row) -> new GeofenceCandidate(
                         rs.getLong("id"), rs.getString("name"), rs.getDouble("center_gcj_lat"),
                         rs.getDouble("center_gcj_lng"), rs.getDouble("radius_meters"),
+                        GeofenceShape.fromWire(rs.getString("shape")),
+                        deserializePoints(rs.getString("points")),
                         rs.getBoolean("alert_on_enter"), rs.getBoolean("alert_on_exit"),
                         nullableDouble(rs, "speed_limit_kph")))
                 .list();
@@ -158,11 +169,36 @@ public class GeofenceRepository {
         long id = rs.getLong("id");
         return new Geofence(id, rs.getString("name"), rs.getDouble("center_gcj_lat"),
                 rs.getDouble("center_gcj_lng"), rs.getDouble("radius_meters"),
+                GeofenceShape.fromWire(rs.getString("shape")),
+                deserializePoints(rs.getString("points")),
                 rs.getString("color"), rs.getBoolean("enabled"),
                 rs.getBoolean("alert_on_enter"), rs.getBoolean("alert_on_exit"),
                 nullableDouble(rs, "speed_limit_kph"), assignedVehicleIds(id),
                 rs.getInt("assigned_count"), RowValues.nullableLong(rs, "tenant_id"),
                 rs.getString("created_at"), rs.getString("updated_at"));
+    }
+
+    private String serializePoints(List<double[]> points) {
+        if (points == null || points.isEmpty()) {
+            return null;
+        }
+        try {
+            return mapper.writeValueAsString(points);
+        } catch (JacksonException failure) {
+            throw new IllegalStateException("围栏顶点无法序列化", failure);
+        }
+    }
+
+    private List<double[]> deserializePoints(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            double[][] array = mapper.readValue(json, double[][].class);
+            return array == null ? List.of() : List.copyOf(Arrays.asList(array));
+        } catch (JacksonException failure) {
+            throw new IllegalStateException("围栏顶点无法解析", failure);
+        }
     }
 
     private static Double nullableDouble(ResultSet rs, String column) throws SQLException {

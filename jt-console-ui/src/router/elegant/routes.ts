@@ -157,6 +157,17 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'ota',
+    path: '/ota',
+    component: 'layout.base$view.ota',
+    meta: {
+      title: 'ota',
+      i18nKey: 'route.ota',
+      icon: 'mdi:cloud-upload',
+      order: 7
+    }
+  },
+  {
     name: 'register',
     path: '/register',
     component: 'layout.blank$view.register',
@@ -165,6 +176,28 @@ export const generatedRoutes: GeneratedRoute[] = [
       i18nKey: 'route.register',
       constant: true,
       hideInMenu: true
+    }
+  },
+  {
+    name: 'report',
+    path: '/report',
+    component: 'layout.base$view.report',
+    meta: {
+      title: 'report',
+      i18nKey: 'route.report',
+      icon: 'mdi:file-chart',
+      order: 6
+    }
+  },
+  {
+    name: 'rule',
+    path: '/rule',
+    component: 'layout.base$view.rule',
+    meta: {
+      title: 'rule',
+      i18nKey: 'route.rule',
+      icon: 'mdi:alarm-light',
+      order: 5
     }
   },
   {

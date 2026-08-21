@@ -1,6 +1,7 @@
 package io.github.jtconsole.repository;
 
 import io.github.jtconsole.domain.VehicleDailyStat;
+import io.github.jtconsole.domain.VehicleReportRow;
 import io.github.jtconsole.security.DataScope;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -123,6 +124,34 @@ public class DailyStatRepository {
                         """ + scope.vehicleCondition("v"))
                 .params(params).query(Number.class).single();
         return value == null ? 0 : value.doubleValue();
+    }
+
+    public List<VehicleReportRow> aggregateByVehicle(String start, String end, DataScope scope) {
+        if (scope.empty()) {
+            return List.of();
+        }
+        List<Object> params = new ArrayList<>();
+        params.add(start);
+        params.add(end);
+        params.addAll(scope.parameters());
+        return jdbc.sql("""
+                        SELECT s.device_id, v.plate_no,
+                               COALESCE(SUM(s.distance_km), 0) total_distance_km,
+                               COUNT(*) active_days,
+                               COALESCE(SUM(s.alarm_count), 0) total_alarms,
+                               COALESCE(MAX(s.max_speed_kph), 0) max_speed_kph
+                        FROM vehicle_daily_stat s JOIN vehicle v ON v.device_id = s.device_id
+                        WHERE s.stat_date >= ? AND s.stat_date <= ?
+                        """ + scope.vehicleCondition("v") + """
+                        GROUP BY s.device_id, v.plate_no
+                        ORDER BY total_distance_km DESC, s.device_id
+                        """)
+                .params(params)
+                .query((rs, row) -> new VehicleReportRow(
+                        rs.getString("device_id"), rs.getString("plate_no"),
+                        rs.getDouble("total_distance_km"), rs.getInt("active_days"),
+                        rs.getInt("total_alarms"), rs.getDouble("max_speed_kph")))
+                .list();
     }
 
     private static VehicleDailyStat map(ResultSet rs, int row) throws SQLException {

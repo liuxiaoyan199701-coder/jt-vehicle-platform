@@ -2,6 +2,7 @@ package io.github.jtconsole.web;
 
 import io.github.jtconsole.api.ApiResponse;
 import io.github.jtconsole.domain.Geofence;
+import io.github.jtconsole.domain.GeofenceShape;
 import io.github.jtconsole.audit.Audited;
 import io.github.jtconsole.operations.GeofenceService;
 import io.github.jtconsole.security.AuthorizedPrincipal;
@@ -94,6 +95,8 @@ public class GeofenceController {
             Double centerGcjLat,
             Double centerGcjLng,
             Double radiusMeters,
+            String shape,
+            List<double[]> points,
             String color,
             Boolean enabled,
             Boolean alertOnEnter,
@@ -103,10 +106,14 @@ public class GeofenceController {
             Long tenantId) {
 
         Geofence toDomain() {
-            if (centerGcjLat == null || centerGcjLng == null || radiusMeters == null) {
+            GeofenceShape parsed = shape == null ? GeofenceShape.CIRCLE : GeofenceShape.fromWire(shape);
+            if (parsed == GeofenceShape.CIRCLE
+                    && (centerGcjLat == null || centerGcjLng == null || radiusMeters == null)) {
                 throw new IllegalArgumentException("围栏坐标和半径不能为空");
             }
-            return new Geofence(null, name, centerGcjLat, centerGcjLng, radiusMeters,
+            return new Geofence(null, name, centerGcjLat == null ? 0 : centerGcjLat,
+                    centerGcjLng == null ? 0 : centerGcjLng, radiusMeters == null ? 0 : radiusMeters,
+                    parsed, points,
                     color, Boolean.TRUE.equals(enabled), Boolean.TRUE.equals(alertOnEnter),
                     Boolean.TRUE.equals(alertOnExit), speedLimitKph, vehicleIds, 0,
                     tenantId, null, null);
