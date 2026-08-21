@@ -3,6 +3,7 @@ package io.github.jtconsole.ai.agent;
 import io.github.jtconsole.ai.action.ConfirmationPolicy;
 import io.github.jtconsole.ai.tool.ActionTools;
 import io.github.jtconsole.ai.tool.FleetTools;
+import io.github.jtconsole.ai.tool.GeoTools;
 import io.github.jtconsole.ai.tool.OperationsTools;
 import io.github.jtconsole.ai.tool.RecordingTools;
 import io.github.jtconsole.ai.tool.ToolRoundBudget;
@@ -14,6 +15,7 @@ import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.security.AuthorizedPrincipal;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +62,7 @@ public class AgentService {
             ConsoleProperties properties,
             FleetTools fleetTools,
             OperationsTools operationsTools,
+            ObjectProvider<GeoTools> geoTools,
             RecordingTools recordingTools,
             WaybillTools waybillTools,
             ActionTools actionTools,
@@ -68,9 +71,11 @@ public class AgentService {
         this.prompts = prompts;
         this.dates = dates;
         this.properties = properties;
-        this.toolCallbacks = List.of(
-                ToolCallbacks.from(
-                        fleetTools, operationsTools, recordingTools, waybillTools, actionTools, viewTools));
+        List<ToolCallback> callbacks = new ArrayList<>(Arrays.asList(ToolCallbacks.from(
+                fleetTools, operationsTools, recordingTools, waybillTools, actionTools, viewTools)));
+        // 地名检索依赖高德 Web 服务 key；未配置时 GeoTools 本身不装配，AI 也看不到该工具。
+        geoTools.ifAvailable(tool -> callbacks.addAll(Arrays.asList(ToolCallbacks.from(tool))));
+        this.toolCallbacks = List.copyOf(callbacks);
     }
 
     /**
