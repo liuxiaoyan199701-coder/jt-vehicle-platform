@@ -76,12 +76,23 @@ public final class MapPickerDialog {
             unavailable.accept(new IllegalStateException("地图不可用，请手输"));
             return;
         }
+        // 对话框显示完成后布局尺寸才最终确定，此时必须让地图重算容器尺寸，
+        // 否则缩放锚点按旧尺寸算，一放大就偏到别处。
+        picker.dialog.setOnShown(event -> picker.syncMapSize());
         picker.dialog.setOnHidden(event -> {
             if (picker.eventPoller != null) {
                 picker.eventPoller.stop();
             }
         });
         picker.dialog.showAndWait();
+    }
+
+    private void syncMapSize() {
+        try {
+            webView.getEngine().executeScript("window.syncMapSize && window.syncMapSize()");
+        } catch (RuntimeException ignored) {
+            // 页面尚未就绪时同步失败无妨：页面自身还有定时与 ResizeObserver 兜底
+        }
     }
 
     private void loadPage() {

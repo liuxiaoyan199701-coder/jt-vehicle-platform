@@ -14,21 +14,47 @@
     .map-error { display: none; position: absolute; z-index: 1001; right: 10px; top: 10px;
       padding: 8px 12px; color: #842029; background: #f8d7da; border: 1px solid #f1aeb5;
       border-radius: 4px; font: 13px sans-serif; }
+    /* 缩放锁定中心，准星让「中心在哪」可见；不吃鼠标事件，不影响点选。 */
+    .map-crosshair { position: fixed; left: 50%; top: 50%; z-index: 900;
+      width: 28px; height: 28px; margin: -14px 0 0 -14px; pointer-events: none; }
+    .map-crosshair::before, .map-crosshair::after { content: ''; position: absolute;
+      background: rgba(38, 50, 56, .5); }
+    .map-crosshair::before { left: 13px; top: 0; width: 2px; height: 28px; }
+    .map-crosshair::after { top: 13px; left: 0; height: 2px; width: 28px; }
   </style>
 </head>
 <body>
   <div id="map"></div>
-  <div class="map-hint">点击地图：第一次选择起点，第二次选择终点；标记可拖动微调</div>
+  <div class="map-crosshair"></div>
+  <div class="map-hint">点击地图：第一次选起点，第二次选终点；标记可拖动微调。
+    滚轮缩放锁定在准星处，先拖动把目标对准准星再放大</div>
   <div id="map-error" class="map-error">地图瓦片不可用，请检查网络；仍可尝试点选或返回手输</div>
   <script src="leaflet.js"></script>
   <script>
     (function () {
       'use strict';
       const DEFAULT_CENTER = [31.230416, 121.473701];
-      const map = L.map('map', { zoomControl: true, attributionControl: true });
+      const MAX_TILE_RETRY = 3;
+      const map = L.map('map', {
+        zoomControl: true,
+        attributionControl: true,
+        // 选点场景必须「放大不跑位」：默认滚轮以指针为锚点，地图会持续朝指针方向漂，
+        // 连放几级后目标就滑出视野。锁定中心缩放，配合中心准星，所见即所得。
+        scrollWheelZoom: 'center',
+        // 双击缩放会和「点击落点」抢同一个手势：手抖双击就会多落一个点还顺带缩放。
+        doubleClickZoom: false
+      });
       const tileLayer = L.tileLayer(
         'https://wprd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
-        { subdomains: ['1', '2', '3', '4'], maxZoom: 18, minZoom: 3, attribution: '© 高德地图' }
+        {
+          subdomains: ['1', '2', '3', '4'],
+          maxZoom: 18,
+          minZoom: 3,
+          // 多缓存一圈瓦片，平移与缩放时少露白底
+          keepBuffer: 4,
+          updateWhenZooming: false,
+          attribution: '© 高德地图'
+        }
       );
       const state = { origin: null, destination: null };
       const markers = { origin: null, destination: null };
@@ -36,13 +62,47 @@
 
       map.setView(DEFAULT_CENTER, 12);
       tileLayer.addTo(map);
-      tileLayer.on('tileerror', function () {
-        if (firstTileError) {
-          firstTileError = false;
-          document.getElementById('map-error').style.display = 'block';
-          window.__mapUnavailable = true;
+
+      function markTilesUnavailable() {
+        if (!firstTileError) {
+          return;
         }
+        firstTileError = false;
+        document.getElementById('map-error').style.display = 'block';
+        window.__mapUnavailable = true;
+      }
+      // 单块瓦片请求失败后 Leaflet 不会自己重来，那一格就永久灰着。
+      // 网络抖动与服务端限流都是一次性的，重试几次即可，重试耗尽才算真不可用。
+      tileLayer.on('tileerror', function (event) {
+        const tile = event.tile;
+        if (!tile) {
+          markTilesUnavailable();
+          return;
+        }
+        const tries = Number(tile.getAttribute('data-retry') || '0');
+        if (tries >= MAX_TILE_RETRY) {
+          markTilesUnavailable();
+          return;
+        }
+        tile.setAttribute('data-retry', String(tries + 1));
+        const url = event.coords ? tileLayer.getTileUrl(event.coords) : tile.src;
+        window.setTimeout(function () {
+          tile.src = url;
+        }, 300 * (tries + 1));
       });
+
+      // 对话框的布局晚于页面加载完成，Leaflet 此时缓存的容器尺寸偏小。
+      // 尺寸不对，缩放锚点（指针对应的地理坐标）就算错——表现为一放大就跑到别处。
+      function syncSize() {
+        map.invalidateSize({ animate: false, pan: false });
+      }
+      window.addEventListener('resize', syncSize);
+      if (window.ResizeObserver) {
+        new window.ResizeObserver(syncSize).observe(document.getElementById('map'));
+      }
+      window.setTimeout(syncSize, 80);
+      window.setTimeout(syncSize, 400);
+      window.setTimeout(syncSize, 1200);
 
       function pointFromLatLng(latlng) {
         return { lat: Number(latlng.lat), lng: Number(latlng.lng) };
@@ -76,8 +136,10 @@
           place('destination', { lat: Number(initial.destination.lat), lng: Number(initial.destination.lng) });
         }
         const center = state.origin || state.destination || { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+        syncSize();
         map.setView([center.lat, center.lng], initial && (state.origin || state.destination) ? 13 : 12);
       }
+      window.syncMapSize = syncSize;
       map.on('click', function (event) {
         const point = pointFromLatLng(event.latlng);
         place(state.origin ? 'destination' : 'origin', point);
