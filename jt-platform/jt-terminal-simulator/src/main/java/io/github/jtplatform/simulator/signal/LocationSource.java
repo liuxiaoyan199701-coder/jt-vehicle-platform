@@ -26,4 +26,24 @@ public interface LocationSource {
      * @return 位置，或 {@code null} 表示本周期不上报
      */
     LocationFix sample(Instant now);
+
+    /** 当前采样是否处于盲区；默认来源没有盲区语义。 */
+    default boolean inBlindspot() {
+        return false;
+    }
+
+    /** 取出盲区期间缓存的位置，按设备时间升序返回。 */
+    default java.util.List<LocationFix> drainBlindspot() {
+        return java.util.List.of();
+    }
+
+    default void enterBlindspot() {
+    }
+
+    default void leaveBlindspot() {
+    }
+
+    default int blindspotCachedCount() {
+        return 0;
+    }
 }

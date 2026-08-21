@@ -80,6 +80,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label lastReportState = new Label("最近上报 -");
     private final Label streamState = new Label("推流 空闲");
     private final Label recordingState = new Label("录像 未收到指令");
+    private final Label blindspotState = new Label("盲区 未进入 · 缓存 0 点");
     private final TableView<FleetRuntime.FleetMemberState> fleetTable = new TableView<>();
     private final javafx.collections.ObservableList<FleetRuntime.FleetMemberState> fleetRows =
             FXCollections.observableArrayList();
@@ -152,6 +153,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         lastReportState.getStyleClass().add("status-item");
         streamState.getStyleClass().add("status-item");
         recordingState.getStyleClass().add("status-item");
+        blindspotState.getStyleClass().add("status-item");
         DriverConfig rememberedDriver = initialConfig.driver();
         driverName.setText(rememberedDriver.name());
         driverIdCard.setText(rememberedDriver.idCard());
@@ -273,7 +275,12 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         tripPanel.setPadding(new Insets(16));
         Button tripAction = new Button("切换行程");
         tripAction.setOnAction(event -> toggleTrip());
-        tripPanel.getChildren().add(tripAction);
+        Button enterBlindspot = new Button("进入盲区");
+        Button leaveBlindspot = new Button("离开盲区");
+        enterBlindspot.setOnAction(event -> operations.enterBlindspot());
+        leaveBlindspot.setOnAction(event -> operations.leaveBlindspot());
+        tripPanel.getChildren().addAll(tripAction, blindspotState,
+                new HBox(8, enterBlindspot, leaveBlindspot));
         tabs.getTabs().setAll(
                 tab("行程", tripPanel),
                 tab("视频推流", previewPanel),
@@ -465,6 +472,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 new Separator(Orientation.VERTICAL), tripState, new Separator(Orientation.VERTICAL),
                 streamState, new Separator(Orientation.VERTICAL), lastReportState,
                 new Separator(Orientation.VERTICAL), recordingState,
+            new Separator(Orientation.VERTICAL), blindspotState,
             new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
         status.getStyleClass().add("status-bar");
@@ -521,13 +529,18 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         configuration.clearErrors();
         SimulatorConfig config = validation.config().orElseThrow();
         SimulatorConfig previous = operations.currentConfig();
+        io.github.jtplatform.simulator.config.TripConfig checkedTrip = config.trip();
+        io.github.jtplatform.simulator.config.TripConfig preservedTrip = new io.github.jtplatform.simulator.config.TripConfig(
+                checkedTrip.autoStart(), checkedTrip.amapKey(), checkedTrip.originLat(), checkedTrip.originLng(),
+                checkedTrip.destinationLat(), checkedTrip.destinationLng(), checkedTrip.speedKph(),
+                checkedTrip.reportIntervalSeconds(), checkedTrip.roundTrip(), previous.trip().blindspots());
         DriverConfig driver = new DriverConfig(driverName.getText(), driverIdCard.getText(),
                 driverLicenseNo.getText(), driverInstitution.getText(), driverValidPeriod.getText());
         return new SimulatorConfig(config.signalHost(), config.signalPort(), config.version(),
                 config.mobileNo(), config.deviceId(), config.channel(), config.registration(),
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
-                config.maxPayloadBytes(), config.trip(), driver, previous.alarm(), config.simFormat(),
+                config.maxPayloadBytes(), preservedTrip, driver, previous.alarm(), config.simFormat(),
                 config.recording());
     }
 
@@ -691,6 +704,11 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     @Override
     public void onRecordingEvent(String detail) {
         runOnFx(() -> recordingState.setText("录像 " + detail));
+    }
+
+    @Override
+    public void onBlindspotEvent(String detail) {
+        runOnFx(() -> blindspotState.setText("盲区 " + detail));
     }
 
     @Override

@@ -237,6 +237,32 @@ public final class SimulatorRuntime implements SimulatorOperations {
         log.info("fleet", "Selected vehicle " + index);
     }
 
+    @Override
+    public void enterBlindspot() {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.enterBlindspot();
+        } else if (signalClient != null) {
+            signalClient.enterBlindspot();
+        }
+    }
+
+    @Override
+    public void leaveBlindspot() {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.leaveBlindspot();
+        } else if (signalClient != null) {
+            signalClient.leaveBlindspot();
+        }
+    }
+
+    @Override
+    public int blindspotCachedCount() {
+        if (currentConfig.get().fleet().enabled()) {
+            return fleetRuntime.blindspotCachedCount();
+        }
+        return signalClient == null ? 0 : signalClient.blindspotCachedCount();
+    }
+
     private void onFleetState(FleetRuntime.FleetMemberState state) {
         listener.onFleetState(state);
     }
@@ -622,6 +648,14 @@ public final class SimulatorRuntime implements SimulatorOperations {
             if (currentSignal(generation)) {
                 log.info("recording", detail);
                 listener.onRecordingEvent(detail);
+            }
+        }
+
+        @Override
+        public void onBlindspotEvent(String detail) {
+            if (currentSignal(generation)) {
+                log.info("signal", detail);
+                listener.onBlindspotEvent(detail);
             }
         }
     }

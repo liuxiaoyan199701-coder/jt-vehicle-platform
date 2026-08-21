@@ -70,6 +70,16 @@ public interface SimulatorOperations extends AutoCloseable {
     default void selectFleetMember(int index) {
     }
 
+    default void enterBlindspot() {
+    }
+
+    default void leaveBlindspot() {
+    }
+
+    default int blindspotCachedCount() {
+        return 0;
+    }
+
     default CompletionStage<Void> sendDriverCard(
             DriverConfig driver, io.github.jtplatform.simulator.signal.SignalClient.DriverAction action) {
         return java.util.concurrent.CompletableFuture.failedFuture(

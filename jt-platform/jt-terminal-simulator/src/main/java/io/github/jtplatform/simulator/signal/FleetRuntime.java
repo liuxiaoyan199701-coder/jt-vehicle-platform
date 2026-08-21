@@ -80,6 +80,21 @@ public final class FleetRuntime implements AutoCloseable {
         return selectedIndex;
     }
 
+    public void enterBlindspot() {
+        SignalClient current = member(selectedIndex).client;
+        if (current != null) current.enterBlindspot();
+    }
+
+    public void leaveBlindspot() {
+        SignalClient current = member(selectedIndex).client;
+        if (current != null) current.leaveBlindspot();
+    }
+
+    public int blindspotCachedCount() {
+        SignalClient current = member(selectedIndex).client;
+        return current == null ? 0 : current.blindspotCachedCount();
+    }
+
     public void setAlarm(int bit, boolean enabled) {
         SignalClient current = member(selectedIndex).client;
         if (current != null) {

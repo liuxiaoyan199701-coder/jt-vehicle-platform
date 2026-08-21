@@ -26,4 +26,7 @@ public interface SignalListener {
 
     default void onRecordingEvent(String detail) {
     }
+
+    default void onBlindspotEvent(String detail) {
+    }
 }
