@@ -28,6 +28,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   media: () => import("@/views/media/index.vue"),
   monitor: () => import("@/views/monitor/index.vue"),
   ota: () => import("@/views/ota/index.vue"),
+  recording: () => import("@/views/recording/index.vue"),
   register: () => import("@/views/register/index.vue"),
   report: () => import("@/views/report/index.vue"),
   rule: () => import("@/views/rule/index.vue"),

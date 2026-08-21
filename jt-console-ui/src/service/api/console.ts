@@ -350,6 +350,37 @@ export function openStream(deviceId: string, channel: number, streamKind: 'main'
   });
 }
 
+export interface RecordingRange {
+  startTime: string;
+  endTime: string;
+}
+
+export function searchRecordings(
+  deviceId: string,
+  channel: number,
+  startTime: string,
+  endTime: string,
+  streamKind: 'main' | 'sub' = 'main'
+) {
+  return request<RecordingRange[]>({
+    url: '/recordings/search',
+    params: { deviceId, channel, streamKind, startTime, endTime }
+  });
+}
+
+export function openPlaybackStream(
+  deviceId: string,
+  channel: number,
+  startTime: string,
+  endTime: string
+) {
+  return request<StreamTicket>({
+    url: '/stream/open',
+    method: 'post',
+    data: { deviceId, channel, streamKind: 'playback', startTime, endTime }
+  });
+}
+
 // ---------------- 运营首页 ----------------
 
 export function fetchDashboardOverview() {

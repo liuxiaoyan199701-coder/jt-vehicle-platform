@@ -168,6 +168,17 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'recording',
+    path: '/recording',
+    component: 'layout.base$view.recording',
+    meta: {
+      title: 'recording',
+      i18nKey: 'route.recording',
+      icon: 'mdi:video-vintage',
+      order: 8
+    }
+  },
+  {
     name: 'register',
     path: '/register',
     component: 'layout.blank$view.register',

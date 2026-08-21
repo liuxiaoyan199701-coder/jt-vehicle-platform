@@ -31,6 +31,7 @@ declare module "@elegant-router/types" {
     "media": "/media";
     "monitor": "/monitor";
     "ota": "/ota";
+    "recording": "/recording";
     "register": "/register";
     "report": "/report";
     "rule": "/rule";
@@ -91,6 +92,7 @@ declare module "@elegant-router/types" {
     | "media"
     | "monitor"
     | "ota"
+    | "recording"
     | "register"
     | "report"
     | "rule"
@@ -126,6 +128,7 @@ declare module "@elegant-router/types" {
     | "media"
     | "monitor"
     | "ota"
+    | "recording"
     | "register"
     | "report"
     | "rule"

@@ -177,6 +177,7 @@ const routeMap: RouteMap = {
   "media": "/media",
   "monitor": "/monitor",
   "ota": "/ota",
+  "recording": "/recording",
   "register": "/register",
   "report": "/report",
   "rule": "/rule",

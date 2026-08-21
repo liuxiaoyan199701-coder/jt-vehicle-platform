@@ -237,6 +237,7 @@ const local: App.I18n.Schema = {
     rule: 'Alarm Rules',
     report: 'Reports',
     ota: 'OTA Upgrades',
+    recording: 'Recording Playback',
     vehicle: 'Vehicles',
     media: 'Snapshots',
     ai: 'AI Assistant',

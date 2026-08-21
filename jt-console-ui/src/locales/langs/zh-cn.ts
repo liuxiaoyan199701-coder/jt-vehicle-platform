@@ -233,6 +233,7 @@ const local: App.I18n.Schema = {
     rule: '告警规则',
     report: '运营报表',
     ota: 'OTA 升级',
+    recording: '录像回放',
     vehicle: '车辆档案',
     media: '抓拍照片',
     ai: 'AI 助手',
