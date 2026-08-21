@@ -230,7 +230,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
                     previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
                     previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
                     previous.maxPayloadBytes(), previous.trip(), previous.driver(), AlarmConfig.defaults(),
-                    previous.simFormat());
+                    previous.simFormat(), previous.recording());
             persistRuntimeConfig(updated);
         }
     }
@@ -248,7 +248,8 @@ public final class SimulatorRuntime implements SimulatorOperations {
                     previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
                     previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
                     previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), alarm, previous.simFormat()));
+                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), alarm, previous.simFormat(),
+                    previous.recording()));
         }
     }
 
@@ -271,7 +272,8 @@ public final class SimulatorRuntime implements SimulatorOperations {
                     previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
                     previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
                     previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), next, previous.simFormat()));
+                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), next, previous.simFormat(),
+                    previous.recording()));
         }
     }
 
@@ -287,7 +289,8 @@ public final class SimulatorRuntime implements SimulatorOperations {
                     previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
                     previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
                     previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
-                    previous.maxPayloadBytes(), previous.trip(), driver, previous.alarm(), previous.simFormat());
+                    previous.maxPayloadBytes(), previous.trip(), driver, previous.alarm(), previous.simFormat(),
+                    previous.recording());
             currentConfig.set(updated);
             try {
                 configStore.save(updated);
@@ -552,6 +555,14 @@ public final class SimulatorRuntime implements SimulatorOperations {
         public void onLocationReported(java.time.Instant timestamp) {
             if (currentSignal(generation)) {
                 listener.onLocationReported(timestamp);
+            }
+        }
+
+        @Override
+        public void onRecordingEvent(String detail) {
+            if (currentSignal(generation)) {
+                log.info("recording", detail);
+                listener.onRecordingEvent(detail);
             }
         }
     }

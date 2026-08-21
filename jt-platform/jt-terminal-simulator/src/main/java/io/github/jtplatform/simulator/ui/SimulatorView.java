@@ -75,6 +75,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label deviceState = new Label("设备 -");
     private final Label lastReportState = new Label("最近上报 -");
     private final Label streamState = new Label("推流 空闲");
+    private final Label recordingState = new Label("录像 未收到指令");
     private final Label activity = new Label("就绪");
     private final ImageView previewImage = new ImageView();
     private final Label previewPlaceholder = new Label("暂无预览画面");
@@ -143,6 +144,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         deviceState.getStyleClass().add("status-item");
         lastReportState.getStyleClass().add("status-item");
         streamState.getStyleClass().add("status-item");
+        recordingState.getStyleClass().add("status-item");
         DriverConfig rememberedDriver = initialConfig.driver();
         driverName.setText(rememberedDriver.name());
         driverIdCard.setText(rememberedDriver.idCard());
@@ -271,6 +273,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 tab("拍照", new VBox(12, panelTitle("拍照"), new Label("等待平台下发 0x8801 拍照命令。"))),
                 tab("告警模拟", createAlarmPanel()),
                 tab("驾驶员", createDriverPanel()),
+                tab("录像", createRecordingPanel()),
                 tab("日志", logPanel));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getStyleClass().add("operations-tabs");
@@ -313,6 +316,16 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         });
         panel.getChildren().addAll(speed, clear,
                 new Label("置位后会随每次位置上报持续携带，平台负责生成与去重告警。"));
+        return panel;
+    }
+
+    private Node createRecordingPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        panel.getChildren().addAll(panelTitle("设备侧录像（9205 / 9201）"), recordingState,
+                new Label("资源条数、时间段和通道在左侧配置 → 录像页签维护。"),
+                new Label("收到 9205 后自动回 T1205；收到 9201 后按指令目标推送合成回放流。"));
         return panel;
     }
 
@@ -404,7 +417,8 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         HBox status = new HBox(12, ffmpegState, new Separator(Orientation.VERTICAL), deviceState,
                 new Separator(Orientation.VERTICAL), tripState, new Separator(Orientation.VERTICAL),
                 streamState, new Separator(Orientation.VERTICAL), lastReportState,
-                new Separator(Orientation.VERTICAL), activity);
+                new Separator(Orientation.VERTICAL), recordingState,
+            new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
         status.getStyleClass().add("status-bar");
         status.setAlignment(Pos.CENTER_LEFT);
@@ -466,7 +480,8 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 config.mobileNo(), config.deviceId(), config.channel(), config.registration(),
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
-                config.maxPayloadBytes(), config.trip(), driver, previous.alarm(), config.simFormat());
+                config.maxPayloadBytes(), config.trip(), driver, previous.alarm(), config.simFormat(),
+                config.recording());
     }
 
     private void browseFfmpeg() {
@@ -624,6 +639,11 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     @Override
     public void onDriverAction(String detail) {
         runOnFx(() -> activity.setText(detail));
+    }
+
+    @Override
+    public void onRecordingEvent(String detail) {
+        runOnFx(() -> recordingState.setText("录像 " + detail));
     }
 
     @Override

@@ -20,4 +20,7 @@ public interface SignalListener {
 
     default void onLocationReported(java.time.Instant timestamp) {
     }
+
+    default void onRecordingEvent(String detail) {
+    }
 }

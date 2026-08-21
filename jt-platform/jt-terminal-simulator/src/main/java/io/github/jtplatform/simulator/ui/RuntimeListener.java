@@ -31,4 +31,7 @@ public interface RuntimeListener {
 
     default void onDriverAction(String detail) {
     }
+
+    default void onRecordingEvent(String detail) {
+    }
 }

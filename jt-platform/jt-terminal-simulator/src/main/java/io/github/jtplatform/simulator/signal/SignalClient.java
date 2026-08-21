@@ -6,6 +6,7 @@ import io.github.jtplatform.simulator.config.SimulatorConfig;
 import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.TerminalTime;
 import io.github.jtplatform.simulator.config.TripConfig;
+import io.github.jtplatform.simulator.config.RecordingConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -24,10 +25,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.DoubleSupplier;
 import org.yzh.protocol.basics.JTMessage;
+import org.yzh.protocol.commons.JT1078;
 import org.yzh.protocol.commons.JT808;
 import org.yzh.protocol.commons.transform.AttributeKey;
 import org.yzh.protocol.t1078.T9101;
 import org.yzh.protocol.t1078.T9102;
+import org.yzh.protocol.t1078.T9201;
+import org.yzh.protocol.t1078.T9205;
+import org.yzh.protocol.t1078.T1205;
 import org.yzh.protocol.t808.T0001;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
@@ -60,6 +65,8 @@ public final class SignalClient implements AutoCloseable {
     private final SerialNumber serialNumbers = new SerialNumber();
     private final Jt808MessageCodec codec = new Jt808MessageCodec();
     private final PhotoCaptureHandler photoHandler;
+    private final RecordingResourceGenerator recordingResources = new RecordingResourceGenerator();
+    private final SyntheticRecordingPlayback recordingPlayback;
     private final ExecutorService commandExecutor = Executors.newSingleThreadExecutor(
             Thread.ofVirtual().name("jt-simulator-signal-command-", 0).factory());
     private final AtomicBoolean connectionRequested = new AtomicBoolean();
@@ -106,6 +113,7 @@ public final class SignalClient implements AutoCloseable {
         this.timing = Objects.requireNonNull(timing, "timing");
         this.jitterSource = Objects.requireNonNull(jitterSource, "jitterSource");
         this.photoHandler = new PhotoCaptureHandler(config, this::logDiagnostic);
+        this.recordingPlayback = new SyntheticRecordingPlayback(config);
     }
 
     private void logDiagnostic(String message) {
@@ -367,6 +375,10 @@ public final class SignalClient implements AutoCloseable {
                 dispatchResponse(current, message, () -> await(commandHandler.control(control)));
             } else if (message instanceof T8801 photo && message.getMessageId() == JT808.摄像头立即拍摄命令) {
                 handlePhotoCommand(current, photo);
+            } else if (message instanceof T9205 query && message.getMessageId() == JT1078.查询资源列表) {
+                handleRecordingQuery(current, query);
+            } else if (message instanceof T9201 playback && message.getMessageId() == JT1078.平台下发远程录像回放请求) {
+                handleRecordingPlayback(current, playback);
             } else if (message.getMessageId() == JT808.平台通用应答
                     || message.getMessageId() == JT808.终端注册应答) {
                 // Platform responses are terminal events, not commands requiring another response.
@@ -421,6 +433,77 @@ public final class SignalClient implements AutoCloseable {
      * 手工设置分包字段会与编码器的头部长度计算错位，产生解码端「帧比声明长度短」
      * 的异常——这在网关侧 MultiPacketDecoderTest 的用法中有对照验证。
      */
+    private void handleRecordingQuery(Connection current, T9205 query) {
+        commandExecutor.execute(() -> {
+            try {
+                T1205 response = prepare(new T1205()
+                        .setResponseSerialNo(query.getSerialNo())
+                        .setItems(recordingResources.generate(config.recording(), Instant.now())),
+                        serialNumbers.next());
+                current.writer.write(response);
+                notifyRecording("9205 → T1205，资源数 " + response.getItems().size());
+            } catch (IOException | RuntimeException failure) {
+                reportError("recording query 0x9205", failure);
+                notifyRecording("9205 应答失败: " + safeMessage(failure));
+                current.close();
+            }
+        });
+    }
+
+    private void handleRecordingPlayback(Connection current, T9201 command) {
+        commandExecutor.execute(() -> {
+            RecordingPlaybackRequest request;
+            int result;
+            try {
+                request = RecordingPlaybackRequest.from(command);
+                result = T0001.Success;
+            } catch (RuntimeException invalid) {
+                reportError("recording playback 0x9201", invalid);
+                notifyRecording("9201 参数无效: " + safeMessage(invalid));
+                request = null;
+                result = T0001.MessageError;
+            }
+            try {
+                current.writer.write(generalResponse(command, result));
+            } catch (IOException failure) {
+                reportError("writing 9201 response", failure);
+                current.close();
+                return;
+            }
+            if (request == null || result != T0001.Success) {
+                return;
+            }
+            RecordingPlaybackRequest acceptedRequest = request;
+            notifyRecording("9201 已应答，开始回放 " + acceptedRequest.host() + ':' + acceptedRequest.tcpPort());
+            Thread.ofVirtual().name("jt-simulator-recording-playback").start(() -> {
+                try {
+                    recordingPlayback.play(acceptedRequest);
+                    notifyRecording("9201 回放结束");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    notifyRecording("9201 回放中断");
+                } catch (IOException | RuntimeException failure) {
+                    reportError("recording playback stream", failure);
+                    notifyRecording("9201 推流失败: " + safeMessage(failure));
+                }
+            });
+        });
+    }
+
+    private static String safeMessage(Throwable failure) {
+        String message = failure.getMessage();
+        return message == null || message.isBlank()
+                ? failure.getClass().getSimpleName() : message;
+    }
+
+    private void notifyRecording(String detail) {
+        try {
+            listener.onRecordingEvent(detail);
+        } catch (RuntimeException ignored) {
+            // 录���状态回调不得影响信令连接。
+        }
+    }
+
     private void uploadPhoto(Connection current, PhotoCaptureHandler.Photo photo, int channelId)
             throws IOException {
         T0801 upload = new T0801()

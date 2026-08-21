@@ -6,6 +6,7 @@ import io.github.jtplatform.simulator.config.SimulatorConfig;
 import io.github.jtplatform.simulator.config.AlarmConfig;
 import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.TripConfig;
+import io.github.jtplatform.simulator.config.RecordingConfig;
 import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import io.github.jtplatform.simulator.config.VideoProfile;
 import io.github.jtplatform.simulator.trip.CoordinateTransform;
@@ -49,7 +50,11 @@ public record SimulatorFormData(
         String driverLicenseNo,
         String driverInstitution,
         String driverValidPeriod,
-        String overspeedKph) {
+        String overspeedKph,
+        String recordingCount,
+        String recordingStart,
+        String recordingEnd,
+        String recordingChannel) {
 
     /** 兼容新增表单字段前的测试/调用方构造方式。 */
     public SimulatorFormData(
@@ -64,7 +69,9 @@ public record SimulatorFormData(
                 makerId, deviceModel, plateColor, plateNo, imei, softwareVersion, ffmpegPath,
                 cameraName, microphoneName, mainProfile, subProfile, previewWidth, previewHeight,
                 previewFrameRate, maxPayloadBytes, trip, Jt1078SimFormat.STANDARD,
-                "", "", "", "", "", Integer.toString(AlarmConfig.DEFAULT_OVERSPEED_KPH));
+                "", "", "", "", "", Integer.toString(AlarmConfig.DEFAULT_OVERSPEED_KPH),
+                Integer.toString(RecordingConfig.DEFAULT_RESOURCE_COUNT),
+                RecordingConfig.DEFAULT_START_TIME, RecordingConfig.DEFAULT_END_TIME, "1");
     }
 
     public SimulatorFormData {
@@ -98,6 +105,10 @@ public record SimulatorFormData(
         driverInstitution = normalize(driverInstitution);
         driverValidPeriod = normalize(driverValidPeriod);
         overspeedKph = normalize(overspeedKph);
+        recordingCount = normalize(recordingCount);
+        recordingStart = normalize(recordingStart);
+        recordingEnd = normalize(recordingEnd);
+        recordingChannel = normalize(recordingChannel);
     }
 
     public static SimulatorFormData from(SimulatorConfig config) {
@@ -130,7 +141,9 @@ public record SimulatorFormData(
                 TripFormData.from(config.trip()), config.simFormat(),
                 config.driver().name(), config.driver().idCard(), config.driver().licenseNo(),
                 config.driver().institution(), config.driver().licenseValidPeriod(),
-                Integer.toString(config.alarm().overspeedKph()));
+                Integer.toString(config.alarm().overspeedKph()),
+                Integer.toString(config.recording().resourceCount()), config.recording().startTime(),
+                config.recording().endTime(), Integer.toString(config.recording().channel()));
     }
 
     public ConfigValidation validate() {
@@ -179,6 +192,10 @@ public record SimulatorFormData(
                 "单片载荷", 1, 65_535, errors);
         Integer checkedOverspeed = integer(overspeedKph, ConfigField.OVERSPEED_KPH,
                 "超速联动速度", 1, 300, errors);
+        Integer checkedRecordingCount = integer(recordingCount, ConfigField.RECORDING_COUNT,
+                "模拟录像条数", 0, 100, errors);
+        Integer checkedRecordingChannel = integer(recordingChannel, ConfigField.RECORDING_CHANNEL,
+                "录像通道", 1, 255, errors);
 
         TripConfig checkedTrip = trip(errors);
 
@@ -217,7 +234,9 @@ public record SimulatorFormData(
                     new DriverConfig(driverName, driverIdCard, driverLicenseNo,
                             driverInstitution, driverValidPeriod),
                     new AlarmConfig(0, checkedOverspeed),
-                    simFormat);
+                    simFormat,
+                    new RecordingConfig(checkedRecordingCount, recordingStart, recordingEnd,
+                            checkedRecordingChannel));
             return new ConfigValidation(Optional.of(config), Map.of());
         } catch (IllegalArgumentException unexpected) {
             return new ConfigValidation(

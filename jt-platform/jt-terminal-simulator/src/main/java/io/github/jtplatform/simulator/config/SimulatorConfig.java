@@ -25,7 +25,8 @@ public record SimulatorConfig(
         TripConfig trip,
         DriverConfig driver,
         AlarmConfig alarm,
-        Jt1078SimFormat simFormat) {
+        Jt1078SimFormat simFormat,
+        RecordingConfig recording) {
 
     public static final int DEFAULT_SIGNAL_PORT = 7_100;
     public static final int DEFAULT_MAX_PAYLOAD_BYTES = 1_400;
@@ -40,7 +41,22 @@ public record SimulatorConfig(
         this(signalHost, signalPort, version, mobileNo, deviceId, channel, registration,
                 ffmpegPath, cameraName, microphoneName, mainProfile, subProfile,
                 previewWidth, previewHeight, previewFps, maxPayloadBytes, trip,
-                DriverConfig.defaults(), AlarmConfig.defaults(), Jt1078SimFormat.STANDARD);
+                DriverConfig.defaults(), AlarmConfig.defaults(), Jt1078SimFormat.STANDARD,
+                RecordingConfig.defaults());
+    }
+
+    /** 在已有功能字段之后加入录像配置，保持上一变更的源码调用兼容。 */
+    public SimulatorConfig(
+            String signalHost, int signalPort, Jt808Version version, String mobileNo,
+            String deviceId, int channel, RegistrationConfig registration, String ffmpegPath,
+            String cameraName, String microphoneName, VideoProfile mainProfile,
+            VideoProfile subProfile, int previewWidth, int previewHeight, int previewFps,
+            int maxPayloadBytes, TripConfig trip, DriverConfig driver, AlarmConfig alarm,
+            Jt1078SimFormat simFormat) {
+        this(signalHost, signalPort, version, mobileNo, deviceId, channel, registration,
+                ffmpegPath, cameraName, microphoneName, mainProfile, subProfile,
+                previewWidth, previewHeight, previewFps, maxPayloadBytes, trip, driver, alarm,
+                simFormat, RecordingConfig.defaults());
     }
 
     public SimulatorConfig {
@@ -72,13 +88,11 @@ public record SimulatorConfig(
         if (maxPayloadBytes < 1 || maxPayloadBytes > 65_535) {
             throw new IllegalArgumentException("maxPayloadBytes must be in range 1..65535");
         }
-        // 这里必须容错而不能 requireNonNull：本字段是后加的，此前写下的每一个 config.json 都没有它。
-        // 抛异常会让那些文件整份加载失败，而上层的兜底是回落到全部默认值——用户的信令地址、终端号、
-        // 编码器路径会因为一个新增的可选字段而一起丢掉。
         trip = trip == null ? TripConfig.defaults() : trip;
         driver = driver == null ? DriverConfig.defaults() : driver;
         alarm = alarm == null ? AlarmConfig.defaults() : alarm;
         simFormat = simFormat == null ? Jt1078SimFormat.STANDARD : simFormat;
+        recording = recording == null ? RecordingConfig.defaults() : recording;
     }
 
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
@@ -102,7 +116,8 @@ public record SimulatorConfig(
             @JsonProperty("trip") TripConfig trip,
             @JsonProperty("driver") DriverConfig driver,
             @JsonProperty("alarm") AlarmConfig alarm,
-            @JsonProperty("simFormat") Jt1078SimFormat simFormat) {
+            @JsonProperty("simFormat") Jt1078SimFormat simFormat,
+            @JsonProperty("recording") RecordingConfig recording) {
         SimulatorConfig defaults = defaults();
         return new SimulatorConfig(
                 signalHost == null ? defaults.signalHost() : signalHost,
@@ -124,45 +139,24 @@ public record SimulatorConfig(
                 trip == null ? defaults.trip() : trip,
                 driver == null ? defaults.driver() : driver,
                 alarm == null ? defaults.alarm() : alarm,
-                simFormat == null ? defaults.simFormat() : simFormat);
+                simFormat == null ? defaults.simFormat() : simFormat,
+                recording == null ? defaults.recording() : recording);
     }
 
     public static SimulatorConfig defaults() {
         return new SimulatorConfig(
-                "127.0.0.1",
-                DEFAULT_SIGNAL_PORT,
-                Jt808Version.V2013,
-                "138000000000",
-                "1380000",
-                1,
-                RegistrationConfig.defaults(),
-                "",
-                "",
-                "",
-                VideoProfile.defaultMain(),
-                VideoProfile.defaultSub(),
-                640,
-                360,
-                5,
-                DEFAULT_MAX_PAYLOAD_BYTES,
-                TripConfig.defaults(),
-                DriverConfig.defaults(),
-                AlarmConfig.defaults(),
-                Jt1078SimFormat.STANDARD);
+                "127.0.0.1", DEFAULT_SIGNAL_PORT, Jt808Version.V2013,
+                "138000000000", "1380000", 1, RegistrationConfig.defaults(), "", "", "",
+                VideoProfile.defaultMain(), VideoProfile.defaultSub(), 640, 360, 5,
+                DEFAULT_MAX_PAYLOAD_BYTES, TripConfig.defaults(), DriverConfig.defaults(),
+                AlarmConfig.defaults(), Jt1078SimFormat.STANDARD, RecordingConfig.defaults());
     }
 
-    /**
-     * 复制并替换编码器路径。
-     *
-     * <p>检测到外部编码器后会自动存盘，因此**每个新增字段都必须在这里透传**——漏一个，就会在
-     * 检测编码器这个看似无关的时刻悄悄把它抹掉。
-     */
     public SimulatorConfig withFfmpegPath(String resolvedPath) {
-        return new SimulatorConfig(
-                signalHost, signalPort, version, mobileNo, deviceId, channel,
-                registration, resolvedPath, cameraName, microphoneName,
-                mainProfile, subProfile, previewWidth, previewHeight, previewFps,
-                maxPayloadBytes, trip, driver, alarm, simFormat);
+        return new SimulatorConfig(signalHost, signalPort, version, mobileNo, deviceId, channel,
+                registration, resolvedPath, cameraName, microphoneName, mainProfile, subProfile,
+                previewWidth, previewHeight, previewFps, maxPayloadBytes, trip, driver, alarm,
+                simFormat, recording);
     }
 
     private static String requireText(String value, String name) {

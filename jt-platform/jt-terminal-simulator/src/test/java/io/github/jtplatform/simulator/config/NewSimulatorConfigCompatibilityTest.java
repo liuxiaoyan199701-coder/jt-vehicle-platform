@@ -32,5 +32,6 @@ class NewSimulatorConfigCompatibilityTest {
         assertEquals(AlarmConfig.defaults(), loaded.alarm());
         assertEquals(DriverConfig.defaults(), loaded.driver());
         assertEquals(Jt1078SimFormat.STANDARD, loaded.simFormat());
+        assertEquals(RecordingConfig.defaults(), loaded.recording());
     }
 }
