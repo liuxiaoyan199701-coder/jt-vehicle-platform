@@ -86,6 +86,11 @@ public interface SimulatorOperations extends AutoCloseable {
     default void setUpgradeInstallDelayMillis(int delayMillis) {
     }
 
+    default CompletionStage<Void> sendWaybill(String content) {
+        return java.util.concurrent.CompletableFuture.failedFuture(
+                new IllegalStateException("waybill simulation is not available"));
+    }
+
     default CompletionStage<Void> sendDriverCard(
             DriverConfig driver, io.github.jtplatform.simulator.signal.SignalClient.DriverAction action) {
         return java.util.concurrent.CompletableFuture.failedFuture(

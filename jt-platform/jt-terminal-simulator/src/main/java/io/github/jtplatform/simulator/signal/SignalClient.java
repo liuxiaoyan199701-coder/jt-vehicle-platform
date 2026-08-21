@@ -43,6 +43,7 @@ import org.yzh.protocol.t808.T0104;
 import org.yzh.protocol.t808.T0107;
 import org.yzh.protocol.t808.T0108;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0701;
 import org.yzh.protocol.t808.T0702;
 import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0801;
@@ -240,6 +241,38 @@ public final class SignalClient implements AutoCloseable {
             throw new IllegalArgumentException("speedKph must be finite and non-negative");
         }
         overspeedKph.set(speedKph);
+    }
+
+    public CompletionStage<Void> sendWaybill(String content) {
+        Objects.requireNonNull(content, "content");
+        if (content.isBlank()) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalArgumentException("waybill content must not be blank"));
+        }
+        Connection current = connection;
+        if (current == null || current.closed.get() || state != SignalState.ONLINE) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalStateException("808 signal is not online"));
+        }
+        byte[] data = content.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        return java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                T0701 message = new T0701().setData(data);
+                current.writer.write(prepare(message, serialNumbers.next()));
+                notifyWaybill("0701 已发送 " + data.length + " 字节");
+            } catch (IOException failure) {
+                throw new java.util.concurrent.CompletionException(failure);
+            }
+        }, commandExecutor);
+    }
+
+    T0701 waybillForTest(String content) {
+        Objects.requireNonNull(content, "content");
+        if (content.isBlank()) {
+            throw new IllegalArgumentException("waybill content must not be blank");
+        }
+        return prepare(new T0701().setData(content.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                serialNumbers.next());
     }
 
     public CompletionStage<Void> sendDriverCard(DriverConfig driver, DriverAction action) {
@@ -716,6 +749,13 @@ public final class SignalClient implements AutoCloseable {
     private void notifyUpgrade(String detail) {
         try {
             listener.onUpgradeEvent(detail);
+        } catch (RuntimeException ignored) {
+        }
+    }
+
+    private void notifyWaybill(String detail) {
+        try {
+            listener.onWaybillEvent(detail);
         } catch (RuntimeException ignored) {
         }
     }

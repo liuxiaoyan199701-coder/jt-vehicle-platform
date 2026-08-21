@@ -180,6 +180,14 @@ public final class SimulatorRuntime implements SimulatorOperations {
     public void startTrip() {
         ensureOpen();
         tripController.start();
+        SimulatorConfig snapshot = currentConfig.get();
+        if (snapshot.waybill().autoSendOnTripStart()) {
+            sendWaybill(snapshot.waybill().content()).whenComplete((ignored, failure) -> {
+                if (failure != null) {
+                    log.warn("waybill", "行程自动上报运单失败: " + safeMessage(failure));
+                }
+            });
+        }
     }
 
     @Override
@@ -272,6 +280,20 @@ public final class SimulatorRuntime implements SimulatorOperations {
     public void setUpgradeInstallDelayMillis(int delayMillis) {
         updateTerminalManagement(currentConfig.get().terminalManagement()
                 .withUpgradeInstallDelayMillis(delayMillis));
+    }
+
+    @Override
+    public CompletionStage<Void> sendWaybill(String content) {
+        SignalClient current = signalClient;
+        if (currentConfig.get().fleet().enabled()) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("fleet waybill sending is not available"));
+        }
+        if (current == null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("808 signal is not online"));
+        }
+        return current.sendWaybill(content);
     }
 
     private void updateTerminalManagement(
@@ -694,6 +716,14 @@ public final class SimulatorRuntime implements SimulatorOperations {
             if (currentSignal(generation)) {
                 log.info("terminal", (urgent ? "紧急 " : "") + content);
                 listener.onTerminalText(content, urgent);
+            }
+        }
+
+        @Override
+        public void onWaybillEvent(String detail) {
+            if (currentSignal(generation)) {
+                log.info("waybill", detail);
+                listener.onWaybillEvent(detail);
             }
         }
 

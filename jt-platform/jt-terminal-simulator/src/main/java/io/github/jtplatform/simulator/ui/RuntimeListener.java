@@ -53,6 +53,9 @@ public interface RuntimeListener {
     default void onFailNextUpgradeConsumed() {
     }
 
+    default void onWaybillEvent(String detail) {
+    }
+
     default void onFleetState(io.github.jtplatform.simulator.signal.FleetRuntime.FleetMemberState state) {
     }
 }

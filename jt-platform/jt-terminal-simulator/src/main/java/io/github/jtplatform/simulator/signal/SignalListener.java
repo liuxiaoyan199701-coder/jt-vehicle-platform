@@ -42,6 +42,9 @@ public interface SignalListener {
     default void onTerminalText(String content, boolean urgent) {
     }
 
+    default void onWaybillEvent(String detail) {
+    }
+
     default void onFailNextUpgradeConsumed() {
     }
 }

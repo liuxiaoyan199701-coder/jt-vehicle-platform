@@ -33,7 +33,7 @@ public final class FleetIdentityDeriver {
                 template.subProfile(), template.previewWidth(), template.previewHeight(),
                 template.previewFps(), template.maxPayloadBytes(), template.trip(),
                 template.driver(), template.alarm(), template.simFormat(), template.recording(),
-                template.fleet(), template.terminalManagement());
+                template.fleet(), template.terminalManagement(), template.waybill());
     }
 
     private static String incrementDigits(String value, int increment, String field) {

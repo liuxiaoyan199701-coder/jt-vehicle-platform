@@ -34,6 +34,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
@@ -82,6 +83,10 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label streamState = new Label("推流 空闲");
     private final Label recordingState = new Label("录像 未收到指令");
     private final Label blindspotState = new Label("盲区 未进入 · 缓存 0 点");
+    private final Label waybillState = new Label("运单 未发送");
+    private final ComboBox<String> waybillTemplate = new ComboBox<>();
+    private final TextArea waybillEditor = new TextArea();
+    private final CheckBox autoWaybill = new CheckBox("行程开始自动上报运单");
     private final Label terminalUpgradeState = new Label("升级 未收到包");
     private final ListView<String> terminalParametersView = new ListView<>();
     private final ListView<String> terminalCommandsView = new ListView<>();
@@ -166,6 +171,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         recordingState.getStyleClass().add("status-item");
         blindspotState.getStyleClass().add("status-item");
         terminalUpgradeState.getStyleClass().add("status-item");
+        waybillState.getStyleClass().add("status-item");
         DriverConfig rememberedDriver = initialConfig.driver();
         driverName.setText(rememberedDriver.name());
         driverIdCard.setText(rememberedDriver.idCard());
@@ -301,6 +307,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 tab("驾驶员", createDriverPanel()),
                 tab("录像", createRecordingPanel()),
                 tab("终端管理", createTerminalManagementPanel()),
+                tab("运单", createWaybillPanel()),
                 tab("车队", createFleetPanel()),
                 tab("日志", logPanel));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
@@ -484,6 +491,60 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         runOnFx(() -> failNextUpgrade.setSelected(false));
     }
 
+    private Node createWaybillPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        waybillTemplate.getItems().setAll("JSON 货运单", "纯文本运单");
+        waybillTemplate.getSelectionModel().select(0);
+        waybillTemplate.setOnAction(event -> waybillEditor.setText(
+                waybillTemplate.getSelectionModel().getSelectedIndex() == 1
+                        ? io.github.jtplatform.simulator.config.WaybillConfig.TEXT_TEMPLATE
+                        : io.github.jtplatform.simulator.config.WaybillConfig.JSON_TEMPLATE));
+        waybillEditor.setText(initialConfig.waybill().content());
+        waybillEditor.setWrapText(true);
+        waybillEditor.setPrefRowCount(8);
+        autoWaybill.setSelected(initialConfig.waybill().autoSendOnTripStart());
+        Button send = new Button("发送 0701 运单");
+        send.setOnAction(event -> {
+            String content = waybillEditor.getText();
+            operations.sendWaybill(content).whenComplete((ignored, failure) -> runOnFx(() -> {
+                if (failure == null) {
+                    waybillState.setText("运单 已发送");
+                    activity.setText("0701 运单已发送");
+                    saveWaybillConfig(content, autoWaybill.isSelected());
+                } else {
+                    waybillState.setText("运单 发送失败");
+                    activity.setText("0701 运单发送失败：" + safeMessage(failure));
+                }
+            }));
+        });
+        autoWaybill.setOnAction(event -> saveWaybillConfig(waybillEditor.getText(), autoWaybill.isSelected()));
+        panel.getChildren().addAll(panelTitle("电子运单（0701）"),
+                new HBox(8, new Label("预置模板"), waybillTemplate), waybillEditor,
+                new HBox(10, autoWaybill, send), waybillState,
+                new Label("正文按 UTF-8 编码发送，支持 JSON 或纯文本。"));
+        return panel;
+    }
+
+    private void saveWaybillConfig(String content, boolean autoSend) {
+        try {
+            SimulatorConfig updated = operations.currentConfig().withWaybill(
+                    new io.github.jtplatform.simulator.config.WaybillConfig(autoSend, content));
+            operations.saveConfig(updated);
+        } catch (IOException | RuntimeException failure) {
+            activity.setText("运单配置保存失败：" + safeMessage(failure));
+        }
+    }
+
+    @Override
+    public void onWaybillEvent(String detail) {
+        runOnFx(() -> {
+            waybillState.setText("运单 " + detail);
+            activity.setText(detail);
+        });
+    }
+
     private Node createDriverPanel() {
         VBox panel = new VBox(10);
         panel.setPadding(new Insets(16));
@@ -574,6 +635,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 streamState, new Separator(Orientation.VERTICAL), lastReportState,
                 new Separator(Orientation.VERTICAL), recordingState,
             new Separator(Orientation.VERTICAL), terminalUpgradeState,
+            new Separator(Orientation.VERTICAL), waybillState,
             new Separator(Orientation.VERTICAL), blindspotState,
             new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
@@ -643,7 +705,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
                 config.maxPayloadBytes(), preservedTrip, driver, previous.alarm(), config.simFormat(),
-                config.recording(), config.fleet(), previous.terminalManagement());
+                config.recording(), config.fleet(), previous.terminalManagement(), previous.waybill());
     }
 
     private void browseFfmpeg() {
