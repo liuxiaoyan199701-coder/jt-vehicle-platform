@@ -12,6 +12,7 @@ import io.github.jtplatform.simulator.media.FfmpegDiscovery;
 import io.github.jtplatform.simulator.media.FfmpegDiscoveryResult;
 import io.github.jtplatform.simulator.media.MediaStats;
 import io.github.jtplatform.simulator.signal.AlarmDefinition;
+import io.github.jtplatform.simulator.signal.FleetRuntime;
 import io.github.jtplatform.simulator.signal.SignalClient;
 import io.github.jtplatform.simulator.signal.SignalListener;
 import io.github.jtplatform.simulator.signal.SignalState;
@@ -46,6 +47,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
     private final Object configLock = new Object();
     private final MediaController mediaController;
     private final TripController tripController;
+    private final FleetRuntime fleetRuntime;
     private final AutoCloseable logSubscription;
 
     private volatile RuntimeListener listener = RuntimeListener.NOOP;
@@ -67,6 +69,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
         this.mediaController = new MediaController(currentConfig::get, new RuntimeMediaListener());
         // 与 MediaController 同构：构造一次，注入每一条连接。行程状态因此跨重连存活。
         this.tripController = new TripController(new RoutePlanner(), this::onTripState);
+        this.fleetRuntime = new FleetRuntime(this::onFleetState, mediaController);
         this.logSubscription = log.addListener(entry -> listener.onLog(entry));
     }
 
@@ -108,6 +111,12 @@ public final class SimulatorRuntime implements SimulatorOperations {
             return;
         }
         currentConfig.set(checked);
+        if (checked.fleet().enabled()) {
+            fleetRuntime.configure(checked, checked.fleet());
+            fleetRuntime.startAll();
+            log.info("fleet", "Starting " + checked.fleet().vehicleCount() + " simulated vehicles");
+            return;
+        }
         tripController.configure(checked.trip());
         closeSignalClient();
         long generation = ++signalGeneration;
@@ -198,6 +207,67 @@ public final class SimulatorRuntime implements SimulatorOperations {
     }
 
     @Override
+    public List<FleetRuntime.FleetMemberState> fleetStates() {
+        return fleetRuntime.states();
+    }
+
+    @Override
+    public void startFleet() {
+        fleetRuntime.startAll();
+    }
+
+    @Override
+    public void stopFleet() {
+        fleetRuntime.stopAll();
+    }
+
+    @Override
+    public void startFleetMember(int index) {
+        fleetRuntime.startOne(index);
+    }
+
+    @Override
+    public void stopFleetMember(int index) {
+        fleetRuntime.stopOne(index);
+    }
+
+    @Override
+    public void selectFleetMember(int index) {
+        fleetRuntime.select(index);
+        log.info("fleet", "Selected vehicle " + index);
+    }
+
+    @Override
+    public void enterBlindspot() {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.enterBlindspot();
+        } else if (signalClient != null) {
+            signalClient.enterBlindspot();
+        }
+    }
+
+    @Override
+    public void leaveBlindspot() {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.leaveBlindspot();
+        } else if (signalClient != null) {
+            signalClient.leaveBlindspot();
+        }
+    }
+
+    @Override
+    public int blindspotCachedCount() {
+        if (currentConfig.get().fleet().enabled()) {
+            return fleetRuntime.blindspotCachedCount();
+        }
+        return signalClient == null ? 0 : signalClient.blindspotCachedCount();
+    }
+
+    private void onFleetState(FleetRuntime.FleetMemberState state) {
+        listener.onFleetState(state);
+    }
+
+    @Override
     public SignalState signalState() {
         SignalClient current = signalClient;
         return current == null ? SignalState.DISCONNECTED : current.state();
@@ -210,6 +280,10 @@ public final class SimulatorRuntime implements SimulatorOperations {
 
     @Override
     public void setAlarm(AlarmDefinition alarm, boolean enabled) {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.setAlarm(alarm.bit(), enabled);
+            return;
+        }
         SignalClient current = signalClient;
         if (current != null) {
             current.setAlarm(alarm.bit(), enabled);
@@ -219,6 +293,10 @@ public final class SimulatorRuntime implements SimulatorOperations {
 
     @Override
     public void clearAlarms() {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.clearAlarms();
+            return;
+        }
         SignalClient current = signalClient;
         if (current != null) {
             current.clearAlarms();
@@ -237,6 +315,10 @@ public final class SimulatorRuntime implements SimulatorOperations {
 
     @Override
     public void setOverspeedKph(double speedKph) {
+        if (currentConfig.get().fleet().enabled()) {
+            fleetRuntime.setOverspeedKph(speedKph);
+            return;
+        }
         SignalClient current = signalClient;
         if (current != null) {
             current.setOverspeedKph(speedKph);
@@ -279,8 +361,10 @@ public final class SimulatorRuntime implements SimulatorOperations {
 
     @Override
     public CompletionStage<Void> sendDriverCard(DriverConfig driver, SignalClient.DriverAction action) {
-        SignalClient current = signalClient;
-        if (current == null) {
+        if (currentConfig.get().fleet().enabled()) {
+            return fleetRuntime.sendDriverCard(driver, action);
+        }
+        SignalClient current = signalClient;        if (current == null) {
             return CompletableFuture.failedFuture(new IllegalStateException("808 signal is not online"));
         }
         synchronized (configLock) {
@@ -491,6 +575,7 @@ public final class SimulatorRuntime implements SimulatorOperations {
         closed = true;
         listener = RuntimeListener.NOOP;
         closeSignalClient();
+        fleetRuntime.close();
         mediaController.close();
         background.shutdownNow();
         try {
@@ -563,6 +648,14 @@ public final class SimulatorRuntime implements SimulatorOperations {
             if (currentSignal(generation)) {
                 log.info("recording", detail);
                 listener.onRecordingEvent(detail);
+            }
+        }
+
+        @Override
+        public void onBlindspotEvent(String detail) {
+            if (currentSignal(generation)) {
+                log.info("signal", detail);
+                listener.onBlindspotEvent(detail);
             }
         }
     }

@@ -7,6 +7,7 @@ import io.github.jtplatform.simulator.config.AlarmConfig;
 import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.TripConfig;
 import io.github.jtplatform.simulator.config.RecordingConfig;
+import io.github.jtplatform.simulator.config.FleetConfig;
 import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import io.github.jtplatform.simulator.config.VideoProfile;
 import io.github.jtplatform.simulator.trip.CoordinateTransform;
@@ -54,7 +55,13 @@ public record SimulatorFormData(
         String recordingCount,
         String recordingStart,
         String recordingEnd,
-        String recordingChannel) {
+        String recordingChannel,
+        boolean fleetEnabled,
+        String fleetCount,
+        boolean fleetIncrementDevice,
+        boolean fleetIncrementMobile,
+        boolean fleetIncrementPlate,
+        String fleetDepartureInterval) {
 
     /** 兼容新增表单字段前的测试/调用方构造方式。 */
     public SimulatorFormData(
@@ -71,7 +78,9 @@ public record SimulatorFormData(
                 previewFrameRate, maxPayloadBytes, trip, Jt1078SimFormat.STANDARD,
                 "", "", "", "", "", Integer.toString(AlarmConfig.DEFAULT_OVERSPEED_KPH),
                 Integer.toString(RecordingConfig.DEFAULT_RESOURCE_COUNT),
-                RecordingConfig.DEFAULT_START_TIME, RecordingConfig.DEFAULT_END_TIME, "1");
+                RecordingConfig.DEFAULT_START_TIME, RecordingConfig.DEFAULT_END_TIME, "1",
+                false, "1", true, true, true,
+                Integer.toString(FleetConfig.DEFAULT_DEPARTURE_INTERVAL_SECONDS));
     }
 
     public SimulatorFormData {
@@ -109,6 +118,8 @@ public record SimulatorFormData(
         recordingStart = normalize(recordingStart);
         recordingEnd = normalize(recordingEnd);
         recordingChannel = normalize(recordingChannel);
+        fleetCount = normalize(fleetCount);
+        fleetDepartureInterval = normalize(fleetDepartureInterval);
     }
 
     public static SimulatorFormData from(SimulatorConfig config) {
@@ -143,7 +154,10 @@ public record SimulatorFormData(
                 config.driver().institution(), config.driver().licenseValidPeriod(),
                 Integer.toString(config.alarm().overspeedKph()),
                 Integer.toString(config.recording().resourceCount()), config.recording().startTime(),
-                config.recording().endTime(), Integer.toString(config.recording().channel()));
+                config.recording().endTime(), Integer.toString(config.recording().channel()),
+                config.fleet().enabled(), Integer.toString(config.fleet().vehicleCount()),
+                config.fleet().incrementDeviceId(), config.fleet().incrementMobileNo(),
+                config.fleet().incrementPlateNo(), Integer.toString(config.fleet().departureIntervalSeconds()));
     }
 
     public ConfigValidation validate() {
@@ -196,6 +210,10 @@ public record SimulatorFormData(
                 "模拟录像条数", 0, 100, errors);
         Integer checkedRecordingChannel = integer(recordingChannel, ConfigField.RECORDING_CHANNEL,
                 "录像通道", 1, 255, errors);
+        Integer checkedFleetCount = integer(fleetCount, ConfigField.FLEET_COUNT,
+                "车队台数", 1, FleetConfig.MAX_VEHICLES, errors);
+        Integer checkedFleetInterval = integer(fleetDepartureInterval,
+                ConfigField.FLEET_DEPARTURE_INTERVAL, "出发间隔", 0, 3_600, errors);
 
         TripConfig checkedTrip = trip(errors);
 
@@ -236,7 +254,9 @@ public record SimulatorFormData(
                     new AlarmConfig(0, checkedOverspeed),
                     simFormat,
                     new RecordingConfig(checkedRecordingCount, recordingStart, recordingEnd,
-                            checkedRecordingChannel));
+                            checkedRecordingChannel),
+                    new FleetConfig(fleetEnabled, checkedFleetCount, fleetIncrementDevice,
+                            fleetIncrementMobile, fleetIncrementPlate, checkedFleetInterval));
             return new ConfigValidation(Optional.of(config), Map.of());
         } catch (IllegalArgumentException unexpected) {
             return new ConfigValidation(

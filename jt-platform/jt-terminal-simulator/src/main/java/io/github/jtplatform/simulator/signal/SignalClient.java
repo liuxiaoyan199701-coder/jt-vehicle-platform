@@ -13,6 +13,7 @@ import java.net.Socket;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,6 +39,7 @@ import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
 import org.yzh.protocol.t808.T0200;
 import org.yzh.protocol.t808.T0702;
+import org.yzh.protocol.t808.T0704;
 import org.yzh.protocol.t808.T0801;
 import org.yzh.protocol.t808.T0805;
 import org.yzh.protocol.t808.T8100;
@@ -74,6 +76,8 @@ public final class SignalClient implements AutoCloseable {
     private final Object lifecycleLock = new Object();
     private final java.util.concurrent.atomic.AtomicInteger alarmBits = new java.util.concurrent.atomic.AtomicInteger();
     private final java.util.concurrent.atomic.AtomicReference<Double> overspeedKph = new java.util.concurrent.atomic.AtomicReference<>();
+    private final BlindspotBuffer blindspotBuffer = new BlindspotBuffer();
+    private volatile boolean previousBlindspot;
     private static final DateTimeFormatter DRIVER_TIME = DateTimeFormatter.ofPattern("yyMMddHHmmss");
 
     private volatile SignalState state = SignalState.DISCONNECTED;
@@ -176,6 +180,18 @@ public final class SignalClient implements AutoCloseable {
 
     public int alarmBits() {
         return alarmBits.get();
+    }
+
+    public void enterBlindspot() {
+        locationSource.enterBlindspot();
+    }
+
+    public void leaveBlindspot() {
+        locationSource.leaveBlindspot();
+    }
+
+    public int blindspotCachedCount() {
+        return blindspotBuffer.size();
     }
 
     public void setOverspeedKph(Double speedKph) {
@@ -494,6 +510,25 @@ public final class SignalClient implements AutoCloseable {
         String message = failure.getMessage();
         return message == null || message.isBlank()
                 ? failure.getClass().getSimpleName() : message;
+    }
+
+    private void sendBlindspotBatch(Jt808MessageWriter writer) throws IOException {
+        List<T0200> points = new ArrayList<>(blindspotBuffer.drain());
+        if (points.isEmpty()) {
+            return;
+        }
+        points.sort(java.util.Comparator.comparing(T0200::getDeviceTime));
+        T0704 batch = new T0704().setTotal(points.size()).setType(1).setItems(points);
+        writer.write(prepare(batch, serialNumbers.next()));
+        notifyBlindspot("驶出盲区，已补传 " + points.size() + " 点");
+    }
+
+    private void notifyBlindspot(String detail) {
+        try {
+            listener.onBlindspotEvent(detail);
+        } catch (RuntimeException ignored) {
+            // 盲区状态回调不得影响位置上报。
+        }
     }
 
     private void notifyRecording(String detail) {
@@ -900,9 +935,22 @@ public final class SignalClient implements AutoCloseable {
                     return;
                 }
                 try {
-                    writer.write(locationReport(fix));
+                    boolean blindspot = locationSource.inBlindspot();
+                    T0200 report = locationReport(fix);
+                    if (blindspot) {
+                        blindspotBuffer.add(report);
+                        previousBlindspot = true;
+                        notifyBlindspot("盲区中，已缓存 " + blindspotBuffer.size() + " 点");
+                        return;
+                    }
+                    if (previousBlindspot) {
+                        sendBlindspotBatch(writer);
+                        previousBlindspot = false;
+                    }
+                    writer.write(report);
                     try {
                         listener.onLocationReported(Instant.now());
+                        listener.onLocationFix(fix);
                     } catch (RuntimeException ignored) {
                         // 状态回调不得影响位置上报调度。
                     }

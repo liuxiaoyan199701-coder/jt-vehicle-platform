@@ -8,6 +8,7 @@ import io.github.jtplatform.simulator.trip.TripViewState;
 import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.signal.AlarmDefinition;
 import io.github.jtplatform.simulator.signal.SignalClient;
+import io.github.jtplatform.simulator.signal.FleetRuntime;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -36,6 +37,9 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.Tab;
 import javafx.scene.control.TabPane;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TableView;
+import javafx.scene.control.TableColumn;
+import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.TitledPane;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
@@ -76,6 +80,10 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label lastReportState = new Label("最近上报 -");
     private final Label streamState = new Label("推流 空闲");
     private final Label recordingState = new Label("录像 未收到指令");
+    private final Label blindspotState = new Label("盲区 未进入 · 缓存 0 点");
+    private final TableView<FleetRuntime.FleetMemberState> fleetTable = new TableView<>();
+    private final javafx.collections.ObservableList<FleetRuntime.FleetMemberState> fleetRows =
+            FXCollections.observableArrayList();
     private final Label activity = new Label("就绪");
     private final ImageView previewImage = new ImageView();
     private final Label previewPlaceholder = new Label("暂无预览画面");
@@ -145,6 +153,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         lastReportState.getStyleClass().add("status-item");
         streamState.getStyleClass().add("status-item");
         recordingState.getStyleClass().add("status-item");
+        blindspotState.getStyleClass().add("status-item");
         DriverConfig rememberedDriver = initialConfig.driver();
         driverName.setText(rememberedDriver.name());
         driverIdCard.setText(rememberedDriver.idCard());
@@ -266,7 +275,12 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         tripPanel.setPadding(new Insets(16));
         Button tripAction = new Button("切换行程");
         tripAction.setOnAction(event -> toggleTrip());
-        tripPanel.getChildren().add(tripAction);
+        Button enterBlindspot = new Button("进入盲区");
+        Button leaveBlindspot = new Button("离开盲区");
+        enterBlindspot.setOnAction(event -> operations.enterBlindspot());
+        leaveBlindspot.setOnAction(event -> operations.leaveBlindspot());
+        tripPanel.getChildren().addAll(tripAction, blindspotState,
+                new HBox(8, enterBlindspot, leaveBlindspot));
         tabs.getTabs().setAll(
                 tab("行程", tripPanel),
                 tab("视频推流", previewPanel),
@@ -274,6 +288,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 tab("告警模拟", createAlarmPanel()),
                 tab("驾驶员", createDriverPanel()),
                 tab("录像", createRecordingPanel()),
+                tab("车队", createFleetPanel()),
                 tab("日志", logPanel));
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         tabs.getStyleClass().add("operations-tabs");
@@ -316,6 +331,45 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         });
         panel.getChildren().addAll(speed, clear,
                 new Label("置位后会随每次位置上报持续携带，平台负责生成与去重告警。"));
+        return panel;
+    }
+
+    private Node createFleetPanel() {
+        VBox panel = new VBox(8);
+        panel.setPadding(new Insets(12));
+        panel.getStyleClass().add("control-panel");
+        TableColumn<FleetRuntime.FleetMemberState, Integer> index = new TableColumn<>("序号");
+        index.setCellValueFactory(new PropertyValueFactory<>("index"));
+        TableColumn<FleetRuntime.FleetMemberState, String> device = new TableColumn<>("设备号");
+        device.setCellValueFactory(new PropertyValueFactory<>("deviceId"));
+        TableColumn<FleetRuntime.FleetMemberState, String> plate = new TableColumn<>("车牌");
+        plate.setCellValueFactory(new PropertyValueFactory<>("plateNo"));
+        TableColumn<FleetRuntime.FleetMemberState, SignalState> state = new TableColumn<>("状态");
+        state.setCellValueFactory(new PropertyValueFactory<>("signalState"));
+        TableColumn<FleetRuntime.FleetMemberState, String> detail = new TableColumn<>("详情");
+        detail.setCellValueFactory(new PropertyValueFactory<>("detail"));
+        TableColumn<FleetRuntime.FleetMemberState, Double> latitude = new TableColumn<>("纬度");
+        latitude.setCellValueFactory(new PropertyValueFactory<>("latitude"));
+        TableColumn<FleetRuntime.FleetMemberState, Double> longitude = new TableColumn<>("经度");
+        longitude.setCellValueFactory(new PropertyValueFactory<>("longitude"));
+        TableColumn<FleetRuntime.FleetMemberState, Double> speed = new TableColumn<>("速度");
+        speed.setCellValueFactory(new PropertyValueFactory<>("speedKph"));
+        TableColumn<FleetRuntime.FleetMemberState, Integer> alarms = new TableColumn<>("告警位");
+        alarms.setCellValueFactory(new PropertyValueFactory<>("alarmBits"));
+        fleetTable.getColumns().setAll(index, device, plate, state, latitude, longitude, speed, alarms, detail);
+        fleetTable.setItems(fleetRows);
+        fleetTable.setPlaceholder(new Label("未启用车队模式"));
+        fleetTable.getSelectionModel().selectedItemProperty().addListener((observable, oldValue, selected) -> {
+            if (selected != null) {
+                operations.selectFleetMember(selected.index());
+            }
+        });
+        VBox.setVgrow(fleetTable, Priority.ALWAYS);
+        Button start = new Button("启动全队");
+        Button stop = new Button("停止全队");
+        start.setOnAction(event -> operations.startFleet());
+        stop.setOnAction(event -> operations.stopFleet());
+        panel.getChildren().addAll(panelTitle("车队运行状态"), fleetTable, new HBox(8, start, stop));
         return panel;
     }
 
@@ -418,6 +472,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
                 new Separator(Orientation.VERTICAL), tripState, new Separator(Orientation.VERTICAL),
                 streamState, new Separator(Orientation.VERTICAL), lastReportState,
                 new Separator(Orientation.VERTICAL), recordingState,
+            new Separator(Orientation.VERTICAL), blindspotState,
             new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
         status.getStyleClass().add("status-bar");
@@ -474,13 +529,18 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         configuration.clearErrors();
         SimulatorConfig config = validation.config().orElseThrow();
         SimulatorConfig previous = operations.currentConfig();
+        io.github.jtplatform.simulator.config.TripConfig checkedTrip = config.trip();
+        io.github.jtplatform.simulator.config.TripConfig preservedTrip = new io.github.jtplatform.simulator.config.TripConfig(
+                checkedTrip.autoStart(), checkedTrip.amapKey(), checkedTrip.originLat(), checkedTrip.originLng(),
+                checkedTrip.destinationLat(), checkedTrip.destinationLng(), checkedTrip.speedKph(),
+                checkedTrip.reportIntervalSeconds(), checkedTrip.roundTrip(), previous.trip().blindspots());
         DriverConfig driver = new DriverConfig(driverName.getText(), driverIdCard.getText(),
                 driverLicenseNo.getText(), driverInstitution.getText(), driverValidPeriod.getText());
         return new SimulatorConfig(config.signalHost(), config.signalPort(), config.version(),
                 config.mobileNo(), config.deviceId(), config.channel(), config.registration(),
                 config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
                 config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
-                config.maxPayloadBytes(), config.trip(), driver, previous.alarm(), config.simFormat(),
+                config.maxPayloadBytes(), preservedTrip, driver, previous.alarm(), config.simFormat(),
                 config.recording());
     }
 
@@ -644,6 +704,20 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     @Override
     public void onRecordingEvent(String detail) {
         runOnFx(() -> recordingState.setText("录像 " + detail));
+    }
+
+    @Override
+    public void onBlindspotEvent(String detail) {
+        runOnFx(() -> blindspotState.setText("盲区 " + detail));
+    }
+
+    @Override
+    public void onFleetState(FleetRuntime.FleetMemberState state) {
+        runOnFx(() -> {
+            fleetRows.removeIf(row -> row.index() == state.index());
+            fleetRows.add(state);
+            fleetRows.sort(java.util.Comparator.comparingInt(FleetRuntime.FleetMemberState::index));
+        });
     }
 
     @Override

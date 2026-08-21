@@ -1,6 +1,7 @@
 package io.github.jtplatform.simulator.trip;
 
 import io.github.jtplatform.simulator.config.TerminalTime;
+import io.github.jtplatform.simulator.config.BlindspotSegment;
 import io.github.jtplatform.simulator.config.TripConfig;
 import io.github.jtplatform.simulator.signal.LocationFix;
 import io.github.jtplatform.simulator.signal.LocationSource;
@@ -52,6 +53,7 @@ public final class TripController implements LocationSource {
     private Instant lastSample;
     private boolean planning;
     private boolean running;
+    private boolean manualBlindspot;
     private String explanation = "";
 
     public TripController(RoutePlanner planner, Consumer<TripViewState> listener) {
@@ -200,6 +202,44 @@ public final class TripController implements LocationSource {
             publishLocked();
             return fix;
         }
+    }
+
+    @Override
+    public boolean inBlindspot() {
+        synchronized (lock) {
+            if (manualBlindspot) {
+                return true;
+            }
+            if (advancer == null || config.blindspots().isEmpty()) {
+                return false;
+            }
+            double percent = distancePercent(advancer);
+            return config.blindspots().stream().anyMatch(segment ->
+                    percent >= segment.startPercent() && percent < segment.endPercent());
+        }
+    }
+
+    public void enterBlindspot() {
+        synchronized (lock) {
+            manualBlindspot = true;
+            publishLocked();
+        }
+    }
+
+    public void leaveBlindspot() {
+        synchronized (lock) {
+            manualBlindspot = false;
+            publishLocked();
+        }
+    }
+
+    private static double distancePercent(TripAdvancer advancer) {
+        return Math.min(100.0D, advancer.odometerMeters() / advancer.route().lengthMeters() * 100.0D);
+    }
+
+    @Override
+    public int blindspotCachedCount() {
+        return 0;
     }
 
     /**

@@ -21,6 +21,12 @@ public interface SignalListener {
     default void onLocationReported(java.time.Instant timestamp) {
     }
 
+    default void onLocationFix(LocationFix fix) {
+    }
+
     default void onRecordingEvent(String detail) {
+    }
+
+    default void onBlindspotEvent(String detail) {
     }
 }
