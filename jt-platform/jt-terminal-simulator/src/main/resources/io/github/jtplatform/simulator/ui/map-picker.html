@@ -1,22 +1,98 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><title>GCJ-02 地图选点</title><link rel="stylesheet" href="leaflet.css"></head>
-<body><div id="map"><div class="leaflet-control">点击地图：第一次起点，第二次终点；可拖动标记微调</div></div>
-<script src="leaflet.js"></script><script>
-/* 本地内嵌的 Leaflet-compatible 轻量页面壳；瓦片使用高德标准样式，免 Key。 */
-const map = document.getElementById('map');
-const state = { origin: null, destination: null, center: {lat:31.230416,lng:121.473701}, zoom:12 };
-const markers = {};
-function project(p) { const w=map.clientWidth||900,h=map.clientHeight||600; return {x:w/2+(p.lng-state.center.lng)*9000,y:h/2-(p.lat-state.center.lat)*9000}; }
-function unproject(x,y) { const w=map.clientWidth||900,h=map.clientHeight||600; return {lat:state.center.lat-(y-h/2)/9000,lng:state.center.lng+(x-w/2)/9000}; }
-function drawTiles() { const tile = L.tileLayer('https://wprd0{1-4}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}', {maxZoom:18}); tile.addTo(map); }
-function draw() {
-  drawTiles(); Object.keys(markers).forEach(k=>markers[k].remove());
-  ['origin','destination'].forEach(k=>{ if(!state[k])return; const p=project(state[k]); const e=document.createElement('div'); e.className='leaflet-marker '+k; e.dataset.kind=k; e.style.left=p.x+'px';e.style.top=p.y+'px';
-    e.onmousedown=function(ev){ev.stopPropagation(); let move=function(me){const q=unproject(me.offsetX,me.offsetY);state[k]=q;draw();emit(k,q)};map.onmousemove=move;map.onmouseup=function(){map.onmousemove=null;map.onmouseup=null;};}; map.appendChild(e);markers[k]=e; });
-}
-function emit(kind,p){window.__mapEvent=kind+','+p.lat.toFixed(6)+','+p.lng.toFixed(6);}
-map.onclick=function(ev){ if(ev.target!==map)return; const p=unproject(ev.offsetX,ev.offsetY); let kind; if(!state.origin){state.origin=p;kind='origin';} else {state.destination=p;kind='destination';} emit(kind,p); draw(); };
-window.clearMarkers=function(){state.origin=null;state.destination=null;draw();};
-window.initMap=function(initial){ if(initial.origin)state.origin=initial.origin;if(initial.destination)state.destination=initial.destination;if(state.origin)state.center=state.origin;draw(); };
-window.addEventListener('resize',draw); draw();
-</script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GCJ-02 地图选点</title>
+  <link rel="stylesheet" href="leaflet.css">
+  <style>
+    html, body, #map { height: 100%; margin: 0; }
+    #map { min-height: 560px; }
+    .map-hint { position: absolute; z-index: 1000; top: 10px; left: 50px; padding: 8px 12px;
+      color: #263238; background: rgba(255,255,255,.94); border-radius: 4px;
+      box-shadow: 0 1px 5px rgba(0,0,0,.35); font: 13px sans-serif; }
+    .map-error { display: none; position: absolute; z-index: 1001; right: 10px; top: 10px;
+      padding: 8px 12px; color: #842029; background: #f8d7da; border: 1px solid #f1aeb5;
+      border-radius: 4px; font: 13px sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="map-hint">点击地图：第一次选择起点，第二次选择终点；标记可拖动微调</div>
+  <div id="map-error" class="map-error">地图瓦片不可用，请检查网络；仍可尝试点选或返回手输</div>
+  <script src="leaflet.js"></script>
+  <script>
+    (function () {
+      'use strict';
+      const DEFAULT_CENTER = [31.230416, 121.473701];
+      const map = L.map('map', { zoomControl: true, attributionControl: true });
+      const tileLayer = L.tileLayer(
+        'https://wprd0{s}.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}',
+        { subdomains: ['1', '2', '3', '4'], maxZoom: 18, minZoom: 3, attribution: '© 高德地图' }
+      );
+      const state = { origin: null, destination: null };
+      const markers = { origin: null, destination: null };
+      let firstTileError = true;
+
+      map.setView(DEFAULT_CENTER, 12);
+      tileLayer.addTo(map);
+      tileLayer.on('tileerror', function () {
+        if (firstTileError) {
+          firstTileError = false;
+          document.getElementById('map-error').style.display = 'block';
+          window.__mapUnavailable = true;
+        }
+      });
+
+      function pointFromLatLng(latlng) {
+        return { lat: Number(latlng.lat), lng: Number(latlng.lng) };
+      }
+      function emit(kind, point) {
+        window.__mapEvent = kind + ',' + point.lat.toFixed(6) + ',' + point.lng.toFixed(6);
+      }
+      function place(kind, point) {
+        state[kind] = point;
+        if (markers[kind]) {
+          markers[kind].setLatLng([point.lat, point.lng]);
+        } else {
+          markers[kind] = L.marker([point.lat, point.lng], {
+            draggable: true,
+            autoPan: true,
+            title: kind === 'origin' ? '起点' : '终点'
+          }).addTo(map);
+          markers[kind].on('dragend', function (event) {
+            const moved = pointFromLatLng(event.target.getLatLng());
+            state[kind] = moved;
+            emit(kind, moved);
+          });
+        }
+        emit(kind, point);
+      }
+      function applyInitial(initial) {
+        if (initial && initial.origin) {
+          place('origin', { lat: Number(initial.origin.lat), lng: Number(initial.origin.lng) });
+        }
+        if (initial && initial.destination) {
+          place('destination', { lat: Number(initial.destination.lat), lng: Number(initial.destination.lng) });
+        }
+        const center = state.origin || state.destination || { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1] };
+        map.setView([center.lat, center.lng], initial && (state.origin || state.destination) ? 13 : 12);
+      }
+      map.on('click', function (event) {
+        const point = pointFromLatLng(event.latlng);
+        place(state.origin ? 'destination' : 'origin', point);
+      });
+      window.clearMarkers = function () {
+        if (markers.origin) { map.removeLayer(markers.origin); markers.origin = null; }
+        if (markers.destination) { map.removeLayer(markers.destination); markers.destination = null; }
+        state.origin = null;
+        state.destination = null;
+        window.__mapEvent = null;
+      };
+      window.initMap = applyInitial;
+      window.__mapUnavailable = false;
+      applyInitial(null);
+    }());
+  </script>
+</body>
+</html>

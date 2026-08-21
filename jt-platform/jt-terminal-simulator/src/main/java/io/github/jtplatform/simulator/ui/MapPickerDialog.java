@@ -26,12 +26,15 @@ public final class MapPickerDialog {
     private final WebView webView = new WebView();
     private final Label coordinates = new Label("请先点击地图选择起点和终点");
     private final MapSelectionBridge bridge;
+    private final Consumer<Throwable> unavailable;
     private Timeline eventPoller;
     private boolean pageFailed;
+    private boolean unavailableReported;
 
     private MapPickerDialog(Window owner, MapPoint origin, MapPoint destination,
-            Consumer<MapSelection> confirmed) {
+            Consumer<MapSelection> confirmed, Consumer<Throwable> unavailable) {
         bridge = new MapSelectionBridge(origin, destination, confirmed);
+        this.unavailable = Objects.requireNonNull(unavailable, "unavailable");
         dialog.setTitle("地图选点（GCJ-02）");
         if (owner != null) {
             dialog.initOwner(owner);
@@ -68,7 +71,7 @@ public final class MapPickerDialog {
             Consumer<MapSelection> confirmed, Consumer<Throwable> unavailable) {
         Objects.requireNonNull(confirmed, "confirmed");
         Objects.requireNonNull(unavailable, "unavailable");
-        MapPickerDialog picker = new MapPickerDialog(owner, origin, destination, confirmed);
+        MapPickerDialog picker = new MapPickerDialog(owner, origin, destination, confirmed, unavailable);
         if (picker.pageFailed) {
             unavailable.accept(new IllegalStateException("地图不可用，请手输"));
             return;
@@ -109,6 +112,11 @@ public final class MapPickerDialog {
 
     private void startEventPolling(WebEngine engine) {
         eventPoller = new Timeline(new KeyFrame(Duration.millis(100), event -> {
+            Object unavailable = engine.executeScript("window.__mapUnavailable === true");
+            if (Boolean.TRUE.equals(unavailable) && !unavailableReported) {
+                unavailableReported = true;
+                this.unavailable.accept(new IllegalStateException("地图不可用，请手输"));
+            }
             Object raw = engine.executeScript("window.__mapEvent || null");
             if (raw == null) {
                 return;
