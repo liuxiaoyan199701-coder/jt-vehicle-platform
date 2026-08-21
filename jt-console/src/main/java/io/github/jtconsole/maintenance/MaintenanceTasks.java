@@ -3,6 +3,7 @@ package io.github.jtconsole.maintenance;
 import io.github.jtconsole.ai.vision.AttachmentStore;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.repository.EventRepository;
+import io.github.jtconsole.repository.ConnectionEventRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import java.time.Instant;
 import org.slf4j.Logger;
@@ -19,16 +20,37 @@ public class MaintenanceTasks {
     private final EventRepository events;
     private final AttachmentStore attachments;
     private final ConsoleProperties properties;
+    private final ConnectionEventRepository connectionEvents;
 
     public MaintenanceTasks(
             StatusRepository statuses,
             EventRepository events,
             AttachmentStore attachments,
-            ConsoleProperties properties) {
+            ConsoleProperties properties,
+            ConnectionEventRepository connectionEvents) {
         this.statuses = statuses;
         this.events = events;
         this.attachments = attachments;
         this.properties = properties;
+        this.connectionEvents = connectionEvents;
+    }
+
+    /** 连接事件保留 14 天，分钟错开其它清理任务，避免 SQLite 写锁同一时刻竞争。 */
+    @Scheduled(cron = "${jt.console.connection-diagnostics.cleanup-cron:0 41 3 * * *}")
+    public void purgeConnectionEvents() {
+        var config = properties.getConnectionDiagnostics();
+        Instant cutoff = Instant.now().minus(config.getRetention());
+        int total = 0;
+        for (int batch = 0; batch < config.getCleanupMaxBatches(); batch++) {
+            int removed = connectionEvents.deleteOlderThan(cutoff, config.getCleanupBatchSize());
+            total += removed;
+            if (removed < config.getCleanupBatchSize()) {
+                break;
+            }
+        }
+        if (total > 0) {
+            LOGGER.info("清理 {} 条过期连接诊断事件", total);
+        }
     }
 
     /**

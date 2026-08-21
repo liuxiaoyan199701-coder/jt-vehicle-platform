@@ -57,7 +57,9 @@ public record DashboardFinding(
         /** 车队总体状况 */
         FLEET,
         /** 从业资格证到期 */
-        DRIVER
+        DRIVER,
+        /** 连接注册拒绝 */
+        CONNECTION
     }
 
     /**

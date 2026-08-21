@@ -2,7 +2,13 @@
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAppStore } from '@/store/modules/app';
-import { fetchVehicleProfile, type AlarmEvent, type VehicleOperationsProfile } from '@/service/api';
+import {
+  fetchConnectionLog,
+  fetchVehicleProfile,
+  type AlarmEvent,
+  type ConnectionLogResult,
+  type VehicleOperationsProfile
+} from '@/service/api';
 import {
   alarmLevelLabel,
   alarmLevelTagType,
@@ -27,6 +33,10 @@ const loading = ref(false);
 const errorMessage = ref('');
 const profile = ref<VehicleOperationsProfile | null>(null);
 const videoVisible = ref(false);
+const activeTab = ref('overview');
+const connectionLoading = ref(false);
+const connectionError = ref('');
+const connectionLog = ref<ConnectionLogResult | null>(null);
 
 const videoTarget = computed(() => {
   if (!profile.value) return null;
@@ -44,7 +54,11 @@ watch(
   () => [props.visible, props.deviceId] as const,
   ([visible, deviceId]) => {
     if (visible && deviceId) void load(deviceId);
-    if (!visible) videoVisible.value = false;
+    if (!visible) {
+      videoVisible.value = false;
+      activeTab.value = 'overview';
+    }
+    if (visible && deviceId) void loadConnectionLog(deviceId);
   },
   { immediate: true }
 );
@@ -60,6 +74,18 @@ async function load(deviceId: string) {
     return;
   }
   profile.value = normalizeVehicleProfile(data);
+}
+
+async function loadConnectionLog(deviceId: string) {
+  connectionLoading.value = true;
+  connectionError.value = '';
+  const { data, error } = await fetchConnectionLog(deviceId);
+  connectionLoading.value = false;
+  if (error || !data) {
+    connectionError.value = error?.message || '连接日志加载失败';
+    return;
+  }
+  connectionLog.value = data;
 }
 
 function close() {
@@ -110,6 +136,9 @@ function alarmTitle(alarm: AlarmEvent) {
       </NResult>
 
       <div v-else-if="profile" class="flex flex-col gap-16px">
+        <NTabs v-model:value="activeTab" type="line">
+          <NTabPane name="overview" tab="运营概览">
+          <div class="flex flex-col gap-16px">
         <NAlert v-if="!profile.vehicle" type="warning" :bordered="false" class="flex items-center justify-between">
           <span>该设备尚未建档，状态与轨迹仍可查看；建档后可关联车牌与车辆信息。</span>
           <NButton size="tiny" type="primary" @click="toVehicleArchive">去建档</NButton>
@@ -215,6 +244,35 @@ function alarmTitle(alarm: AlarmEvent) {
             </NListItem>
           </NList>
         </div>
+          </div>
+          </NTabPane>
+          <NTabPane name="connections" tab="连接日志">
+            <NSpin v-if="connectionLoading" />
+            <NResult v-else-if="connectionError" status="error" title="连接日志加载失败" :description="connectionError">
+              <template #footer><NButton @click="deviceId && loadConnectionLog(deviceId)">重试</NButton></template>
+            </NResult>
+            <div v-else-if="connectionLog" class="flex flex-col gap-12px">
+              <NGrid cols="2 m:4" responsive="screen" :x-gap="8" :y-gap="8">
+                <NGi><NStatistic label="事件数" :value="connectionLog.summary.eventCount" /></NGi>
+                <NGi><NStatistic label="最近连接" :value="connectionLog.summary.lastConnectedAt || '无记录'" /></NGi>
+                <NGi><NStatistic label="注册失败" :value="Object.values(connectionLog.summary.registrationFailures).reduce((a, b) => a + b, 0)" /></NGi>
+                <NGi><NStatistic label="鉴权失败" :value="Object.values(connectionLog.summary.authenticationFailures).reduce((a, b) => a + b, 0)" /></NGi>
+              </NGrid>
+              <NEmpty v-if="connectionLog.timeline.length === 0" description="平台侧暂无连接记录" />
+              <NList v-else bordered>
+                <NListItem v-for="event in connectionLog.timeline" :key="event.eventId">
+                  <div class="flex min-w-0 flex-1 flex-col gap-4px">
+                    <div class="flex items-center justify-between gap-8px">
+                      <NTag size="small" :type="event.kind.includes('RESULT') ? 'warning' : 'info'">{{ event.kind }}</NTag>
+                      <span class="text-12px text-gray-500">{{ formatConsoleTime(event.eventTime) }}</span>
+                    </div>
+                    <span>{{ event.reason || '连接事件' }}<template v-if="event.repeatCount > 1">（合并 {{ event.repeatCount }} 次）</template></span>
+                  </div>
+                </NListItem>
+              </NList>
+            </div>
+          </NTabPane>
+        </NTabs>
       </div>
 
       <template #footer>

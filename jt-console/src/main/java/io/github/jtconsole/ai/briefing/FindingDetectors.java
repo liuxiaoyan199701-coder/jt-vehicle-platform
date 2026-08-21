@@ -5,6 +5,7 @@ import io.github.jtconsole.domain.Driver;
 import io.github.jtconsole.domain.LiveStatus;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.repository.AlarmRepository;
+import io.github.jtconsole.repository.ConnectionEventRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.DriverRepository;
 import io.github.jtconsole.repository.StatusRepository;
@@ -17,6 +18,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -53,6 +55,7 @@ public class FindingDetectors {
     private final DailyStatRepository dailyStats;
     private final BusinessDateService dates;
     private final DriverRepository drivers;
+    private final ConnectionEventRepository connectionEvents;
 
     public FindingDetectors(
             StatusRepository statuses,
@@ -60,11 +63,23 @@ public class FindingDetectors {
             DailyStatRepository dailyStats,
             BusinessDateService dates,
             DriverRepository drivers) {
+        this(statuses, alarms, dailyStats, dates, drivers, null);
+    }
+
+    @Autowired
+    public FindingDetectors(
+            StatusRepository statuses,
+            AlarmRepository alarms,
+            DailyStatRepository dailyStats,
+            BusinessDateService dates,
+            DriverRepository drivers,
+            ConnectionEventRepository connectionEvents) {
         this.statuses = statuses;
         this.alarms = alarms;
         this.dailyStats = dailyStats;
         this.dates = dates;
         this.drivers = drivers;
+        this.connectionEvents = connectionEvents;
     }
 
     /**
@@ -79,6 +94,7 @@ public class FindingDetectors {
         findings.addAll(fleetSnapshot(scope));
         findings.addAll(idleVehicles(scope));
         findings.addAll(driverLicenseExpiry(scope));
+        findings.addAll(connectionFailures(scope));
         return findings.size() > MAX_FINDINGS ? findings.subList(0, MAX_FINDINGS) : findings;
     }
 
@@ -276,6 +292,26 @@ public class FindingDetectors {
 
     private static List<String> names(List<Driver> drivers) {
         return drivers.stream().map(Driver::name).toList();
+    }
+
+    /** 过去 24 小时同设备注册被拒至少 3 次。无记录必须返回空清单，不产出「一切正常」。 */
+    private List<DashboardFinding> connectionFailures(DataScope scope) {
+        if (connectionEvents == null) {
+            return List.of();
+        }
+        String end = Timestamps.now();
+        String start = Timestamps.of(java.time.Instant.now().minus(Duration.ofHours(24)));
+        List<ConnectionEventRepository.RegistrationFailure> failures =
+                connectionEvents.countRegistrationFailures(start, end, scope);
+        return failures.stream().limit(5).map(failure -> new DashboardFinding(
+                "connection-registration-" + failure.deviceId(),
+                DashboardFinding.Category.CONNECTION,
+                DashboardFinding.Severity.WARN,
+                "%s 过去 24 小时注册被拒 %d 次".formatted(failure.deviceId(), failure.count()),
+                Map.of("设备号", failure.deviceId(), "注册拒绝次数", failure.count()),
+                List.of(failure.deviceId()),
+                new DashboardFinding.Link("vehicle", Map.of("device", failure.deviceId()), "查看车辆")))
+                .toList();
     }
 
     /** 解析 yyyy-MM-dd，解析失败返回 null（不把脏数据当成已过期）。 */

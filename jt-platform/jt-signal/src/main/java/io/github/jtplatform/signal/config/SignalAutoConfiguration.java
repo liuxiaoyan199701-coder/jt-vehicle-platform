@@ -8,6 +8,7 @@ import io.github.jtplatform.signal.delivery.MessageTypeClassifier;
 import io.github.jtplatform.signal.delivery.ProtocolPayloadMapper;
 import io.github.jtplatform.signal.delivery.SignalMessageDispatcher;
 import io.github.jtplatform.signal.delivery.SignalMessageEnvelopeMapper;
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
 import io.github.jtplatform.signal.protocol.SignalMultiPacketDecoder;
 import io.github.jtplatform.signal.command.SignalStreamCommandController;
 import io.github.jtplatform.signal.command.SignalStreamCommandHandler;
@@ -130,8 +131,8 @@ public class SignalAutoConfiguration implements EnvironmentAware {
     }
 
     @Bean
-    JTHandlerInterceptor signalHandlerInterceptor() {
-        return new JTHandlerInterceptor();
+    JTHandlerInterceptor signalHandlerInterceptor(ConnectionEventEmitter diagnostics) {
+        return new JTHandlerInterceptor(diagnostics);
     }
 
     @Bean
@@ -140,10 +141,16 @@ public class SignalAutoConfiguration implements EnvironmentAware {
     }
 
     @Bean
+    ConnectionEventEmitter connectionEventEmitter(
+            MessagePublisher publisher, Clock clock, SignalServerSettings settings) {
+        return new ConnectionEventEmitter(publisher, clock, settings.instanceId());
+    }
+
+    @Bean
     JTSessionListener signalSessionListener(
             DeviceRouter deviceRouter, SignalServerSettings settings,
-            CommandResponseTracker rejectionTracker) {
-        return new JTSessionListener(deviceRouter, settings.instanceId(), rejectionTracker);
+            CommandResponseTracker rejectionTracker, ConnectionEventEmitter diagnostics) {
+        return new JTSessionListener(deviceRouter, settings.instanceId(), rejectionTracker, diagnostics);
     }
 
     @Bean

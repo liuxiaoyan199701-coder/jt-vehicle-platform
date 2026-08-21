@@ -1,6 +1,7 @@
 package io.github.jtconsole.ingest;
 
 import io.github.jtconsole.repository.EventRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -12,14 +13,24 @@ public class EventIngestionService {
     private final LocationService locations;
     private final MediaIngestionService media;
     private final DriverIdentityIngestionService driverIdentity;
+    private final ConnectionEventIngestionService connections;
 
     public EventIngestionService(
             EventRepository events, LocationService locations, MediaIngestionService media,
             DriverIdentityIngestionService driverIdentity) {
+        this(events, locations, media, driverIdentity, null);
+    }
+
+    @Autowired
+    public EventIngestionService(
+            EventRepository events, LocationService locations, MediaIngestionService media,
+            DriverIdentityIngestionService driverIdentity,
+            ConnectionEventIngestionService connections) {
         this.events = events;
         this.locations = locations;
         this.media = media;
         this.driverIdentity = driverIdentity;
+        this.connections = connections;
     }
 
     @Transactional
@@ -30,6 +41,9 @@ public class EventIngestionService {
             return IngestionResult.duplicate();
         }
 
+        if (connections != null && connections.handle(normalized)) {
+            return new IngestionResult("committed", "connection", null);
+        }
         // 多媒体上传先落元数据，再走位置/在线时间的常规处理
         media.handleIfMediaUpload(normalized);
         // 驾驶员身份识别（0702）落事件与驾驶区间

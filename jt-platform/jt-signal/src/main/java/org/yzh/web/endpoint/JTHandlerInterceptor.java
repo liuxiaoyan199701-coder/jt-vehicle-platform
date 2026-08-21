@@ -1,5 +1,6 @@
 package org.yzh.web.endpoint;
 
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
 import io.github.yezhihao.netmc.core.HandlerInterceptor;
 import io.github.yezhihao.netmc.session.Session;
 import org.slf4j.Logger;
@@ -10,6 +11,15 @@ import org.yzh.protocol.t808.T0001;
 
 public class JTHandlerInterceptor implements HandlerInterceptor<JTMessage> {
     private static final Logger LOGGER = LoggerFactory.getLogger(JTHandlerInterceptor.class);
+    private final ConnectionEventEmitter diagnostics;
+
+    public JTHandlerInterceptor() {
+        this(null);
+    }
+
+    public JTHandlerInterceptor(ConnectionEventEmitter diagnostics) {
+        this.diagnostics = diagnostics;
+    }
 
     @Override
     public JTMessage notSupported(JTMessage request, Session session) {
@@ -29,6 +39,16 @@ public class JTHandlerInterceptor implements HandlerInterceptor<JTMessage> {
         T0001 response = commonResponse(request, session, T0001.Failure);
         LOGGER.warn("Terminal message handler failed for id=0x{} from {}",
                 Integer.toHexString(request.getMessageId()), session, error);
+        if (diagnostics != null) {
+            String diagnosticDeviceId = session.getAttribute(
+                    org.yzh.web.model.enums.SessionKey.DiagnosticDeviceId);
+            String deviceId = diagnosticDeviceId == null || diagnosticDeviceId.isBlank()
+                    ? session.getClientId() : diagnosticDeviceId;
+            if (deviceId != null && !deviceId.isBlank()) {
+                diagnostics.protocolError(deviceId, error.getClass().getSimpleName(),
+                        session.getRemoteAddressStr());
+            }
+        }
         return response;
     }
 

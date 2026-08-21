@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import io.github.jtplatform.common.port.InMemoryDeviceRouter;
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
 import io.github.yezhihao.netmc.session.Session;
 import java.util.Arrays;
 import java.util.List;
@@ -53,6 +54,25 @@ class SignalEndpointCoverageTest {
         listener.sessionDestroyed(session);
         assertFalse(router.findSignalInstance("terminal-1").isPresent());
         assertFalse(router.findSignalInstance("138000000000").isPresent());
+    }
+
+    @Test
+    void replacingARegisteredSessionEmitsSessionReplacedEvent() {
+        InMemoryDeviceRouter router = new InMemoryDeviceRouter();
+        ConnectionEventEmitter diagnostics = mock(ConnectionEventEmitter.class);
+        JTSessionListener listener = new JTSessionListener(
+                router, "signal-1", new CommandResponseTracker(), diagnostics);
+        Session first = session("terminal-1", "138000000000");
+        Session replacement = session("terminal-1", "138000000000");
+        when(first.getId()).thenReturn("session-1");
+        when(replacement.getId()).thenReturn("session-2");
+        when(replacement.getRemoteAddressStr()).thenReturn("127.0.0.1:8080");
+
+        listener.sessionRegistered(first);
+        listener.sessionRegistered(replacement);
+
+        verify(diagnostics).sessionReplaced(
+                "terminal-1", "127.0.0.1:8080", "被新会话顶替");
     }
 
     @Test

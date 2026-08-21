@@ -2,6 +2,7 @@ package io.github.jtconsole.ai.agent;
 
 import io.github.jtconsole.ai.action.ConfirmationPolicy;
 import io.github.jtconsole.ai.tool.ActionTools;
+import io.github.jtconsole.ai.tool.DiagnosticsTools;
 import io.github.jtconsole.ai.tool.FleetTools;
 import io.github.jtconsole.ai.tool.OperationsTools;
 import io.github.jtconsole.ai.tool.ToolRoundBudget;
@@ -58,6 +59,7 @@ public class AgentService {
             ConsoleProperties properties,
             FleetTools fleetTools,
             OperationsTools operationsTools,
+            DiagnosticsTools diagnosticsTools,
             ActionTools actionTools,
             ViewTools viewTools) {
         this.chatModel = chatModel;
@@ -65,7 +67,7 @@ public class AgentService {
         this.dates = dates;
         this.properties = properties;
         this.toolCallbacks = List.of(
-                ToolCallbacks.from(fleetTools, operationsTools, actionTools, viewTools));
+                ToolCallbacks.from(fleetTools, operationsTools, diagnosticsTools, actionTools, viewTools));
     }
 
     /**
