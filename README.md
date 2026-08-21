@@ -79,11 +79,15 @@ GCJ-02 后再渲染，因此不会出现整体偏移。
 - JT/T 808 2011、2013、2019 终端接入，兼容 JT/T 1078、苏标主动安全相关消息。
 - H.264、H.265、AAC、G.711A 媒体接入，按主码流、子码流、历史回放和对讲分端口监听。
 - 两步式开流与一次性媒体 token，客户端直连被调度的媒体节点。
-- 裸流 WebSocket 播放、独占或混音对讲、裸流分片录像、检索、回放和离线 MP4 导出。
+- 裸流 WebSocket 播放、独占或混音对讲、裸流分片录像、检索、回放和离线 MP4 导出；
+  控制台提供录像检索与回放页面。
 - API 与 RocketMQ 可独立或同时启用的协议消息投递。
 - 车队运营看板聚合建档、在线、行驶、静止、未处理告警和当日里程，并展示近七日趋势、告警分布和最近动态。
 - JT/T 808 协议告警和围栏告警持久化、去重、组合筛选、分级及确认/关闭处置。
-- GCJ-02 圆形电子围栏创建、启停、车辆分配、进出边界与围栏内限速判定。
+- GCJ-02 电子围栏（圆形/矩形/多边形/路线）创建、启停、车辆分配、进出边界与围栏内限速判定。
+- 自定义告警规则引擎：超速阈值、怠速超时、疲劳驾驶时长，按位置流持续判定并去重。
+- 运营报表：按车辆与时间范围聚合里程、活跃天数与告警，支持 CSV 导出。
+- OTA 升级包管理：上传、版本管理、按车下发（8108）与升级包查询。
 - 车辆运营详情聚合档案、最新状态、当日/近七日指标和最近告警，并提供监控、轨迹和视频快捷入口。
 - AI 助手用自然语言查询与运维平台：流式对话、跨会话留存，改动数据一律经确认卡片由用户执行。
 - AI 回答内嵌实时位置、行驶轨迹、统计图表与实时视频；有副作用的视图（开流）必须用户显式点击。
@@ -250,16 +254,22 @@ jt:
 | 告警查询 | `GET /api/alarms` | 支持 `status`、`level`、`source`、`deviceId`、`type`、`keyword`、`start`、`end`、`page`、`pageSize` 组合筛选 |
 | 告警详情 | `GET /api/alarms/{id}` | 返回告警发生、位置和处置审计信息 |
 | 告警处置 | `POST /api/alarms/{id}/acknowledge`<br>`POST /api/alarms/{id}/close` | 请求体均为 `{ "note": "..." }` |
-| 围栏集合 | `GET /api/geofences`<br>`POST /api/geofences` | 查询或创建圆形围栏 |
+| 围栏集合 | `GET /api/geofences`<br>`POST /api/geofences` | 查询或创建围栏（圆形/矩形/多边形/路线） |
 | 围栏资源 | `GET /api/geofences/{id}`<br>`PUT /api/geofences/{id}`<br>`DELETE /api/geofences/{id}` | 读取、更新或删除围栏 |
 | 围栏车辆 | `PUT /api/geofences/{id}/vehicles` | 以 `{ "deviceIds": [...] }` 整体替换已建档车辆分配 |
 | 围栏启停 | `PUT /api/geofences/{id}/enabled` | 以 `{ "enabled": true }` 启用或停用围栏 |
+| 告警规则 | `GET /api/alarm-rules`<br>`POST /api/alarm-rules` | 查询或创建告警规则（超速/怠速/疲劳） |
+| 规则资源 | `GET /api/alarm-rules/{id}`<br>`PUT /api/alarm-rules/{id}`<br>`DELETE /api/alarm-rules/{id}` | 读取、更新或删除规则 |
+| 运营报表 | `GET /api/reports/vehicles` | 按车辆聚合里程/活跃天数/告警（`start`、`end`） |
+| 报表导出 | `GET /api/reports/vehicles/export` | CSV 导出（带 UTF-8 BOM） |
+| 录像检索 | `GET /api/recordings/search` | 按车辆/通道/时间范围检索录像区间 |
+| 升级包 | `GET /api/upgrade-packages`<br>`POST /api/upgrade-packages` | 升级包列表 / multipart 上传 |
 | 车辆运营详情 | `GET /api/vehicles/{deviceId}/profile` | 按精确 canonical `deviceId` 聚合档案、状态、运营指标和最近告警 |
 
 协议报警只在活动状态从无到有时创建告警，持续活动只更新最后出现时间，解除后再次活动才创建新记录。
 告警从 `OPEN` 可确认为 `ACKNOWLEDGED`，`OPEN` 或 `ACKNOWLEDGED` 均可关闭为 `CLOSED`；处置保留备注、操作者和时间，已关闭告警不能重复处置。
 
-围栏使用 GCJ-02 圆心和球面距离判定。车辆的第一次有效位置只建立内外基线，后续真实跨界才按开关生成进入或离开告警；围栏内持续超速按活动条件去重。停用围栏会停止后续判定并解除相关活动条件，删除围栏会清理分配和运行状态，但保留已产生的告警历史。
+围栏按形状判定：圆形用球面距离、矩形/多边形用射线法、路线用点到折线距离。车辆的第一次有效位置只建立内外基线，后续真实跨界才按开关生成进入或离开告警；围栏内持续超速按活动条件去重。停用围栏会停止后续判定并解除相关活动条件，删除围栏会清理分配和运行状态，但保留已产生的告警历史。
 
 按日运营汇总、近七日趋势和时间筛选使用可配置的业务时区，默认为 `Asia/Shanghai`：
 

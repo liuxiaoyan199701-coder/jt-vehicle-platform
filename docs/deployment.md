@@ -467,6 +467,11 @@ export JT_REACHABLE_ADDRESS=203.0.113.10
 | `data/signal/alarm-attachments/` | 主动安全报警附件 | signal 持久卷 |
 | `data/delivery-overflow/` | 关键消息队列溢出文件 | signal 持久卷，不可使用临时文件系统 |
 
+> **录像默认关闭**：`jt.media.recording.realtime-enabled` 与 `playback-enabled` 默认都是 `false`，
+> 必须显式开启才会产生分片。录像是唯一会持续增长直到写满上限的数据——开启前先定好
+> `max-bytes`（容量上限）与 `retention-days`（保留期），按下方公式估算容量。
+> 建议先对少量车辆或短保留期开启观察磁盘增长，再逐步放宽。
+
 推荐配置示例：
 
 ```yaml
