@@ -375,9 +375,9 @@ export function openPlaybackStream(
   endTime: string
 ) {
   return request<StreamTicket>({
-    url: '/stream/open',
+    url: '/stream/open-playback',
     method: 'post',
-    data: { deviceId, channel, streamKind: 'playback', startTime, endTime }
+    data: { deviceId, channel, startTime, endTime }
   });
 }
 

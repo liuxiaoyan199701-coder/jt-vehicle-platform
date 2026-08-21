@@ -40,7 +40,7 @@ public class RecordingProxyController {
     }
 
     @GetMapping("/search")
-    @RequirePermission(Permissions.MEDIA_LIST)
+    @RequirePermission(Permissions.RECORDING_SEARCH)
     public ApiResponse<List<RecordingRange>> search(
             @RequestParam String deviceId,
             @RequestParam(defaultValue = "1") int channel,

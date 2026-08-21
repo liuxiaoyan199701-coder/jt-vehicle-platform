@@ -39,6 +39,8 @@ public final class Permissions {
     public static final String MEDIA_LIST = "media:list";
     public static final String COMMAND_SEND = "command:send";
     public static final String VIDEO_PLAY = "video:play";
+    public static final String RECORDING_SEARCH = "recording:search";
+    public static final String RECORDING_PLAYBACK = "recording:playback";
 
     /**
      * 使用 AI 助手。刻意登记为写权限：对话会消耗租户的月度调用配额，是一种状态变更；
@@ -88,6 +90,8 @@ public final class Permissions {
             read("media", MEDIA_LIST, "查看多媒体文件", 1),
             write("command", COMMAND_SEND, "下发终端指令", 1),
             write("video", VIDEO_PLAY, "播放实时视频", 1),
+            read("recording", RECORDING_SEARCH, "检索录像", 1),
+            write("recording", RECORDING_PLAYBACK, "回放录像", 2),
 
             write("ai", AI_CHAT, "使用 AI 助手", 1),
             read("ai", AI_REPORT_VIEW, "查看运营简报", 2),
@@ -126,6 +130,7 @@ public final class Permissions {
             ALARM_LIST, ALARM_HANDLE,
             RULE_LIST, RULE_MANAGE,
             MEDIA_LIST, COMMAND_SEND, VIDEO_PLAY,
+            RECORDING_SEARCH, RECORDING_PLAYBACK,
             AI_CHAT, AI_REPORT_VIEW);
 
     /**
@@ -137,7 +142,7 @@ public final class Permissions {
     public static final Set<String> TENANT_VIEWER_PERMISSIONS = Set.of(
             DASHBOARD_VIEW, MONITOR_VIEW, TRACK_VIEW,
             VEHICLE_LIST, FLEET_LIST, GEOFENCE_LIST, ALARM_LIST, MEDIA_LIST,
-            RULE_LIST,
+            RULE_LIST, RECORDING_SEARCH,
             AI_REPORT_VIEW);
 
     private Permissions() {

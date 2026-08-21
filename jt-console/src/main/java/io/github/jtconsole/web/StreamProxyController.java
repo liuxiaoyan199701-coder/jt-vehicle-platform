@@ -54,15 +54,31 @@ public class StreamProxyController {
     }
 
     /**
-     * @param request {@code {deviceId, channel, streamKind}}，streamKind 取
-     *                {@code main} / {@code sub} / {@code playback} / {@code talkback}
-     * @return 网关的 {@code {streamId, instanceId, wsUrl, token, state}}
+     * 实时视频开流（主码流/子码流/对讲）。
      */
     @PostMapping("/open")
     @RequirePermission(Permissions.VIDEO_PLAY)
     @Audited(value = "开启实时视频", resourceType = "vehicle")
     public ApiResponse<Map<String, Object>> open(
             @RequestBody Map<String, Object> request, DataScope scope) {
+        return doOpen(request, scope);
+    }
+
+    /**
+     * 录像回放开流。与实时开流同一条网关链路，仅强制 streamKind=playback 并校验回放权限。
+     */
+    @PostMapping("/open-playback")
+    @RequirePermission(Permissions.RECORDING_PLAYBACK)
+    @Audited(value = "回放录像", resourceType = "vehicle")
+    public ApiResponse<Map<String, Object>> openPlayback(
+            @RequestBody Map<String, Object> request, DataScope scope) {
+        Map<String, Object> playbackRequest = new LinkedHashMap<>(request);
+        playbackRequest.put("streamKind", "playback");
+        return doOpen(playbackRequest, scope);
+    }
+
+    private ApiResponse<Map<String, Object>> doOpen(
+            Map<String, Object> request, DataScope scope) {
         Object deviceId = request.get("deviceId");
         if (deviceId == null || deviceId.toString().isBlank()) {
             throw new IllegalArgumentException("deviceId 不能为空");

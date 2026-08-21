@@ -25,6 +25,9 @@ logs/
 .codex/
 .claude/
 openspec/
+# pi agent 的任务收件箱与进度外送：跨 agent 协作的运行时产物，绝不入库
+.pi/inbox/
+.pi/outbox/
 
 # ---- 本地环境变量 ----
 # 约定：仓库内的 .env / .env.prod / .env.test 只放占位符，
