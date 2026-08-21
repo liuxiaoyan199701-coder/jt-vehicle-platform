@@ -321,6 +321,44 @@ export function deleteFleet(id: number) {
   return request<void>({ url: `/fleets/${encodePathSegment(id)}`, method: 'delete' });
 }
 
+// ---------------- 电子运单 ----------------
+
+export interface WaybillItem {
+  id: number;
+  deviceId: string;
+  reportedAt: string;
+  receivedAt: string;
+  rawLength: number;
+  preview: string;
+  utf8: boolean;
+}
+
+export interface WaybillPage {
+  items: WaybillItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function fetchWaybills(deviceId: string, page = 1, pageSize = 20) {
+  return request<WaybillPage>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/waybills`,
+    params: { page, pageSize }
+  });
+}
+
+export interface WaybillRaw {
+  base64: string;
+  length: number;
+  fileName: string;
+}
+
+export function fetchWaybillRaw(deviceId: string, waybillId: number) {
+  return request<WaybillRaw>({
+    url: `/vehicles/${encodePathSegment(deviceId)}/waybills/${encodePathSegment(waybillId)}/raw`
+  });
+}
+
 // ---------------- 实时监控 ----------------
 
 export function fetchLiveStatus() {

@@ -16,6 +16,7 @@ public enum MessageType {
     ALARM("alarm", DeliveryReliability.AT_LEAST_ONCE),
     MULTIMEDIA("multimedia", DeliveryReliability.AT_LEAST_ONCE),
     RECORDING_METADATA("recording-metadata", DeliveryReliability.AT_LEAST_ONCE),
+    WAYBILL("waybill", DeliveryReliability.AT_LEAST_ONCE),
     TERMINAL_PARAMETER("terminal-parameter", DeliveryReliability.AT_LEAST_ONCE),
     CONTROL_RESULT("control-result", DeliveryReliability.AT_LEAST_ONCE),
     TRANSPARENT_DATA("transparent-data", DeliveryReliability.AT_LEAST_ONCE),

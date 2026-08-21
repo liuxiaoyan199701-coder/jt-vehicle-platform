@@ -4,6 +4,7 @@ import io.github.jtconsole.audit.AuditRecorder;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.iam.RegistrationService;
 import io.github.jtconsole.iam.TenantService;
+import io.github.jtconsole.repository.WaybillRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -23,16 +24,19 @@ public class TenancyMaintenanceTasks {
     private final TenantService tenants;
     private final RegistrationService registrations;
     private final AuditRecorder audits;
+    private final WaybillRepository waybills;
     private final ConsoleProperties properties;
 
     public TenancyMaintenanceTasks(
             TenantService tenants,
             RegistrationService registrations,
             AuditRecorder audits,
+            WaybillRepository waybills,
             ConsoleProperties properties) {
         this.tenants = tenants;
         this.registrations = registrations;
         this.audits = audits;
+        this.waybills = waybills;
         this.properties = properties;
     }
 
@@ -71,8 +75,21 @@ public class TenancyMaintenanceTasks {
         try {
             audits.purgeOlderThan(
                     audit.getRetention(), audit.getCleanupBatchSize(), audit.getCleanupMaxBatches());
+            String cutoff = io.github.jtconsole.config.Timestamps.of(
+                    java.time.Instant.now().minus(audit.getRetention()));
+            int total = 0;
+            for (int batch = 0; batch < audit.getCleanupMaxBatches(); batch++) {
+                int removed = waybills.deleteOlderThan(cutoff, audit.getCleanupBatchSize());
+                total += removed;
+                if (removed < audit.getCleanupBatchSize()) {
+                    break;
+                }
+            }
+            if (total > 0) {
+                LOGGER.info("按审计保留期清理电子运单 {} 条", total);
+            }
         } catch (RuntimeException failure) {
-            LOGGER.warn("审计日志清理失败：{}", failure.getClass().getSimpleName());
+            LOGGER.warn("审计日志/电子运单清理失败：{}", failure.getClass().getSimpleName());
         }
     }
 }

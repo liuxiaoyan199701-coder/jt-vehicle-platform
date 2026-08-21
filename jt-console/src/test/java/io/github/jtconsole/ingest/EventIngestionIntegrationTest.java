@@ -18,6 +18,7 @@ import io.github.jtconsole.repository.MediaRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import io.github.jtconsole.repository.TrackRepository;
 import io.github.jtconsole.repository.VehicleRepository;
+import io.github.jtconsole.repository.WaybillRepository;
 import io.github.jtconsole.web.VehicleController;
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.operations.AlarmService;
@@ -335,6 +336,11 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        WaybillRepository waybillRepository(JdbcClient jdbc) {
+            return new WaybillRepository(jdbc);
+        }
+
+        @Bean
         VehicleRepository vehicleRepository(JdbcClient jdbc) {
             return new VehicleRepository(jdbc);
         }
@@ -443,9 +449,10 @@ class EventIngestionIntegrationTest {
         @Bean
         EventIngestionService eventIngestionService(
                 EventRepository events, LocationService locations, MediaRepository media,
-                DriverRepository drivers) {
+                DriverRepository drivers, WaybillRepository waybills) {
             return new EventIngestionService(events, locations, new MediaIngestionService(media),
-                    new DriverIdentityIngestionService(drivers));
+                    new DriverIdentityIngestionService(drivers),
+                    new WaybillIngestionService(waybills, org.mockito.Mockito.mock(DeviceOwnershipCache.class)));
         }
     }
 }
