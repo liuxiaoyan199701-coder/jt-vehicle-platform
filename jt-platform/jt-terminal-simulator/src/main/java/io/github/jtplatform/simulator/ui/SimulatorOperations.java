@@ -5,6 +5,7 @@ import io.github.jtplatform.simulator.config.SimulatorConfig;
 import io.github.jtplatform.simulator.signal.AlarmDefinition;
 import io.github.jtplatform.simulator.diagnostics.LogEntry;
 import io.github.jtplatform.simulator.signal.SignalState;
+import io.github.jtplatform.simulator.signal.FleetRuntime;
 import io.github.jtplatform.simulator.trip.TripViewState;
 import java.io.IOException;
 import java.util.List;
@@ -48,6 +49,25 @@ public interface SimulatorOperations extends AutoCloseable {
     }
 
     default void setOverspeedKph(double speedKph) {
+    }
+
+    default List<FleetRuntime.FleetMemberState> fleetStates() {
+        return List.of();
+    }
+
+    default void startFleet() {
+    }
+
+    default void stopFleet() {
+    }
+
+    default void startFleetMember(int index) {
+    }
+
+    default void stopFleetMember(int index) {
+    }
+
+    default void selectFleetMember(int index) {
     }
 
     default CompletionStage<Void> sendDriverCard(

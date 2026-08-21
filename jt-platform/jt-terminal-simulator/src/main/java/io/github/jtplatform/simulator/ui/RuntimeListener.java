@@ -34,4 +34,7 @@ public interface RuntimeListener {
 
     default void onRecordingEvent(String detail) {
     }
+
+    default void onFleetState(io.github.jtplatform.simulator.signal.FleetRuntime.FleetMemberState state) {
+    }
 }

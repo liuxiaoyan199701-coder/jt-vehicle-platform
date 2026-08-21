@@ -26,7 +26,8 @@ public record SimulatorConfig(
         DriverConfig driver,
         AlarmConfig alarm,
         Jt1078SimFormat simFormat,
-        RecordingConfig recording) {
+        RecordingConfig recording,
+        FleetConfig fleet) {
 
     public static final int DEFAULT_SIGNAL_PORT = 7_100;
     public static final int DEFAULT_MAX_PAYLOAD_BYTES = 1_400;
@@ -56,7 +57,20 @@ public record SimulatorConfig(
         this(signalHost, signalPort, version, mobileNo, deviceId, channel, registration,
                 ffmpegPath, cameraName, microphoneName, mainProfile, subProfile,
                 previewWidth, previewHeight, previewFps, maxPayloadBytes, trip, driver, alarm,
-                simFormat, RecordingConfig.defaults());
+                simFormat, RecordingConfig.defaults(), FleetConfig.defaults());
+    }
+
+    public SimulatorConfig(
+            String signalHost, int signalPort, Jt808Version version, String mobileNo,
+            String deviceId, int channel, RegistrationConfig registration, String ffmpegPath,
+            String cameraName, String microphoneName, VideoProfile mainProfile,
+            VideoProfile subProfile, int previewWidth, int previewHeight, int previewFps,
+            int maxPayloadBytes, TripConfig trip, DriverConfig driver, AlarmConfig alarm,
+            Jt1078SimFormat simFormat, RecordingConfig recording) {
+        this(signalHost, signalPort, version, mobileNo, deviceId, channel, registration,
+                ffmpegPath, cameraName, microphoneName, mainProfile, subProfile,
+                previewWidth, previewHeight, previewFps, maxPayloadBytes, trip, driver, alarm,
+                simFormat, recording, FleetConfig.defaults());
     }
 
     public SimulatorConfig {
@@ -93,6 +107,7 @@ public record SimulatorConfig(
         alarm = alarm == null ? AlarmConfig.defaults() : alarm;
         simFormat = simFormat == null ? Jt1078SimFormat.STANDARD : simFormat;
         recording = recording == null ? RecordingConfig.defaults() : recording;
+        fleet = fleet == null ? FleetConfig.defaults() : fleet;
     }
 
     @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
@@ -117,7 +132,8 @@ public record SimulatorConfig(
             @JsonProperty("driver") DriverConfig driver,
             @JsonProperty("alarm") AlarmConfig alarm,
             @JsonProperty("simFormat") Jt1078SimFormat simFormat,
-            @JsonProperty("recording") RecordingConfig recording) {
+            @JsonProperty("recording") RecordingConfig recording,
+            @JsonProperty("fleet") FleetConfig fleet) {
         SimulatorConfig defaults = defaults();
         return new SimulatorConfig(
                 signalHost == null ? defaults.signalHost() : signalHost,
@@ -140,7 +156,8 @@ public record SimulatorConfig(
                 driver == null ? defaults.driver() : driver,
                 alarm == null ? defaults.alarm() : alarm,
                 simFormat == null ? defaults.simFormat() : simFormat,
-                recording == null ? defaults.recording() : recording);
+                recording == null ? defaults.recording() : recording,
+                fleet == null ? defaults.fleet() : fleet);
     }
 
     public static SimulatorConfig defaults() {
@@ -149,14 +166,15 @@ public record SimulatorConfig(
                 "138000000000", "1380000", 1, RegistrationConfig.defaults(), "", "", "",
                 VideoProfile.defaultMain(), VideoProfile.defaultSub(), 640, 360, 5,
                 DEFAULT_MAX_PAYLOAD_BYTES, TripConfig.defaults(), DriverConfig.defaults(),
-                AlarmConfig.defaults(), Jt1078SimFormat.STANDARD, RecordingConfig.defaults());
+                AlarmConfig.defaults(), Jt1078SimFormat.STANDARD, RecordingConfig.defaults(),
+                FleetConfig.defaults());
     }
 
     public SimulatorConfig withFfmpegPath(String resolvedPath) {
         return new SimulatorConfig(signalHost, signalPort, version, mobileNo, deviceId, channel,
                 registration, resolvedPath, cameraName, microphoneName, mainProfile, subProfile,
                 previewWidth, previewHeight, previewFps, maxPayloadBytes, trip, driver, alarm,
-                simFormat, recording);
+                simFormat, recording, fleet);
     }
 
     private static String requireText(String value, String name) {

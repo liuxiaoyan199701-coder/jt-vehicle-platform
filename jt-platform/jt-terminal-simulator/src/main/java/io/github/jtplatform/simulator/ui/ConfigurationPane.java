@@ -77,6 +77,12 @@ final class ConfigurationPane extends VBox {
     private final TextField recordingStart = text(ConfigField.RECORDING_START);
     private final TextField recordingEnd = text(ConfigField.RECORDING_END);
     private final TextField recordingChannel = text(ConfigField.RECORDING_CHANNEL);
+    private final CheckBox fleetEnabled = check(ConfigField.FLEET_ENABLED, "启用车队模式");
+    private final TextField fleetCount = text(ConfigField.FLEET_COUNT);
+    private final CheckBox fleetIncrementDevice = check(ConfigField.FLEET_INCREMENT_DEVICE, "设备号递增");
+    private final CheckBox fleetIncrementMobile = check(ConfigField.FLEET_INCREMENT_MOBILE, "手机号递增");
+    private final CheckBox fleetIncrementPlate = check(ConfigField.FLEET_INCREMENT_PLATE, "车牌尾号递增");
+    private final TextField fleetDepartureInterval = text(ConfigField.FLEET_DEPARTURE_INTERVAL);
 
     private final CheckBox tripAutoStart = check(ConfigField.TRIP_AUTO_START, "连接成功后自动开始");
     private final TextField tripAmapKey = text(ConfigField.TRIP_AMAP_KEY);
@@ -182,7 +188,8 @@ final class ConfigurationPane extends VBox {
         Tab captureTab = tab("采集", captureContent());
         Tab encodingTab = tab("编码", encodingContent());
         Tab recordingTab = tab("录像", recordingContent());
-        tabs.getTabs().setAll(connectionTab, tripTab, captureTab, encodingTab, recordingTab);
+        Tab fleetTab = tab("车队", fleetContent());
+        tabs.getTabs().setAll(connectionTab, tripTab, captureTab, encodingTab, recordingTab, fleetTab);
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
         VBox.setVgrow(tabs, Priority.ALWAYS);
 
@@ -210,6 +217,9 @@ final class ConfigurationPane extends VBox {
                 ConfigField.MAX_PAYLOAD_BYTES, ConfigField.SIM_FORMAT);
         mapTab(recordingTab, ConfigField.RECORDING_COUNT, ConfigField.RECORDING_START,
                 ConfigField.RECORDING_END, ConfigField.RECORDING_CHANNEL);
+        mapTab(fleetTab, ConfigField.FLEET_ENABLED, ConfigField.FLEET_COUNT,
+                ConfigField.FLEET_INCREMENT_DEVICE, ConfigField.FLEET_INCREMENT_MOBILE,
+                ConfigField.FLEET_INCREMENT_PLATE, ConfigField.FLEET_DEPARTURE_INTERVAL);
 
         validationSummary.getStyleClass().add("validation-summary");
         validationSummary.setManaged(false);
@@ -349,6 +359,22 @@ final class ConfigurationPane extends VBox {
         return scroll(content);
     }
 
+    private Node fleetContent() {
+        VBox content = tabContent();
+        GridPane fields = grid();
+        row(fields, 0, "车队模式", ConfigField.FLEET_ENABLED, fleetEnabled);
+        row(fields, 1, "车队台数", ConfigField.FLEET_COUNT, fleetCount);
+        row(fields, 2, "设备号递增", ConfigField.FLEET_INCREMENT_DEVICE, fleetIncrementDevice);
+        row(fields, 3, "手机号递增", ConfigField.FLEET_INCREMENT_MOBILE, fleetIncrementMobile);
+        row(fields, 4, "车牌尾号递增", ConfigField.FLEET_INCREMENT_PLATE, fleetIncrementPlate);
+        row(fields, 5, "出发间隔（秒）", ConfigField.FLEET_DEPARTURE_INTERVAL, fleetDepartureInterval);
+        Label hint = new Label("最多 20 台；每台连接生命周期独立，单台故障不会影响其它台。推流仍只允许单车。");
+        hint.getStyleClass().add("field-hint");
+        hint.setWrapText(true);
+        content.getChildren().addAll(sectionTitle("批量模拟"), fields, hint);
+        return scroll(content);
+    }
+
     private GridPane profileGrid(
             ConfigField widthField,
             TextField width,
@@ -410,7 +436,9 @@ final class ConfigurationPane extends VBox {
                         tripRoundTrip.isSelected()),
                 simFormat.getValue(), "", "", "", "", "", "80",
                 recordingCount.getText(), recordingStart.getText(), recordingEnd.getText(),
-                recordingChannel.getText());
+                recordingChannel.getText(), fleetEnabled.isSelected(), fleetCount.getText(),
+                fleetIncrementDevice.isSelected(), fleetIncrementMobile.isSelected(),
+                fleetIncrementPlate.isSelected(), fleetDepartureInterval.getText());
     }
 
     void apply(SimulatorFormData data) {
@@ -445,6 +473,12 @@ final class ConfigurationPane extends VBox {
         recordingStart.setText(data.recordingStart());
         recordingEnd.setText(data.recordingEnd());
         recordingChannel.setText(data.recordingChannel());
+        fleetEnabled.setSelected(data.fleetEnabled());
+        fleetCount.setText(data.fleetCount());
+        fleetIncrementDevice.setSelected(data.fleetIncrementDevice());
+        fleetIncrementMobile.setSelected(data.fleetIncrementMobile());
+        fleetIncrementPlate.setSelected(data.fleetIncrementPlate());
+        fleetDepartureInterval.setText(data.fleetDepartureInterval());
         TripFormData trip = data.trip();
         tripAutoStart.setSelected(trip.autoStart());
         tripAmapKey.setText(trip.amapKey());

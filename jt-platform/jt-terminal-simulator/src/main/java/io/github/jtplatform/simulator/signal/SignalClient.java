@@ -903,6 +903,7 @@ public final class SignalClient implements AutoCloseable {
                     writer.write(locationReport(fix));
                     try {
                         listener.onLocationReported(Instant.now());
+                        listener.onLocationFix(fix);
                     } catch (RuntimeException ignored) {
                         // 状态回调不得影响位置上报调度。
                     }
