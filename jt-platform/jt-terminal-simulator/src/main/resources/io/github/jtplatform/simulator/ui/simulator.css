@@ -114,6 +114,16 @@
     -fx-pref-height: 1px;
 }
 
+.configuration-section {
+    -fx-background-color: #ffffff;
+}
+
+.configuration-section > .title {
+    -fx-background-color: #eef3f3;
+    -fx-text-fill: #24313b;
+    -fx-font-weight: 700;
+}
+
 .configuration-pane {
     -fx-background-color: #ffffff;
     -fx-border-color: transparent #dce2e5 transparent transparent;
@@ -315,4 +325,34 @@
 .activity-label {
     -fx-text-fill: #59666e;
     -fx-text-overrun: ellipsis;
+}
+
+/* 深色运行区：用于长时间观察日志和媒体状态，正文与背景对照度保持在 AA 以上。 */
+.operations-tabs,
+.operations-tabs > .tab-content-area,
+.control-panel {
+    -fx-background-color: #20262b;
+}
+
+.control-panel .label,
+.control-panel .check-box,
+.control-panel .check-box .text,
+.control-panel .panel-title {
+    -fx-text-fill: #e8eef0;
+}
+
+.control-panel .text-field {
+    -fx-background-color: #2d363c;
+    -fx-text-fill: #f3f7f8;
+    -fx-prompt-text-fill: #aebbc1;
+    -fx-border-color: #65747d;
+}
+
+.status-item {
+    -fx-text-fill: #4a5860;
+    -fx-font-weight: 600;
+}
+
+.operations-tabs > .tab-header-area > .headers-region > .tab:selected {
+    -fx-background-color: #2d363c;
 }

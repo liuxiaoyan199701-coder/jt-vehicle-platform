@@ -1,6 +1,7 @@
 package io.github.jtplatform.simulator.ui;
 
 import io.github.jtplatform.simulator.config.Jt808Version;
+import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
 import io.github.jtplatform.simulator.media.DirectShowDevice;
 import io.github.jtplatform.simulator.media.DirectShowDevices;
@@ -71,6 +72,7 @@ final class ConfigurationPane extends VBox {
     private final TextField subBitrate = text(ConfigField.SUB_BITRATE);
     private final TextField subGop = text(ConfigField.SUB_GOP);
     private final TextField maxPayloadBytes = text(ConfigField.MAX_PAYLOAD_BYTES);
+    private final ComboBox<Jt1078SimFormat> simFormat = combo(ConfigField.SIM_FORMAT);
 
     private final CheckBox tripAutoStart = check(ConfigField.TRIP_AUTO_START, "连接成功后自动开始");
     private final TextField tripAmapKey = text(ConfigField.TRIP_AMAP_KEY);
@@ -123,6 +125,18 @@ final class ConfigurationPane extends VBox {
         setMaxWidth(540);
 
         version.getItems().setAll(Jt808Version.values());
+        simFormat.getItems().setAll(Jt1078SimFormat.values());
+        simFormat.setConverter(new StringConverter<>() {
+            @Override public String toString(Jt1078SimFormat value) {
+                return value == null ? "" : switch (value) {
+                    case STANDARD -> "标准 12 位";
+                    case EXTENDED -> "扩展 20 位 · 置 X 位";
+                    case NON_STANDARD_20 -> "野生 20 位 · 不置 X 位";
+                };
+            }
+            @Override public Jt1078SimFormat fromString(String value) { return null; }
+        });
+        simFormat.setTooltip(new Tooltip("野生 20 位用于复现不守标准的设备，验证平台自动识别"));
         version.setConverter(new StringConverter<>() {
             @Override
             public String toString(Jt808Version value) {
@@ -306,7 +320,11 @@ final class ConfigurationPane extends VBox {
 
         GridPane packet = grid();
         row(packet, 0, "1078 单片载荷", ConfigField.MAX_PAYLOAD_BYTES, maxPayloadBytes);
-        content.getChildren().addAll(sectionTitle("报文"), packet);
+        row(packet, 1, "SIM 形态", ConfigField.SIM_FORMAT, simFormat);
+        Label simHint = new Label("野生 20 位用于复现不守标准的设备，验证平台自动识别");
+        simHint.getStyleClass().add("field-hint");
+        simHint.setWrapText(true);
+        content.getChildren().addAll(sectionTitle("报文"), packet, simHint);
         return scroll(content);
     }
 
@@ -368,7 +386,8 @@ final class ConfigurationPane extends VBox {
                         tripDestinationLng.getText(),
                         tripSpeed.getText(),
                         tripReportInterval.getText(),
-                        tripRoundTrip.isSelected()));
+                        tripRoundTrip.isSelected()),
+                simFormat.getValue(), "", "", "", "", "", "80");
     }
 
     void apply(SimulatorFormData data) {
@@ -398,6 +417,7 @@ final class ConfigurationPane extends VBox {
         previewHeight.setText(data.previewHeight());
         previewFrameRate.setText(data.previewFrameRate());
         maxPayloadBytes.setText(data.maxPayloadBytes());
+        simFormat.setValue(data.simFormat());
         TripFormData trip = data.trip();
         tripAutoStart.setSelected(trip.autoStart());
         tripAmapKey.setText(trip.amapKey());

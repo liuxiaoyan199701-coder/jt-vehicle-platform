@@ -53,7 +53,8 @@ public final class MediaController implements SignalCommandHandler, AutoCloseabl
                         config.mobileNo(),
                         config.channel(),
                         config.maxPayloadBytes(),
-                        MEDIA_CONNECT_TIMEOUT));
+                        MEDIA_CONNECT_TIMEOUT,
+                        config.simFormat()));
     }
 
     MediaController(

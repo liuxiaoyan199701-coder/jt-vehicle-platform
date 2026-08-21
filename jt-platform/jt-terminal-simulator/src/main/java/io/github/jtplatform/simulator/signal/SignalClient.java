@@ -3,12 +3,15 @@ package io.github.jtplatform.simulator.signal;
 import io.github.jtplatform.simulator.config.Jt808Version;
 import io.github.jtplatform.simulator.config.RegistrationConfig;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
+import io.github.jtplatform.simulator.config.DriverConfig;
+import io.github.jtplatform.simulator.config.TerminalTime;
 import io.github.jtplatform.simulator.config.TripConfig;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,6 +32,7 @@ import org.yzh.protocol.t808.T0001;
 import org.yzh.protocol.t808.T0100;
 import org.yzh.protocol.t808.T0102;
 import org.yzh.protocol.t808.T0200;
+import org.yzh.protocol.t808.T0702;
 import org.yzh.protocol.t808.T0801;
 import org.yzh.protocol.t808.T0805;
 import org.yzh.protocol.t808.T8100;
@@ -61,6 +65,9 @@ public final class SignalClient implements AutoCloseable {
     private final AtomicBoolean connectionRequested = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final Object lifecycleLock = new Object();
+    private final java.util.concurrent.atomic.AtomicInteger alarmBits = new java.util.concurrent.atomic.AtomicInteger();
+    private final java.util.concurrent.atomic.AtomicReference<Double> overspeedKph = new java.util.concurrent.atomic.AtomicReference<>();
+    private static final DateTimeFormatter DRIVER_TIME = DateTimeFormatter.ofPattern("yyMMddHHmmss");
 
     private volatile SignalState state = SignalState.DISCONNECTED;
     private volatile Thread supervisor;
@@ -146,6 +153,45 @@ public final class SignalClient implements AutoCloseable {
 
     public boolean connectionRequested() {
         return connectionRequested.get();
+    }
+
+    /** UI 线程置位、位置调度线程读取均通过原子状态完成。 */
+    public void setAlarm(int bit, boolean enabled) {
+        validateAlarmBit(bit);
+        alarmBits.updateAndGet(current -> enabled ? current | (1 << bit) : current & ~(1 << bit));
+    }
+
+    public void clearAlarms() {
+        alarmBits.set(0);
+        overspeedKph.set(null);
+    }
+
+    public int alarmBits() {
+        return alarmBits.get();
+    }
+
+    public void setOverspeedKph(Double speedKph) {
+        if (speedKph != null && (!Double.isFinite(speedKph) || speedKph < 0)) {
+            throw new IllegalArgumentException("speedKph must be finite and non-negative");
+        }
+        overspeedKph.set(speedKph);
+    }
+
+    public CompletionStage<Void> sendDriverCard(DriverConfig driver, DriverAction action) {
+        Objects.requireNonNull(driver, "driver");
+        Objects.requireNonNull(action, "action");
+        Connection current = connection;
+        if (current == null || current.closed.get() || state != SignalState.ONLINE) {
+            return java.util.concurrent.CompletableFuture.failedFuture(
+                    new IllegalStateException("808 signal is not online"));
+        }
+        return java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                current.writer.write(driverMessage(driver, action));
+            } catch (IOException failure) {
+                throw new java.util.concurrent.CompletionException(failure);
+            }
+        }, commandExecutor);
     }
 
     @Override
@@ -468,6 +514,10 @@ public final class SignalClient implements AutoCloseable {
      *       会在编码时强转失败。</li>
      * </ul>
      */
+    T0200 locationReportForTest(LocationFix fix) {
+        return locationReport(fix);
+    }
+
     private T0200 locationReport(LocationFix fix) {
         boolean southern = fix.latitude() < 0;
         boolean western = fix.longitude() < 0;
@@ -476,12 +526,13 @@ public final class SignalClient implements AutoCloseable {
                 | (western ? 1 << WEST_LONGITUDE_BIT : 0);
 
         T0200 report = new T0200()
-                .setWarnBit(0)
+                .setWarnBit(alarmBits.get())
                 .setStatusBit(status)
                 .setLatitude(microDegrees(fix.latitude()))
                 .setLongitude(microDegrees(fix.longitude()))
                 .setAltitude(fix.altitudeMeters())
-                .setSpeed((int) Math.round(fix.speedKph() * 10))
+                .setSpeed((int) Math.round(((alarmBits.get() & (1 << AlarmDefinition.OVERSPEED_BIT)) != 0
+                        && overspeedKph.get() != null ? overspeedKph.get() : fix.speedKph()) * 10))
                 .setDirection(Math.floorMod(fix.bearingDegrees(), 360))
                 .setDeviceTime(fix.deviceTime());
         // 显式类型见证不能省：Map.of(Integer, Long) 推导出的是 Map<Integer,Long>，与字段类型不符。
@@ -491,6 +542,38 @@ public final class SignalClient implements AutoCloseable {
     }
 
     /** 十进制度转协议单位（1e-6 度），取绝对值——符号由状态标志位表达。 */
+    T0702 driverMessageForTest(DriverConfig driver, DriverAction action, Instant now) {
+        return driverMessage(driver, action, now);
+    }
+
+    private T0702 driverMessage(DriverConfig driver, DriverAction action) {
+        return driverMessage(driver, action, Instant.now());
+    }
+
+    private T0702 driverMessage(DriverConfig driver, DriverAction action, Instant now) {
+        // JT/T 808 0702：状态 1=插卡、2=拔卡；IC 卡读取结果 0=成功，非 0=失败。
+        // 失败动作保留证件字段为空，并明确以 1 作为非成功结果，便于平台验证失败分支。
+        boolean failure = action == DriverAction.READ_FAILURE;
+        T0702 message = new T0702()
+                .setStatus(action.status)
+                .setDateTime(DRIVER_TIME.withZone(TerminalTime.ZONE).format(now))
+                .setCardStatus(failure ? 1 : 0);
+        if (!failure) {
+            message.setName(driver.name())
+                    .setIdCard(driver.idCard())
+                    .setLicenseNo(driver.licenseNo())
+                    .setInstitution(driver.institution())
+                    .setLicenseValidPeriod(driver.licenseValidPeriod());
+        }
+        return prepare(message, serialNumbers.next());
+    }
+
+    private static void validateAlarmBit(int bit) {
+        if (bit < 0 || bit > 31) {
+            throw new IllegalArgumentException("alarm bit must be in range 0..31");
+        }
+    }
+
     private static int microDegrees(double degrees) {
         return (int) Math.round(Math.abs(degrees) * 1_000_000.0D);
     }
@@ -655,6 +738,18 @@ public final class SignalClient implements AutoCloseable {
         }
     }
 
+    public enum DriverAction {
+        INSERT_CARD(1),
+        REMOVE_CARD(2),
+        READ_FAILURE(1);
+
+        private final int status;
+
+        DriverAction(int status) {
+            this.status = status;
+        }
+    }
+
     @FunctionalInterface
     private interface ResponseAction {
         int execute() throws Exception;
@@ -723,6 +818,11 @@ public final class SignalClient implements AutoCloseable {
                 }
                 try {
                     writer.write(locationReport(fix));
+                    try {
+                        listener.onLocationReported(Instant.now());
+                    } catch (RuntimeException ignored) {
+                        // 状态回调不得影响位置上报调度。
+                    }
                 } catch (IOException reportFailure) {
                     reportError("writing T0200 location report", reportFailure);
                     close();

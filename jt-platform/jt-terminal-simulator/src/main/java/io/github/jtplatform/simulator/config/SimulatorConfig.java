@@ -1,5 +1,8 @@
 package io.github.jtplatform.simulator.config;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.yzh.protocol.t1078.codec.Jt1078SimFormat;
 import java.util.Objects;
 
 public record SimulatorConfig(
@@ -19,10 +22,26 @@ public record SimulatorConfig(
         int previewHeight,
         int previewFps,
         int maxPayloadBytes,
-        TripConfig trip) {
+        TripConfig trip,
+        DriverConfig driver,
+        AlarmConfig alarm,
+        Jt1078SimFormat simFormat) {
 
     public static final int DEFAULT_SIGNAL_PORT = 7_100;
     public static final int DEFAULT_MAX_PAYLOAD_BYTES = 1_400;
+
+    /** 保持既有调用方源码兼容；新增字段按默认值接入。 */
+    public SimulatorConfig(
+            String signalHost, int signalPort, Jt808Version version, String mobileNo,
+            String deviceId, int channel, RegistrationConfig registration, String ffmpegPath,
+            String cameraName, String microphoneName, VideoProfile mainProfile,
+            VideoProfile subProfile, int previewWidth, int previewHeight, int previewFps,
+            int maxPayloadBytes, TripConfig trip) {
+        this(signalHost, signalPort, version, mobileNo, deviceId, channel, registration,
+                ffmpegPath, cameraName, microphoneName, mainProfile, subProfile,
+                previewWidth, previewHeight, previewFps, maxPayloadBytes, trip,
+                DriverConfig.defaults(), AlarmConfig.defaults(), Jt1078SimFormat.STANDARD);
+    }
 
     public SimulatorConfig {
         signalHost = requireText(signalHost, "signalHost");
@@ -57,6 +76,55 @@ public record SimulatorConfig(
         // 抛异常会让那些文件整份加载失败，而上层的兜底是回落到全部默认值——用户的信令地址、终端号、
         // 编码器路径会因为一个新增的可选字段而一起丢掉。
         trip = trip == null ? TripConfig.defaults() : trip;
+        driver = driver == null ? DriverConfig.defaults() : driver;
+        alarm = alarm == null ? AlarmConfig.defaults() : alarm;
+        simFormat = simFormat == null ? Jt1078SimFormat.STANDARD : simFormat;
+    }
+
+    @JsonCreator(mode = JsonCreator.Mode.PROPERTIES)
+    static SimulatorConfig fromJson(
+            @JsonProperty("signalHost") String signalHost,
+            @JsonProperty("signalPort") Integer signalPort,
+            @JsonProperty("version") Jt808Version version,
+            @JsonProperty("mobileNo") String mobileNo,
+            @JsonProperty("deviceId") String deviceId,
+            @JsonProperty("channel") Integer channel,
+            @JsonProperty("registration") RegistrationConfig registration,
+            @JsonProperty("ffmpegPath") String ffmpegPath,
+            @JsonProperty("cameraName") String cameraName,
+            @JsonProperty("microphoneName") String microphoneName,
+            @JsonProperty("mainProfile") VideoProfile mainProfile,
+            @JsonProperty("subProfile") VideoProfile subProfile,
+            @JsonProperty("previewWidth") Integer previewWidth,
+            @JsonProperty("previewHeight") Integer previewHeight,
+            @JsonProperty("previewFps") Integer previewFps,
+            @JsonProperty("maxPayloadBytes") Integer maxPayloadBytes,
+            @JsonProperty("trip") TripConfig trip,
+            @JsonProperty("driver") DriverConfig driver,
+            @JsonProperty("alarm") AlarmConfig alarm,
+            @JsonProperty("simFormat") Jt1078SimFormat simFormat) {
+        SimulatorConfig defaults = defaults();
+        return new SimulatorConfig(
+                signalHost == null ? defaults.signalHost() : signalHost,
+                signalPort == null ? defaults.signalPort() : signalPort,
+                version == null ? defaults.version() : version,
+                mobileNo == null ? defaults.mobileNo() : mobileNo,
+                deviceId == null ? defaults.deviceId() : deviceId,
+                channel == null ? defaults.channel() : channel,
+                registration == null ? defaults.registration() : registration,
+                ffmpegPath == null ? defaults.ffmpegPath() : ffmpegPath,
+                cameraName == null ? defaults.cameraName() : cameraName,
+                microphoneName == null ? defaults.microphoneName() : microphoneName,
+                mainProfile == null ? defaults.mainProfile() : mainProfile,
+                subProfile == null ? defaults.subProfile() : subProfile,
+                previewWidth == null ? defaults.previewWidth() : previewWidth,
+                previewHeight == null ? defaults.previewHeight() : previewHeight,
+                previewFps == null ? defaults.previewFps() : previewFps,
+                maxPayloadBytes == null ? defaults.maxPayloadBytes() : maxPayloadBytes,
+                trip == null ? defaults.trip() : trip,
+                driver == null ? defaults.driver() : driver,
+                alarm == null ? defaults.alarm() : alarm,
+                simFormat == null ? defaults.simFormat() : simFormat);
     }
 
     public static SimulatorConfig defaults() {
@@ -77,7 +145,10 @@ public record SimulatorConfig(
                 360,
                 5,
                 DEFAULT_MAX_PAYLOAD_BYTES,
-                TripConfig.defaults());
+                TripConfig.defaults(),
+                DriverConfig.defaults(),
+                AlarmConfig.defaults(),
+                Jt1078SimFormat.STANDARD);
     }
 
     /**
@@ -91,7 +162,7 @@ public record SimulatorConfig(
                 signalHost, signalPort, version, mobileNo, deviceId, channel,
                 registration, resolvedPath, cameraName, microphoneName,
                 mainProfile, subProfile, previewWidth, previewHeight, previewFps,
-                maxPayloadBytes, trip);
+                maxPayloadBytes, trip, driver, alarm, simFormat);
     }
 
     private static String requireText(String value, String name) {

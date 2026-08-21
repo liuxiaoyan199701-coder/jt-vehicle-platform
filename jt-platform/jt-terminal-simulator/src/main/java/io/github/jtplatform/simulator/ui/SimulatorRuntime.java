@@ -1,6 +1,8 @@
 package io.github.jtplatform.simulator.ui;
 
+import io.github.jtplatform.simulator.config.AlarmConfig;
 import io.github.jtplatform.simulator.config.ConfigStore;
+import io.github.jtplatform.simulator.config.DriverConfig;
 import io.github.jtplatform.simulator.config.SimulatorConfig;
 import io.github.jtplatform.simulator.diagnostics.LogEntry;
 import io.github.jtplatform.simulator.diagnostics.SimulatorLog;
@@ -9,6 +11,7 @@ import io.github.jtplatform.simulator.media.FfmpegCapabilities;
 import io.github.jtplatform.simulator.media.FfmpegDiscovery;
 import io.github.jtplatform.simulator.media.FfmpegDiscoveryResult;
 import io.github.jtplatform.simulator.media.MediaStats;
+import io.github.jtplatform.simulator.signal.AlarmDefinition;
 import io.github.jtplatform.simulator.signal.SignalClient;
 import io.github.jtplatform.simulator.signal.SignalListener;
 import io.github.jtplatform.simulator.signal.SignalState;
@@ -114,6 +117,12 @@ public final class SimulatorRuntime implements SimulatorOperations {
                 new RuntimeSignalListener(generation),
                 tripController);
         signalClient = client;
+        for (AlarmDefinition alarm : AlarmDefinition.COMMON) {
+            client.setAlarm(alarm.bit(), (checked.alarm().warnBits() & alarm.mask()) != 0);
+        }
+        if ((checked.alarm().warnBits() & AlarmDefinition.OVERSPEED_BIT) != 0) {
+            client.setOverspeedKph((double) checked.alarm().overspeedKph());
+        }
         log.info("signal", "Connecting to " + checked.signalHost() + ':' + checked.signalPort());
         client.connect();
     }
@@ -184,6 +193,11 @@ public final class SimulatorRuntime implements SimulatorOperations {
     }
 
     @Override
+    public SimulatorConfig currentConfig() {
+        return currentConfig.get();
+    }
+
+    @Override
     public SignalState signalState() {
         SignalClient current = signalClient;
         return current == null ? SignalState.DISCONNECTED : current.state();
@@ -192,6 +206,101 @@ public final class SimulatorRuntime implements SimulatorOperations {
     @Override
     public MediaViewState mediaState() {
         return toViewState(mediaController.snapshot());
+    }
+
+    @Override
+    public void setAlarm(AlarmDefinition alarm, boolean enabled) {
+        SignalClient current = signalClient;
+        if (current != null) {
+            current.setAlarm(alarm.bit(), enabled);
+        }
+        updateAlarmConfig(alarm, enabled);
+    }
+
+    @Override
+    public void clearAlarms() {
+        SignalClient current = signalClient;
+        if (current != null) {
+            current.clearAlarms();
+        }
+        synchronized (configLock) {
+            SimulatorConfig previous = currentConfig.get();
+            SimulatorConfig updated = new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
+                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
+                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
+                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
+                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), AlarmConfig.defaults(),
+                    previous.simFormat());
+            persistRuntimeConfig(updated);
+        }
+    }
+
+    @Override
+    public void setOverspeedKph(double speedKph) {
+        SignalClient current = signalClient;
+        if (current != null) {
+            current.setOverspeedKph(speedKph);
+        }
+        synchronized (configLock) {
+            SimulatorConfig previous = currentConfig.get();
+            AlarmConfig alarm = new AlarmConfig(previous.alarm().warnBits(), (int) Math.round(speedKph));
+            persistRuntimeConfig(new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
+                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
+                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
+                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
+                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), alarm, previous.simFormat()));
+        }
+    }
+
+    private void persistRuntimeConfig(SimulatorConfig updated) {
+        currentConfig.set(updated);
+        try {
+            configStore.save(updated);
+        } catch (IOException failure) {
+            log.warn("config", "Runtime configuration save failed: " + safeMessage(failure));
+        }
+    }
+
+    private void updateAlarmConfig(AlarmDefinition alarm, boolean enabled) {
+        synchronized (configLock) {
+            SimulatorConfig previous = currentConfig.get();
+            int bits = enabled ? previous.alarm().warnBits() | alarm.mask()
+                    : previous.alarm().warnBits() & ~alarm.mask();
+            AlarmConfig next = new AlarmConfig(bits, previous.alarm().overspeedKph());
+            currentConfig.set(new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
+                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
+                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
+                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
+                    previous.maxPayloadBytes(), previous.trip(), previous.driver(), next, previous.simFormat()));
+        }
+    }
+
+    @Override
+    public CompletionStage<Void> sendDriverCard(DriverConfig driver, SignalClient.DriverAction action) {
+        SignalClient current = signalClient;
+        if (current == null) {
+            return CompletableFuture.failedFuture(new IllegalStateException("808 signal is not online"));
+        }
+        synchronized (configLock) {
+            SimulatorConfig previous = currentConfig.get();
+            SimulatorConfig updated = new SimulatorConfig(previous.signalHost(), previous.signalPort(), previous.version(),
+                    previous.mobileNo(), previous.deviceId(), previous.channel(), previous.registration(),
+                    previous.ffmpegPath(), previous.cameraName(), previous.microphoneName(), previous.mainProfile(),
+                    previous.subProfile(), previous.previewWidth(), previous.previewHeight(), previous.previewFps(),
+                    previous.maxPayloadBytes(), previous.trip(), driver, previous.alarm(), previous.simFormat());
+            currentConfig.set(updated);
+            try {
+                configStore.save(updated);
+            } catch (IOException failure) {
+                return CompletableFuture.failedFuture(failure);
+            }
+        }
+        return current.sendDriverCard(driver, action).thenRun(() -> listener.onDriverAction(
+                switch (action) {
+                    case INSERT_CARD -> "0702 插卡上班已发送";
+                    case REMOVE_CARD -> "0702 拔卡下班已发送";
+                    case READ_FAILURE -> "0702 读卡失败已发送";
+                }));
     }
 
     @Override
@@ -436,6 +545,13 @@ public final class SimulatorRuntime implements SimulatorOperations {
         public void onDiagnostic(String message) {
             if (currentSignal(generation)) {
                 log.info("signal", message);
+            }
+        }
+
+        @Override
+        public void onLocationReported(java.time.Instant timestamp) {
+            if (currentSignal(generation)) {
+                listener.onLocationReported(timestamp);
             }
         }
     }

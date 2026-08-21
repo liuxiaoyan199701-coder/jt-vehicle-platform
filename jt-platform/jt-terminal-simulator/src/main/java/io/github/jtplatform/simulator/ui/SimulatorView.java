@@ -5,6 +5,9 @@ import io.github.jtplatform.simulator.config.TerminalTime;
 import io.github.jtplatform.simulator.diagnostics.LogEntry;
 import io.github.jtplatform.simulator.signal.SignalState;
 import io.github.jtplatform.simulator.trip.TripViewState;
+import io.github.jtplatform.simulator.config.DriverConfig;
+import io.github.jtplatform.simulator.signal.AlarmDefinition;
+import io.github.jtplatform.simulator.signal.SignalClient;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
@@ -12,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletionException;
@@ -28,6 +32,11 @@ import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
+import javafx.scene.control.TextField;
+import javafx.scene.control.TitledPane;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListCell;
 import javafx.scene.control.ListView;
@@ -55,6 +64,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
             .withZone(TerminalTime.ZONE);
 
     private final SimulatorOperations operations;
+    private final SimulatorConfig initialConfig;
     private final ConfigurationPane configuration;
     private final Button saveButton = new Button("保存配置");
     private final Button connectButton = new Button("连接");
@@ -62,6 +72,9 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final Label signalState = new Label("808 未连接");
     private final Label ffmpegState = new Label("FFmpeg 未检测");
     private final Label tripState = new Label("行程 未连接");
+    private final Label deviceState = new Label("设备 -");
+    private final Label lastReportState = new Label("最近上报 -");
+    private final Label streamState = new Label("推流 空闲");
     private final Label activity = new Label("就绪");
     private final ImageView previewImage = new ImageView();
     private final Label previewPlaceholder = new Label("暂无预览画面");
@@ -79,14 +92,21 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private final AtomicBoolean closed = new AtomicBoolean();
 
     private volatile SignalState currentSignalState = SignalState.DISCONNECTED;
+    private final List<CheckBox> alarmChecks = new java.util.ArrayList<>();
+    private final TextField overspeedField = new TextField("80");
+    private final TextField driverName = new TextField();
+    private final TextField driverIdCard = new TextField();
+    private final TextField driverLicenseNo = new TextField();
+    private final TextField driverInstitution = new TextField();
+    private final TextField driverValidPeriod = new TextField();
     private volatile MediaViewState currentMediaState = MediaViewState.idle();
     private boolean ffmpegSupported;
     private boolean previewActionRunning;
 
     public SimulatorView(SimulatorOperations operations, SimulatorConfig initialConfig) {
         this.operations = Objects.requireNonNull(operations, "operations");
-        this.configuration = new ConfigurationPane(
-                Objects.requireNonNull(initialConfig, "initialConfig"));
+        this.initialConfig = Objects.requireNonNull(initialConfig, "initialConfig");
+        this.configuration = new ConfigurationPane(this.initialConfig);
         setId("simulator-root");
         getStyleClass().add("simulator-root");
         setMinSize(960, 640);
@@ -120,6 +140,16 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         activityTooltip.textProperty().bind(activity.textProperty());
         activity.setTooltip(activityTooltip);
 
+        deviceState.getStyleClass().add("status-item");
+        lastReportState.getStyleClass().add("status-item");
+        streamState.getStyleClass().add("status-item");
+        DriverConfig rememberedDriver = initialConfig.driver();
+        driverName.setText(rememberedDriver.name());
+        driverIdCard.setText(rememberedDriver.idCard());
+        driverLicenseNo.setText(rememberedDriver.licenseNo());
+        driverInstitution.setText(rememberedDriver.institution());
+        driverValidPeriod.setText(rememberedDriver.licenseValidPeriod());
+        overspeedField.setText(Integer.toString(initialConfig.alarm().overspeedKph()));
         setTop(createHeader());
         setCenter(createWorkspace());
         setBottom(createStatusBar());
@@ -179,7 +209,11 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private Node createWorkspace() {
         SplitPane workspace = new SplitPane();
         workspace.setOrientation(Orientation.HORIZONTAL);
-        workspace.getItems().setAll(configuration, createOperationsPane());
+        TitledPane configurationSection = new TitledPane("连接与设备配置", configuration);
+        configurationSection.setExpanded(true);
+        configurationSection.setCollapsible(true);
+        configurationSection.getStyleClass().add("configuration-section");
+        workspace.getItems().setAll(configurationSection, createOperationsPane());
         workspace.setDividerPositions(0.36);
         workspace.getStyleClass().add("workspace-split");
         return workspace;
@@ -224,11 +258,123 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         VBox.setVgrow(logView, Priority.ALWAYS);
         logPanel.getChildren().setAll(logTitle, logView);
 
-        SplitPane vertical = new SplitPane(previewPanel, logPanel);
-        vertical.setOrientation(Orientation.VERTICAL);
-        vertical.setDividerPositions(0.70);
-        vertical.getStyleClass().add("operations-split");
-        return vertical;
+        TabPane tabs = new TabPane();
+        VBox tripPanel = new VBox(12, panelTitle("行程模拟"), tripState,
+                new Label("行程位置会按配置中的路线和上报间隔发送。"));
+        tripPanel.setPadding(new Insets(16));
+        Button tripAction = new Button("切换行程");
+        tripAction.setOnAction(event -> toggleTrip());
+        tripPanel.getChildren().add(tripAction);
+        tabs.getTabs().setAll(
+                tab("行程", tripPanel),
+                tab("视频推流", previewPanel),
+                tab("拍照", new VBox(12, panelTitle("拍照"), new Label("等待平台下发 0x8801 拍照命令。"))),
+                tab("告警模拟", createAlarmPanel()),
+                tab("驾驶员", createDriverPanel()),
+                tab("日志", logPanel));
+        tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
+        tabs.getStyleClass().add("operations-tabs");
+        return tabs;
+    }
+
+    private Node createAlarmPanel() {
+        VBox panel = new VBox(12);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        panel.getChildren().add(panelTitle("0x0200 报警位模拟"));
+        for (AlarmDefinition definition : AlarmDefinition.COMMON) {
+            CheckBox check = new CheckBox(definition.name());
+            check.setId("alarm-bit-" + definition.bit());
+            check.setSelected((initialConfig.alarm().warnBits() & definition.mask()) != 0);
+            check.selectedProperty().addListener((observable, oldValue, enabled) ->
+                    operations.setAlarm(definition, enabled));
+            alarmChecks.add(check);
+            panel.getChildren().add(check);
+        }
+        HBox speed = new HBox(8, new Label("超速联动速度 (km/h)"), overspeedField);
+        overspeedField.setId("overspeed-kph");
+        overspeedField.setPrefColumnCount(6);
+        Button applySpeed = new Button("应用");
+        applySpeed.setOnAction(event -> {
+            try {
+                operations.setOverspeedKph(Double.parseDouble(overspeedField.getText().trim()));
+                activity.setText("超速联动速度已更新");
+            } catch (RuntimeException failure) {
+                activity.setText("超速速度无效：请输入 1～300");
+            }
+        });
+        speed.getChildren().add(applySpeed);
+        Button clear = new Button("全部解除");
+        clear.setId("clear-alarms");
+        clear.setOnAction(event -> {
+            operations.clearAlarms();
+            alarmChecks.forEach(check -> check.setSelected(false));
+            activity.setText("全部报警位已解除");
+        });
+        panel.getChildren().addAll(speed, clear,
+                new Label("置位后会随每次位置上报持续携带，平台负责生成与去重告警。"));
+        return panel;
+    }
+
+    private Node createDriverPanel() {
+        VBox panel = new VBox(10);
+        panel.setPadding(new Insets(16));
+        panel.getStyleClass().add("control-panel");
+        panel.getChildren().add(panelTitle("驾驶员身份识别（0702）"));
+        driverName.setId("driver-name");
+        driverIdCard.setId("driver-id-card");
+        driverLicenseNo.setId("driver-license-no");
+        driverInstitution.setId("driver-institution");
+        driverValidPeriod.setId("driver-valid-period");
+        panel.getChildren().addAll(
+                labeledField("姓名", driverName), labeledField("身份证号", driverIdCard),
+                labeledField("从业资格证编码", driverLicenseNo), labeledField("发证机构", driverInstitution),
+                labeledField("有效期（YYMM）", driverValidPeriod));
+        Button insert = new Button("插卡上班");
+        Button remove = new Button("拔卡下班");
+        Button failure = new Button("模拟读卡失败");
+        insert.setId("driver-insert");
+        remove.setId("driver-remove");
+        failure.setId("driver-failure");
+        insert.setOnAction(event -> sendDriver(SignalClient.DriverAction.INSERT_CARD));
+        remove.setOnAction(event -> sendDriver(SignalClient.DriverAction.REMOVE_CARD));
+        failure.setOnAction(event -> sendDriver(SignalClient.DriverAction.READ_FAILURE));
+        panel.getChildren().add(new HBox(8, insert, remove, failure));
+        return panel;
+    }
+
+    private void sendDriver(SignalClient.DriverAction action) {
+        DriverConfig driver = new DriverConfig(driverName.getText(), driverIdCard.getText(),
+                driverLicenseNo.getText(), driverInstitution.getText(), driverValidPeriod.getText());
+        operations.sendDriverCard(driver, action).whenComplete((ignored, failure) -> runOnFx(() -> {
+            if (failure != null) {
+                activity.setText("0702 发送失败: " + safeMessage(failure));
+            } else {
+                activity.setText(switch (action) {
+                    case INSERT_CARD -> "0702 插卡上班已发送";
+                    case REMOVE_CARD -> "0702 拔卡下班已发送";
+                    case READ_FAILURE -> "0702 读卡失败已发送";
+                });
+            }
+        }));
+    }
+
+    private static Label panelTitle(String text) {
+        Label label = new Label(text);
+        label.getStyleClass().add("panel-title");
+        return label;
+    }
+
+    private static Node labeledField(String text, TextField field) {
+        Label label = new Label(text);
+        label.setMinWidth(130);
+        HBox row = new HBox(8, label, field);
+        HBox.setHgrow(field, Priority.ALWAYS);
+        return row;
+    }
+
+    private static Tab tab(String title, Node content) {
+        return new Tab(title, content);
     }
 
     private Node createMetrics() {
@@ -255,7 +401,9 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
 
     private Node createStatusBar() {
         // 行程指示放状态栏而不是页眉：960px 下页眉已经排满，再塞就会把「连接」按钮挤出可视区。
-        HBox status = new HBox(12, ffmpegState, new Separator(Orientation.VERTICAL), tripState,
+        HBox status = new HBox(12, ffmpegState, new Separator(Orientation.VERTICAL), deviceState,
+                new Separator(Orientation.VERTICAL), tripState, new Separator(Orientation.VERTICAL),
+                streamState, new Separator(Orientation.VERTICAL), lastReportState,
                 new Separator(Orientation.VERTICAL), activity);
         HBox.setHgrow(activity, Priority.ALWAYS);
         status.getStyleClass().add("status-bar");
@@ -310,7 +458,15 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
             return null;
         }
         configuration.clearErrors();
-        return validation.config().orElseThrow();
+        SimulatorConfig config = validation.config().orElseThrow();
+        SimulatorConfig previous = operations.currentConfig();
+        DriverConfig driver = new DriverConfig(driverName.getText(), driverIdCard.getText(),
+                driverLicenseNo.getText(), driverInstitution.getText(), driverValidPeriod.getText());
+        return new SimulatorConfig(config.signalHost(), config.signalPort(), config.version(),
+                config.mobileNo(), config.deviceId(), config.channel(), config.registration(),
+                config.ffmpegPath(), config.cameraName(), config.microphoneName(), config.mainProfile(),
+                config.subProfile(), config.previewWidth(), config.previewHeight(), config.previewFps(),
+                config.maxPayloadBytes(), config.trip(), driver, previous.alarm(), config.simFormat());
     }
 
     private void browseFfmpeg() {
@@ -461,6 +617,16 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     }
 
     @Override
+    public void onLocationReported(java.time.Instant timestamp) {
+        runOnFx(() -> lastReportState.setText("最近上报 " + LOG_TIME.format(timestamp)));
+    }
+
+    @Override
+    public void onDriverAction(String detail) {
+        runOnFx(() -> activity.setText(detail));
+    }
+
+    @Override
     public void onError(String context, Throwable error) {
         runOnFx(() -> {
             if ("media-start".equals(context)) {
@@ -485,6 +651,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
         saveButton.setDisable(active);
         connectButton.setText(active ? "断开" : "连接");
         connectButton.setDisable(state == SignalState.STOPPING);
+        deviceState.setText("设备 " + configuration.data().deviceId());
         if (detail != null && !detail.isBlank()) {
             activity.setText(detail);
         }
@@ -516,7 +683,7 @@ public final class SimulatorView extends BorderPane implements RuntimeListener, 
     private void updateMediaState(MediaViewState state) {
         currentMediaState = state;
         mediaStateValue.setText(mediaText(state.state()));
-        targetValue.setText(state.target());
+        streamState.setText("推流 " + mediaText(state.state()));        targetValue.setText(state.target());
         targetValue.setTooltip("-".equals(state.target()) ? null : new Tooltip(state.target()));
         streamValue.setText(state.stream());
         tracksValue.setText(trackText(state.audioEnabled(), state.videoEnabled()));
