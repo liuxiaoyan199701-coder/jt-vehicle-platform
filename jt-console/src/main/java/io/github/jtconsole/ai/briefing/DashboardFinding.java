@@ -55,7 +55,9 @@ public record DashboardFinding(
         /** 摄像头画面异常（来自视觉巡检） */
         CAMERA,
         /** 车队总体状况 */
-        FLEET
+        FLEET,
+        /** 从业资格证到期 */
+        DRIVER
     }
 
     /**

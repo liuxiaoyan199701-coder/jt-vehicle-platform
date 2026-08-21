@@ -36,6 +36,13 @@ public enum ActionType {
             List.of("code", "name", "manager", "contactPhone", "remark")),
     FLEET_MEMBERS("fleet_members", "调整车队成员", Permissions.FLEET_MANAGE, false,
             List.of("id", "deviceIds"), List.of()),
+    DRIVER_CREATE("driver_create", "司机建档", Permissions.DRIVER_MANAGE, true,
+            List.of("name", "idCard", "licenseNo"),
+            List.of("institution", "licenseValidPeriod", "phone", "remark", "departmentId", "tenantId")),
+    DRIVER_UPDATE("driver_update", "修改司机档案", Permissions.DRIVER_MANAGE, true,
+            List.of("id"),
+            List.of("name", "idCard", "licenseNo", "institution", "licenseValidPeriod",
+                    "phone", "remark", "departmentId")),
     GEOFENCE_CREATE("geofence_create", "创建电子围栏", Permissions.GEOFENCE_MANAGE, false,
             List.of("name"),
             List.of("shape", "centerGcjLat", "centerGcjLng", "radiusMeters", "points",
@@ -160,6 +167,9 @@ public enum ActionType {
             case "thresholdKph" -> "（数字，km/h；超速为下限、怠速为低速上界、疲劳为高速下界）";
             case "durationMinutes" -> "（数字，分钟；怠速/疲劳的持续时长，超速规则填 0）";
             case "level" -> "（LOW / MEDIUM / HIGH / CRITICAL）";
+            case "idCard" -> "（18 位身份证号）";
+            case "licenseNo" -> "（从业资格证编码）";
+            case "licenseValidPeriod" -> "（日期 yyyy-MM-dd，从业资格证有效期）";
             case "code" -> "（英文或数字编码，全局唯一）";
             default -> "";
         };

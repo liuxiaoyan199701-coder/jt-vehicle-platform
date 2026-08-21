@@ -12,6 +12,7 @@ import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.AlarmRuleRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.DeviceAttributeRepository;
+import io.github.jtconsole.repository.DriverRepository;
 import io.github.jtconsole.repository.GeofenceRepository;
 import io.github.jtconsole.repository.MediaRepository;
 import io.github.jtconsole.repository.StatusRepository;
@@ -368,6 +369,11 @@ class EventIngestionIntegrationTest {
         }
 
         @Bean
+        DriverRepository driverRepository(JdbcClient jdbc) {
+            return new DriverRepository(jdbc);
+        }
+
+        @Bean
         DailyStatRepository dailyStatRepository(JdbcClient jdbc) {
             return new DailyStatRepository(jdbc);
         }
@@ -436,8 +442,10 @@ class EventIngestionIntegrationTest {
 
         @Bean
         EventIngestionService eventIngestionService(
-                EventRepository events, LocationService locations, MediaRepository media) {
-            return new EventIngestionService(events, locations, new MediaIngestionService(media));
+                EventRepository events, LocationService locations, MediaRepository media,
+                DriverRepository drivers) {
+            return new EventIngestionService(events, locations, new MediaIngestionService(media),
+                    new DriverIdentityIngestionService(drivers));
         }
     }
 }

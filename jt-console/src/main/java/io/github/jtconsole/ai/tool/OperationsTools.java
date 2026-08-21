@@ -5,6 +5,8 @@ import io.github.jtconsole.domain.AlarmLevel;
 import io.github.jtconsole.domain.AlarmPage;
 import io.github.jtconsole.domain.AlarmSource;
 import io.github.jtconsole.domain.AlarmStatus;
+import io.github.jtconsole.domain.Driver;
+import io.github.jtconsole.domain.DriverSession;
 import io.github.jtconsole.domain.MediaFile;
 import io.github.jtconsole.domain.TrackPoint;
 import io.github.jtconsole.domain.VehicleDailyStat;
@@ -15,7 +17,9 @@ import io.github.jtconsole.ai.vision.SnapshotVisionService;
 import io.github.jtconsole.repository.MediaRepository;
 import io.github.jtconsole.geo.ReverseGeocoder;
 import io.github.jtconsole.operations.BusinessDateService;
+import io.github.jtconsole.operations.DriverService;
 import io.github.jtconsole.operations.TrackSummary;
+import io.github.jtconsole.operations.VehicleService;
 import io.github.jtconsole.repository.AlarmRepository;
 import io.github.jtconsole.repository.DailyStatRepository;
 import io.github.jtconsole.repository.TrackRepository;
@@ -60,6 +64,8 @@ public class OperationsTools {
     private final ViewProposalService views;
     private final MediaRepository media;
     private final SnapshotVisionService snapshotVision;
+    private final DriverService drivers;
+    private final VehicleService vehicles;
 
     public OperationsTools(
             ToolRunner runner,
@@ -70,7 +76,9 @@ public class OperationsTools {
             BusinessDateService dates,
             ViewProposalService views,
             MediaRepository media,
-            SnapshotVisionService snapshotVision) {
+            SnapshotVisionService snapshotVision,
+            DriverService drivers,
+            VehicleService vehicles) {
         this.runner = runner;
         this.geocoder = geocoder;
         this.alarms = alarms;
@@ -80,6 +88,8 @@ public class OperationsTools {
         this.views = views;
         this.media = media;
         this.snapshotVision = snapshotVision;
+        this.drivers = drivers;
+        this.vehicles = vehicles;
     }
 
     @Tool(name = "get_current_time",
@@ -338,6 +348,61 @@ public class OperationsTools {
             // 用户至少能一眼看出这些是**已有的**照片，而不是刚拍的那张。
             maybePhotoGallery(session, showGallery, device, start, end,
                     photos.getFirst().capturedAt());
+            return result;
+        });
+    }
+
+    /** 驾驶员查询。查不到就如实说无记录，绝不编造姓名。 */
+    @Tool(name = "query_drivers",
+            description = """
+                    查询驾驶员信息。给 deviceId 查这台车现在谁在开（含「插卡但未建档」的情况）；
+                    给 driverName 按姓名查司机档案。查不到就如实说无记录，不要编造姓名。""")
+    String queryDrivers(
+            @ToolParam(description = "设备号，查这台车的当前驾驶员", required = false) String deviceId,
+            @ToolParam(description = "司机姓名关键字，查司机档案", required = false) String driverName,
+            ToolContext context) {
+        ToolSession session = ToolSession.from(context);
+        return runner.run(session, "query_drivers", "查询驾驶员", () -> {
+            Map<String, Object> result = new LinkedHashMap<>();
+            if (deviceId != null && !deviceId.isBlank()) {
+                String device = deviceId.trim();
+                try {
+                    String canonical = vehicles.requireVisibleDevice(device, session.scope());
+                    result.put("deviceId", canonical);
+                    java.util.Optional<DriverSession> current = drivers.currentSession(canonical);
+                    if (current.isPresent()) {
+                        DriverSession active = current.get();
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("driverId", active.driverId());
+                        row.put("driverName", active.driverName());
+                        row.put("licenseNo", active.licenseNo());
+                        row.put("startedAt", active.startedAt());
+                        row.put("source", active.source());
+                        result.put("currentDriver", row);
+                    } else {
+                        result.put("currentDriver", null);
+                        result.put("note", "该车当前没有驾驶员记录（设备可能不报 0702，或刚拔卡）。");
+                    }
+                } catch (IllegalArgumentException notVisible) {
+                    return Map.of("note", "该设备不在你的可见范围内，无驾驶员记录。");
+                }
+            }
+            if (driverName != null && !driverName.isBlank()) {
+                DriverService.DriverPage page =
+                        drivers.search(driverName, null, session.scope(), 1, 10);
+                result.put("drivers", page.items().stream().map(driver -> {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("driverId", driver.id());
+                    row.put("name", driver.name());
+                    row.put("licenseNo", driver.licenseNo());
+                    row.put("licenseValidPeriod", driver.licenseValidPeriod());
+                    row.put("phone", driver.phone());
+                    return row;
+                }).toList());
+                if (page.items().isEmpty()) {
+                    result.put("driverNote", "没有找到匹配的司机档案。");
+                }
+            }
             return result;
         });
     }

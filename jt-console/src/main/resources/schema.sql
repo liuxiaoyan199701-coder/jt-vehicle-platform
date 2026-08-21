@@ -233,3 +233,56 @@ CREATE TABLE IF NOT EXISTS device_attribute (
     protocol_version TEXT NOT NULL,
     updated_at       TEXT NOT NULL
 );
+
+-- 司机档案。身份证号默认脱敏，仅持 driver:manage 权限可见全量；部门可空，沿用车辆语义。
+CREATE TABLE IF NOT EXISTS driver (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id             INTEGER NOT NULL,
+    department_id         INTEGER,
+    name                  TEXT NOT NULL,
+    id_card               TEXT NOT NULL,
+    license_no            TEXT NOT NULL,
+    institution           TEXT,
+    license_valid_period  TEXT,
+    phone                 TEXT,
+    remark                TEXT,
+    created_at            TEXT NOT NULL,
+    updated_at            TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_driver_tenant ON driver (tenant_id);
+CREATE INDEX IF NOT EXISTS idx_driver_license ON driver (license_no);
+
+-- 0702 驾驶员身份识别事件。event_id 唯一键做幂等兑底；时间列从第一天就是 +08:00。
+CREATE TABLE IF NOT EXISTS driver_identity_event (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id              TEXT NOT NULL UNIQUE,
+    device_id             TEXT NOT NULL,
+    status                INTEGER NOT NULL,
+    card_status           INTEGER NOT NULL,
+    name                  TEXT,
+    license_no            TEXT,
+    institution           TEXT,
+    license_valid_period  TEXT,
+    id_card               TEXT,
+    driver_id             INTEGER,
+    device_time           TEXT NOT NULL,
+    received_at           TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_driver_event_device_time
+    ON driver_identity_event (device_id, device_time DESC);
+
+-- 车辆-司机驾驶区间。当前驾驶员即 ended_at 为空的那段；来源 CARD / MANUAL。
+CREATE TABLE IF NOT EXISTS vehicle_driver_session (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id      TEXT NOT NULL,
+    driver_id      INTEGER,
+    driver_name    TEXT,
+    license_no     TEXT,
+    started_at     TEXT NOT NULL,
+    ended_at       TEXT,
+    source         TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_driver_session_device_ended
+    ON vehicle_driver_session (device_id, ended_at);

@@ -239,6 +239,7 @@ const local: App.I18n.Schema = {
     ota: 'OTA Upgrades',
     recording: 'Recording Playback',
     vehicle: 'Vehicles',
+    driver: 'Drivers',
     media: 'Snapshots',
     ai: 'AI Assistant',
     ai_chat: 'AI Assistant',

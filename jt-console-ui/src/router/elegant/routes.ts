@@ -76,6 +76,18 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'driver',
+    path: '/driver',
+    component: 'layout.base$view.driver',
+    meta: {
+      title: 'driver',
+      i18nKey: 'route.driver',
+      icon: 'mdi:account-card-outline',
+      order: 8,
+      permissions: ['driver:list']
+    }
+  },
+  {
     name: 'fleet',
     path: '/fleet',
     component: 'layout.base$view.fleet',

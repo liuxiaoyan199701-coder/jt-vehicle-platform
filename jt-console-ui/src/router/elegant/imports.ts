@@ -22,6 +22,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   login: () => import("@/views/_builtin/login/index.vue"),
   ai_chat: () => import("@/views/ai/chat/index.vue"),
   alarm: () => import("@/views/alarm/index.vue"),
+  driver: () => import("@/views/driver/index.vue"),
   fleet: () => import("@/views/fleet/index.vue"),
   geofence: () => import("@/views/geofence/index.vue"),
   home: () => import("@/views/home/index.vue"),
