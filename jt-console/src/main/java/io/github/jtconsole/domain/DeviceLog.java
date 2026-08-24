@@ -1,5 +1,7 @@
 package io.github.jtconsole.domain;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 /**
  * 一条设备日志。三个方向共用一张表，设备时间线因此单表可查。
  *
@@ -27,7 +29,13 @@ public record DeviceLog(
         boolean truncated,
         String instanceId) {
 
-    /** 十六进制写法的消息 ID，页面与 AI 结果都按这个口径展示。 */
+    /**
+     * 十六进制写法的消息 ID，页面与 AI 结果都按这个口径展示。
+     *
+     * <p>{@code @JsonProperty} 不能省：record 默认只序列化它的 component，派生方法不会进 JSON，
+     * 页面那一列就会永远显示「-」——字段写了但没送达消费方，和工具契约那类问题是同一种。
+     */
+    @JsonProperty("msgIdHex")
     public String msgIdHex() {
         return msgId == null ? null : String.format("0x%04X", msgId);
     }
