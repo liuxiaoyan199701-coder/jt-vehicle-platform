@@ -6,9 +6,11 @@ import io.github.jtconsole.operations.FleetBusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import tools.jackson.core.JacksonException;
 
 /**
  * 业务接口的统一异常出口，只作用于 {@code io.github.jtconsole.web} 下的控制器。
@@ -60,6 +62,37 @@ public class GlobalExceptionHandler {
             return "请求参数错误";
         }
         return message.trim();
+    }
+
+    /**
+     * 请求体读不出来是调用方的格式问题，不是服务器故障。
+     *
+     * <p>此前它掉进兜底处理器回「服务器内部错误」，等于告诉调用方「不是你的错」——
+     * AI 助手据此不再怀疑自己的参数，转而去猜平台的字段格式，越走越偏。
+     * 这里指出出错字段，但只取字段名，不带 Jackson 原始消息里的内部类名与源文本。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.OK)
+    public ApiResponse<Void> handleUnreadableBody(HttpMessageNotReadableException failure) {
+        String field = offendingField(failure);
+        LOGGER.debug("Rejected unreadable console request body: field={}", field);
+        AuditContext.businessCode("4000");
+        return ApiResponse.error("4000", field == null
+                ? "请求体格式不正确"
+                : "请求体格式不正确：" + field + " 字段的类型或结构不对");
+    }
+
+    private static String offendingField(HttpMessageNotReadableException failure) {
+        if (!(failure.getCause() instanceof JacksonException jackson)) {
+            return null;
+        }
+        for (JacksonException.Reference reference : jackson.getPath()) {
+            String property = reference.getPropertyName();
+            if (property != null && !property.isBlank()) {
+                return property;
+            }
+        }
+        return null;
     }
 
     @ExceptionHandler(Exception.class)

@@ -164,7 +164,11 @@ public enum ActionType {
             case "centerGcjLat", "centerGcjLng" -> "（数字，GCJ-02 坐标；圆形围栏必填）";
             case "radiusMeters", "speedLimitKph" -> "（数字；radiusMeters 为圆形半径或路线走廊半宽）";
             case "shape" -> "（circle 圆形（默认）/ rectangle 矩形 / polygon 多边形 / route 路线）";
-            case "points" -> "（GCJ-02 坐标数组 [[lat,lng],...]；矩形 2 个对角点、多边形至少 3 个顶点、路线至少 2 个途经点）";
+            // 模型实际踩过：照着响应猜成 [{"lat":..,"lng":..}] 提交，被 Jackson 拒掉。
+            case "points" -> "（GCJ-02 坐标数组，每个顶点是两个数字组成的数组 [lat,lng]，"
+                    + "整体形如 [[22.64,114.03],[22.63,114.03],[22.63,114.02]]；"
+                    + "不要写成 {\"lat\":..,\"lng\":..} 这种对象；"
+                    + "矩形 2 个对角点、多边形至少 3 个顶点、路线至少 2 个途经点）";
             case "enabled", "alertOnEnter", "alertOnExit" -> "（true/false）";
             case "type" -> "（SPEED_LIMIT 超速阈值 / IDLE_TIMEOUT 怠速超时 / FATIGUE_DRIVING 疲劳驾驶）";
             case "thresholdKph" -> "（数字，km/h；超速为下限、怠速为低速上界、疲劳为高速下界）";

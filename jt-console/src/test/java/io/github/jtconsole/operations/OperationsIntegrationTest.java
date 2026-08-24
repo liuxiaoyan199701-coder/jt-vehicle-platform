@@ -399,6 +399,42 @@ class OperationsIntegrationTest {
                 .andExpect(jsonPath("$.msg").value("围栏颜色不合法"));
     }
 
+    /**
+     * 复现 AI 助手改四边形围栏时的「服务器内部错误」：顶点写成了 {lat,lng} 对象，
+     * Jackson 读不出请求体。这是调用方的格式问题，却被报成服务器故障——
+     * 于是模型不再怀疑自己的参数，转去猜平台格式，把一个不存在的围栏当样例编了出来。
+     */
+    @Test
+    void unreadableRequestBodyIsBlamedOnTheCallerAndNamesTheField() throws Exception {
+        Geofence circle = geofences.create(PLATFORM, fence(null, "民治东二村", List.of(), true, null));
+
+        mvc.perform(put("/api/geofences/{id}", circle.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"民治东二村","shape":"polygon","points":[
+                                  {"lat":22.643463,"lng":114.030807},
+                                  {"lat":22.634454,"lng":114.030807},
+                                  {"lat":22.634454,"lng":114.021051}]}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("4000"))
+                .andExpect(jsonPath("$.msg").value("请求体格式不正确：points 字段的类型或结构不对"));
+
+        // 换成平台真正要的 [[lat,lng]] 就该改得成，形状与顶点都落库。
+        mvc.perform(put("/api/geofences/{id}", circle.id())
+                        .header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"民治东二村","shape":"polygon","points":[
+                                  [22.643463,114.030807],[22.634454,114.030807],
+                                  [22.634454,114.021051],[22.643463,114.021051]],"enabled":true}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("0000"))
+                .andExpect(jsonPath("$.data.shape").value("polygon"))
+                .andExpect(jsonPath("$.data.points.length()").value(4))
+                .andExpect(jsonPath("$.data.points[0][0]").value(22.643463));
+    }
+
     @Test
     void protectedOperationsApisReturnStableEmptyAndBusinessErrorContracts() throws Exception {
         mvc.perform(get("/api/dashboard/overview"))

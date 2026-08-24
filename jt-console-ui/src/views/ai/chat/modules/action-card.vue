@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue';
 import { useAuthStore } from '@/store/modules/auth';
 import { request } from '@/service/request';
+import { formatActionParam } from '@/utils/action-params';
 import type { AiActionEvent } from '@/service/ai-stream';
 
 /**
@@ -115,13 +116,7 @@ const paramRows = computed(() =>
   }))
 );
 
-/** 空值显示成占位符而不是 "null"——后者会让人以为真的要把这个字段写成 null。 */
-function format(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (Array.isArray(value)) return value.length ? value.join('、') : '—';
-  if (typeof value === 'boolean') return value ? '是' : '否';
-  return String(value);
-}
+const format = formatActionParam;
 
 async function execute() {
   const route = ROUTES[props.action.type];
