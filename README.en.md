@@ -99,6 +99,12 @@ Stack: JDK 25 · Spring Boot 4.1 · Netty · Vue 3 · SQLite.
   conversations that survive a refresh, and data changes always confirmed by the user
 - AI answers embed live position, driving tracks, charts and live video; views with real-world
   side effects (opening a stream) always require an explicit click
+- Device log centre: uplink frames, downlink commands and connection events in one
+  searchable timeline, each row keeping the raw hex alongside the decoded body —
+  stored in a SQLite file of its own so message traffic never contends with business writes
+- Terminal registry: every terminal that has ever connected is registered automatically
+  with whatever it reported about itself (terminal ID, maker, model, plate), flagged as
+  profiled or not, and can be turned into a vehicle profile in one click
 - One executable JAR runs either `standalone` or split `api` / `signal` / `media` roles
 
 ## Quick start
