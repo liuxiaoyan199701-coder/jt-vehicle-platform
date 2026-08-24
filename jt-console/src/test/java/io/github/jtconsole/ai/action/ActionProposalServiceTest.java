@@ -217,4 +217,16 @@ class ActionProposalServiceTest {
                 .contains(ActionType.VEHICLE_CREATE, ActionType.GEOFENCE_CREATE,
                         ActionType.ALARM_ACKNOWLEDGE);
     }
+
+    /**
+     * tenantId 的提示词曾写着「不确定就省略」，而平台管理员省略它必被拒——提示词把模型
+     * 直接引到了死路上。这类错误在服务端测试里照不出来，只能在提示词本身钉住。
+     */
+    @Test
+    void tenantIdHintDoesNotTellThePlatformAdministratorToOmitIt() {
+        String hint = ActionType.fieldHint("tenantId");
+
+        assertThat(hint).contains("平台管理员必填");
+        assertThat(hint).doesNotContain("不确定就省略");
+    }
 }

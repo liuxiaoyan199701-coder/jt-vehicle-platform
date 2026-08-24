@@ -364,6 +364,41 @@ class OperationsIntegrationTest {
         assertThat(alarmTypes()).contains("geofenceEnter");
     }
 
+    /**
+     * 复现 AI 助手连续三次「请求参数错误」建不出围栏：真正的原因（先是缺租户、后是缺颜色）
+     * 全被压成同一句笼统文案，调用方只能靠猜字段名重试。
+     */
+    @Test
+    void geofenceCreationNamesTheMissingFieldAndDoesNotDemandAColor() throws Exception {
+        String circle = """
+                {"name":"民治东二村","shape":"circle","centerGcjLat":22.638958,
+                 "centerGcjLng":114.025929,"radiusMeters":1000%s}""";
+
+        // 平台管理员没有可推断的归属租户，但必须说清楚缺的就是它。
+        mvc.perform(post("/api/geofences").header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON).content(circle.formatted("")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("4000"))
+                .andExpect(jsonPath("$.msg").value("请先选择围栏所属租户"));
+
+        // 补上租户后不传颜色也该建得成：颜色只是地图描边色，不该拦住围栏。
+        mvc.perform(post("/api/geofences").header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(circle.formatted(",\"tenantId\":" + TENANT_ID)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("0000"))
+                .andExpect(jsonPath("$.data.color").value("#18A058"));
+
+        // 真给了非法颜色仍要拒，并且同样说明白是哪一项不合法。
+        mvc.perform(post("/api/geofences").header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(circle.formatted(
+                                ",\"tenantId\":" + TENANT_ID + ",\"color\":\"绿色\"")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("4000"))
+                .andExpect(jsonPath("$.msg").value("围栏颜色不合法"));
+    }
+
     @Test
     void protectedOperationsApisReturnStableEmptyAndBusinessErrorContracts() throws Exception {
         mvc.perform(get("/api/dashboard/overview"))

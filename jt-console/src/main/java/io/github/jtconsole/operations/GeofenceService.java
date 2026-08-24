@@ -25,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GeofenceService {
 
     private static final Pattern COLOR = Pattern.compile("#[0-9A-Fa-f]{6}");
+    /** 与前端围栏表单的默认描边色一致。 */
+    private static final String DEFAULT_COLOR = "#18A058";
     private static final int MAX_ASSIGNMENTS = 1000;
     private final GeofenceRepository geofences;
     private final VehicleRepository vehicles;
@@ -221,7 +223,11 @@ public class GeofenceService {
             radius = input.radiusMeters();
         }
 
-        String color = input.color() == null ? "" : input.color().trim();
+        // 颜色只是画在地图上的描边色，调用方不关心时不该因此建不成围栏。
+        // 与前端表单同一个默认值；本接口是全量替换语义，不传即取默认（enabled 等字段同理）。
+        String color = input.color() == null || input.color().isBlank()
+                ? DEFAULT_COLOR
+                : input.color().trim();
         if (!COLOR.matcher(color).matches()) throw new IllegalArgumentException("围栏颜色不合法");
         if (input.speedLimitKph() != null
                 && (!Double.isFinite(input.speedLimitKph()) || input.speedLimitKph() <= 0

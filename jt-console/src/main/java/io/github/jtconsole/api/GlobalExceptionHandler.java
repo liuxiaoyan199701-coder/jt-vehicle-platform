@@ -20,6 +20,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final int MAX_REASON_LENGTH = 200;
 
     @ExceptionHandler(FleetBusinessException.class)
     @ResponseStatus(HttpStatus.OK)
@@ -42,7 +43,23 @@ public class GlobalExceptionHandler {
     public ApiResponse<Void> handleBadRequest(IllegalArgumentException failure) {
         LOGGER.debug("Rejected invalid console request: {}", failure.getClass().getSimpleName());
         AuditContext.businessCode("4000");
-        return ApiResponse.error("4000", "请求参数错误");
+        return ApiResponse.error("4000", reason(failure));
+    }
+
+    /**
+     * 透出具体的校验原因。
+     *
+     * <p>原先一律回「请求参数错误」，调用方拿不到任何线索。这对 AI 动作执行尤其致命：
+     * 它只能一轮轮猜字段名重试，而真正错的往往是它压根没想到的那个字段。
+     * 本项目的校验消息都是面向用户的业务文案，不含内部实现细节，可以直接示人；
+     * 消息缺失或异常长（多半不是我们自己写的）时才退回笼统文案。
+     */
+    private static String reason(IllegalArgumentException failure) {
+        String message = failure.getMessage();
+        if (message == null || message.isBlank() || message.length() > MAX_REASON_LENGTH) {
+            return "请求参数错误";
+        }
+        return message.trim();
     }
 
     @ExceptionHandler(Exception.class)

@@ -151,7 +151,10 @@ public enum ActionType {
     /** 字段的类型与取值说明，拼进提示词。没有特别说明的字段返回空串。 */
     public static String fieldHint(String field) {
         return switch (field) {
-            case "tenantId" -> "（数字 id，不是租户名；不确定就省略，平台会按当前用户归属处理）";
+            // 平台管理员没有「当前租户」可推断，省略会被平台直接拒绝，不能再叫模型省略。
+            case "tenantId" -> "（数字 id，不是租户名，须来自 list_tenants 的结果；"
+                    + "平台管理员必填，租户用户可省略——省略时平台按其自身归属处理）";
+            case "color" -> "（#RRGGBB 描边色，如 #18A058；可省略，平台取默认色）";
             case "departmentId", "planId", "id" -> "（数字 id，必须来自查询结果）";
             case "plateColor" -> "（中文：蓝色/黄色/白色/绿色/黑色）";
             case "channelCount" -> "（数字，摄像头路数，默认 1）";
