@@ -3,6 +3,7 @@ package io.github.jtplatform.signal.diagnostics;
 import io.github.jtplatform.delivery.model.MessageEnvelope;
 import io.github.jtplatform.delivery.model.MessageType;
 import io.github.jtplatform.delivery.publisher.MessagePublisher;
+import io.github.jtplatform.signal.session.DeviceIdentity;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -36,27 +37,60 @@ public final class ConnectionEventEmitter {
         this.instanceId = requireText(instanceId, "instanceId");
     }
 
+    public void connected(DeviceIdentity device, String remoteAddress) {
+        emit(device, Kind.CONNECTED, null, null, remoteAddress, Map.of());
+    }
+
+    public void disconnected(
+            DeviceIdentity device, String remoteAddress, Integer reasonCode, String reason) {
+        emit(device, Kind.DISCONNECTED, reasonCode, reason, remoteAddress, Map.of());
+    }
+
+    public void sessionReplaced(DeviceIdentity device, String remoteAddress, String reason) {
+        emit(device, Kind.SESSION_REPLACED, null, reason, remoteAddress, Map.of());
+    }
+
+    public void registerResult(
+            DeviceIdentity device, int resultCode, String reason, String remoteAddress) {
+        emit(device, Kind.REGISTER_RESULT, resultCode, reason, remoteAddress, Map.of(
+                "resultCode", resultCode));
+    }
+
+    public void authResult(
+            DeviceIdentity device, boolean success, String reason, String remoteAddress) {
+        emit(device, Kind.AUTH_RESULT, success ? 0 : 1, reason, remoteAddress,
+                Map.of("success", success));
+    }
+
     public void connected(String deviceId, String remoteAddress) {
-        emit(deviceId, Kind.CONNECTED, null, null, remoteAddress, Map.of());
+        connected(anonymousTerminal(deviceId), remoteAddress);
     }
 
     public void disconnected(String deviceId, String remoteAddress, Integer reasonCode, String reason) {
-        emit(deviceId, Kind.DISCONNECTED, reasonCode, reason, remoteAddress, Map.of());
+        disconnected(anonymousTerminal(deviceId), remoteAddress, reasonCode, reason);
     }
 
     public void sessionReplaced(String deviceId, String remoteAddress, String reason) {
-        emit(deviceId, Kind.SESSION_REPLACED, null, reason, remoteAddress, Map.of());
+        sessionReplaced(anonymousTerminal(deviceId), remoteAddress, reason);
     }
 
     public void registerResult(
             String deviceId, int resultCode, String reason, String remoteAddress) {
-        emit(deviceId, Kind.REGISTER_RESULT, resultCode, reason, remoteAddress, Map.of(
-                "resultCode", resultCode));
+        registerResult(anonymousTerminal(deviceId), resultCode, reason, remoteAddress);
     }
 
     public void authResult(String deviceId, boolean success, String reason, String remoteAddress) {
-        emit(deviceId, Kind.AUTH_RESULT, success ? 0 : 1, reason, remoteAddress,
-                Map.of("success", success));
+        authResult(anonymousTerminal(deviceId), success, reason, remoteAddress);
+    }
+
+    /**
+     * 只带手机号、拿不到终端 ID 的调用点走这里。
+     *
+     * <p>{@code deviceId} 必须已经是规范身份（终端手机号）——它会原样成为事件的归户键，
+     * 传终端 ID 进来的后果是事件永远归不到车辆上，而且不会报错。
+     */
+    private static DeviceIdentity anonymousTerminal(String deviceId) {
+        return new DeviceIdentity(deviceId, null);
     }
 
     /**
@@ -76,8 +110,9 @@ public final class ConnectionEventEmitter {
         if (resultCode != null) {
             detail.put("resultCode", resultCode);
         }
-        emit(deviceId, Kind.COMMAND_RESULT, resultCode, command + ' ' + outcome.description(),
-                remoteAddress, Map.of("detail", detail), command + '/' + outcome.name());
+        emit(anonymousTerminal(deviceId), Kind.COMMAND_RESULT, resultCode,
+                command + ' ' + outcome.description(), remoteAddress, Map.of("detail", detail),
+                command + '/' + outcome.name());
     }
 
     private static String formatMessageId(long messageId) {
@@ -85,7 +120,11 @@ public final class ConnectionEventEmitter {
     }
 
     public void protocolError(String deviceId, String reason, String remoteAddress) {
-        String key = requireText(deviceId, "deviceId");
+        protocolError(anonymousTerminal(deviceId), reason, remoteAddress);
+    }
+
+    public void protocolError(DeviceIdentity device, String reason, String remoteAddress) {
+        String key = requireText(device.canonical(), "deviceId");
         Instant now = clock.instant();
         ProtocolWindow window = protocolWindows.compute(key, (ignored, current) -> {
             if (current == null || now.isAfter(current.startedAt.plus(PROTOCOL_WINDOW))) {
@@ -96,8 +135,8 @@ public final class ConnectionEventEmitter {
         if (window.count > PROTOCOL_LIMIT) {
             return;
         }
-        emit(key, Kind.PROTOCOL_ERROR, null, reason, remoteAddress,
-                Map.of("hourlyCount", window.count));
+        emit(new DeviceIdentity(key, device.terminalId()), Kind.PROTOCOL_ERROR, null, reason,
+                remoteAddress, Map.of("hourlyCount", window.count));
     }
 
     /** 用于测试和运维统计：只发出可查询的事件，不暴露内部窗口状态。 */
@@ -107,18 +146,18 @@ public final class ConnectionEventEmitter {
     }
 
     private void emit(
-            String deviceId, Kind kind, Integer reasonCode, String reason,
+            DeviceIdentity device, Kind kind, Integer reasonCode, String reason,
             String remoteAddress, Map<String, ?> extra) {
-        emit(deviceId, kind, reasonCode, reason, remoteAddress, extra, null);
+        emit(device, kind, reasonCode, reason, remoteAddress, extra, null);
     }
 
     /**
      * @param dedupDiscriminator 参与去噪窗口的额外维度，为 null 时按「原因」聚合
      */
     private void emit(
-            String deviceId, Kind kind, Integer reasonCode, String reason,
+            DeviceIdentity identity, Kind kind, Integer reasonCode, String reason,
             String remoteAddress, Map<String, ?> extra, String dedupDiscriminator) {
-        String device = requireText(deviceId, "deviceId");
+        String device = requireText(identity.canonical(), "deviceId");
         String normalizedReason = reason == null || reason.isBlank() ? null : reason.trim();
         Instant now = clock.instant();
         DedupKey key = new DedupKey(device, kind, reasonCode, normalizedReason, dedupDiscriminator);
@@ -142,6 +181,10 @@ public final class ConnectionEventEmitter {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("kind", kind.name());
         payload.put("deviceId", device);
+        if (identity.terminalId() != null) {
+            // 归户键是手机号，但「终端自报的编号是多少」是排查换机、串号问题的唯一线索，不丢。
+            payload.put("terminalId", identity.terminalId());
+        }
         if (remoteAddress != null) {
             payload.put("remoteAddr", remoteAddress);
         }

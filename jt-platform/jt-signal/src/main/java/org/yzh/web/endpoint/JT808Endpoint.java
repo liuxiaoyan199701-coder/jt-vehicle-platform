@@ -4,6 +4,7 @@ import io.github.jtplatform.signal.auth.DeviceAuthenticationDecision;
 import io.github.jtplatform.signal.auth.DeviceAuthenticationService;
 import io.github.jtplatform.signal.delivery.SignalMessageDispatcher;
 import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
+import io.github.jtplatform.signal.session.DeviceIdentity;
 import io.github.jtplatform.signal.session.RegistrationTokenStore;
 import io.github.yezhihao.netmc.core.annotation.Async;
 import io.github.yezhihao.netmc.core.annotation.AsyncBatch;
@@ -138,12 +139,10 @@ public class JT808Endpoint {
 
     @Mapping(types = 终端注册, desc = "终端注册")
     public T8100 T0100(T0100 message, Session session) {
-        // 注册即使被拒也保留诊断键，后续断开/协议错误必须与本次注册事件归于同一设备。
+        // 注册即使被拒也保留这两个键，后续断开/协议错误才能与本次注册事件归于同一设备。
+        // 手机号是归户键，终端 ID 只是附注——两个都留，缺了手机号那台设备的后续事件就成了匿名。
         session.setAttribute(SessionKey.DiagnosticDeviceId, message.getDeviceId());
-        // TCP 建立时协议头尚未解出设备号；到首条注册报文才能把连接建立事件绑定到真实终端。
-        if (diagnostics != null) {
-            diagnostics.connected(message.getDeviceId(), session.getRemoteAddressStr());
-        }
+        session.setAttribute(SessionKey.DiagnosticMobileNo, message.getClientId());
         DeviceDO presentedDevice = new DeviceDO()
                 .setProtocolVersion(message.getProtocolVersion())
                 .setMobileNo(message.getClientId())
@@ -184,7 +183,7 @@ public class JT808Endpoint {
         if (!decision.allowed()) {
             session.removeAttribute(SessionKey.Device);
             response.setResultCode(T0001.Failure);
-            emitAuthentication(presentedDevice.getDeviceId(), session, false);
+            emitAuthentication(session, message, false);
             return response;
         }
 
@@ -192,24 +191,41 @@ public class JT808Endpoint {
         session.setAttribute(SessionKey.Device, device);
         session.register(device.getDeviceId(), message);
         response.setResultCode(T0001.Success);
-        emitAuthentication(device.getDeviceId(), session, true);
+        emitAuthentication(session, message, true);
         return response;
     }
 
+    /**
+     * 连接建立与注册结局，用同一次身份解析发出。
+     *
+     * <p><b>归户键是终端手机号，不是 T0100 正文里的终端 ID。</b>平台没有任何一张表按终端 ID
+     * 建键——车辆档案、轨迹、报文日志全按手机号。用终端 ID 发出的事件在控制台侧归不到租户
+     * （tenant_id 记 NULL），按车辆设备号也永远查不到，而且不会报任何错。终端 ID 由
+     * {@link DeviceIdentity} 作为附注一起带走，不丢。
+     *
+     * <p><b>两条事件必须共用一次解析</b>：鉴权成功后会话里就有档案了，档案手机号比终端自报的
+     * 报文头更权威。要是连接建立事件在鉴权前发、注册结局在鉴权后发，两者会在「档案与自报不一致」
+     * 时落到两个键上，同一次注册的时间线就断了。所以连接建立事件也推迟到这里，与结局同时发出——
+     * 连接确实是这一刻才被平台确认绑定到某台终端的。
+     */
     private void emitRegistration(T0100 message, Session session, int resultCode) {
         if (diagnostics == null) {
             return;
         }
-        // 注册归档查询以 T0100 的终端设备号为键；事件必须使用同一键，建档后的新事件才能正确归户。
-        diagnostics.registerResult(message.getDeviceId(), resultCode,
-                registrationReason(resultCode), session.getRemoteAddressStr());
+        DeviceIdentity.resolve(session, message).ifPresent(identity -> {
+            diagnostics.connected(identity, session.getRemoteAddressStr());
+            diagnostics.registerResult(identity, resultCode,
+                    registrationReason(resultCode), session.getRemoteAddressStr());
+        });
     }
 
-    private void emitAuthentication(String deviceId, Session session, boolean success) {
-        if (diagnostics != null) {
-            diagnostics.authResult(deviceId, success,
-                    success ? "鉴权成功" : "鉴权失败", session.getRemoteAddressStr());
+    private void emitAuthentication(Session session, JTMessage message, boolean success) {
+        if (diagnostics == null) {
+            return;
         }
+        DeviceIdentity.resolve(session, message).ifPresent(identity ->
+                diagnostics.authResult(identity, success,
+                        success ? "鉴权成功" : "鉴权失败", session.getRemoteAddressStr()));
     }
 
     static String registrationReason(int code) {

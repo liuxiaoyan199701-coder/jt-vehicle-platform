@@ -76,8 +76,10 @@ class SignalEndpointCoverageTest {
         listener.sessionRegistered(first);
         listener.sessionRegistered(replacement);
 
+        // 顶替判定按终端 ID（netmc 的会话就是用它注册的），但事件按手机号归户。
         verify(diagnostics).sessionReplaced(
-                "terminal-1", "127.0.0.1:8080", "被新会话顶替");
+                new io.github.jtplatform.signal.session.DeviceIdentity("138000000000", "terminal-1"),
+                "127.0.0.1:8080", "被新会话顶替");
     }
 
     @Test

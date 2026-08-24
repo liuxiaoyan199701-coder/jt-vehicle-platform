@@ -1,6 +1,7 @@
 package io.github.jtplatform.signal.delivery;
 
 import io.github.jtplatform.delivery.model.MessageEnvelope;
+import io.github.jtplatform.signal.session.DeviceIdentity;
 import io.github.yezhihao.netmc.session.Session;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -14,8 +15,6 @@ import java.util.Objects;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.t1078.T1206;
 import org.yzh.protocol.t808.T0701;
-import org.yzh.web.model.entity.DeviceDO;
-import org.yzh.web.model.enums.SessionKey;
 
 public final class SignalMessageEnvelopeMapper {
     private final ProtocolPayloadMapper payloadMapper;
@@ -92,18 +91,12 @@ public final class SignalMessageEnvelopeMapper {
                 payload);
     }
 
+    /** 身份解析全网关只有一处，见 {@link DeviceIdentity}；业务信封这一路解析不出就拒绝投递。 */
     private static String resolveDeviceId(Session session, JTMessage message) {
-        DeviceDO device = null;
-        if (session != null) {
-            device = session.getAttribute(SessionKey.Device);
-            if (device != null && hasText(device.getMobileNo())) {
-                return device.getMobileNo();
-            }
-        }
-        if (hasText(message.getClientId())) {
-            return message.getClientId();
-        }
-        throw new IllegalArgumentException("message does not provide a canonical mobileNo/SIM identity");
+        return DeviceIdentity.resolve(session, message)
+                .map(DeviceIdentity::canonical)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "message does not provide a canonical mobileNo/SIM identity"));
     }
 
     private static String protocolVersion(JTMessage message) {
@@ -132,7 +125,4 @@ public final class SignalMessageEnvelopeMapper {
         }
     }
 
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
-    }
 }

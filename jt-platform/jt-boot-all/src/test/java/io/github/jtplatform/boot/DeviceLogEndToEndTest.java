@@ -14,6 +14,7 @@ import io.github.jtplatform.delivery.model.MessageEnvelope;
 import io.github.jtplatform.delivery.publisher.MessagePublisher;
 import io.github.jtplatform.delivery.publisher.PublishDisposition;
 import io.github.jtplatform.delivery.publisher.PublishResult;
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
 import io.github.jtplatform.signal.messagelog.DeliveringMessageLogEmitter;
 import io.github.jtplatform.signal.messagelog.MessageLogEmitter;
 import io.github.jtplatform.signal.protocol.SignalMultiPacketDecoder;
@@ -92,6 +93,9 @@ class DeviceLogEndToEndTest {
     @Autowired
     private MessageLogEmitter emitter;
 
+    @Autowired
+    private ConnectionEventEmitter diagnostics;
+
     private final SchemaManager schemas = new SchemaManager("org.yzh.protocol");
     private final JTMessageEncoder encoder = new JTMessageEncoder(schemas);
     private final SignalMultiPacketDecoder decoder = new SignalMultiPacketDecoder(schemas, null);
@@ -102,6 +106,9 @@ class DeviceLogEndToEndTest {
     @BeforeEach
     void clearPublishedEvents() {
         RecordingPublisher.EVENTS.clear();
+        // 去噪窗口是 emitter 实例上的状态，跨测试累积：上一个测试登录过一次，本测试同一台设备
+        // 的 CONNECTED/REGISTER_RESULT 就会在 60 秒窗口内被吞掉，看起来像「事件根本没发」。
+        diagnostics.clearNoiseWindows();
     }
 
     /** 装配错了就一条日志都收不到，而且什么都不会报——所以先把这一处钉住。 */
@@ -163,24 +170,53 @@ class DeviceLogEndToEndTest {
     }
 
     /**
-     * 设备上线 → 一条 CONNECTION 事件。
+     * 设备上线 → 一条 CONNECTION 事件，且它与报文日志**归在同一个键**上。
      *
-     * <p>控制台接手这个信封时会往日志库补一条 {@code direction=CONNECTION} 的记录，
-     * 设备时间线因此单表可查；网关不为此重复发事件，所以这里能断言的就是「事件发出来了」。
+     * <p>这条断言是整次修复的验收条件。连接事件曾经按 T0100 正文里的终端 ID 发出，而报文日志按
+     * 手机号——同一台设备两个键，后果全是静默的：按车辆设备号查连接记录永远为空、控制台归不到
+     * 租户、体检的连接维度判不出结论，接口却全程 200。单测钉不住它，因为两条链路各自都"对"，
+     * 只有在真链路上把两种信封的 deviceId 摆在一起比，才看得出它们对不上。
      */
     @Test
-    void loggingInPublishesTheConnectionEventTheConsoleMirrorsIntoTheTimeline() throws Exception {
+    void connectionEventsAndMessageLogsShareOneDeviceKey() throws Exception {
         try (Socket signal = connect(SIGNAL_PORT)) {
             authenticate(signal);
 
             MessageEnvelope connected = awaitEnvelope(envelope ->
-                    "connection".equals(envelope.type().wireValue())
-                            && MOBILE_NO.equals(envelope.deviceId()));
+                    "connection".equals(envelope.type().wireValue()));
+            MessageEnvelope logged = awaitLog(log -> "UP".equals(direction(log)));
+
+            assertEquals(MOBILE_NO, connected.deviceId(),
+                    "连接事件必须按手机号归户，用终端 ID 会让它归不到任何车辆");
+            assertThat(connected.deviceId()).isEqualTo(logged.deviceId());
 
             // 控制台的镜像只用这两个字段拼 summary 与 log_time，缺一个时间线就少一格或错位。
             assertThat((String) connected.payload().get("kind")).isNotBlank();
             assertThat((String) connected.payload().get("eventTime")).isNotBlank();
+            // 终端 ID 不丢：它是「SIM 没换但终端换了」这类问题的唯一线索。
+            assertEquals(TERMINAL_ID, connected.payload().get("terminalId"));
         }
+    }
+
+    /** 每一类连接事件都要按手机号归户——只有一处漏改，那一类事件就静默地归不到车辆。 */
+    @Test
+    void everyKindOfConnectionEventUsesTheMobileNumber() throws Exception {
+        try (Socket signal = connect(SIGNAL_PORT)) {
+            authenticate(signal);
+            awaitEnvelope(envelope -> "connection".equals(envelope.type().wireValue())
+                    && "AUTH_RESULT".equals(envelope.payload().get("kind")));
+        }
+        // 断开事件在 socket 关闭后才发。
+        MessageEnvelope disconnected = awaitEnvelope(envelope ->
+                "connection".equals(envelope.type().wireValue())
+                        && "DISCONNECTED".equals(envelope.payload().get("kind")));
+
+        assertThat(RecordingPublisher.EVENTS.stream()
+                .filter(envelope -> "connection".equals(envelope.type().wireValue()))
+                .map(MessageEnvelope::deviceId).distinct().toList())
+                .as("同一台设备的连接事件不能出现第二个键")
+                .containsExactly(MOBILE_NO);
+        assertEquals(MOBILE_NO, disconnected.deviceId());
     }
 
     /**

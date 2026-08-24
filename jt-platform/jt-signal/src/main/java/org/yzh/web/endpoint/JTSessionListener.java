@@ -2,6 +2,7 @@ package org.yzh.web.endpoint;
 
 import io.github.jtplatform.common.port.DeviceRouter;
 import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
+import io.github.jtplatform.signal.session.DeviceIdentity;
 import io.github.yezhihao.netmc.core.model.Message;
 import io.github.yezhihao.netmc.session.Session;
 import io.github.yezhihao.netmc.session.SessionListener;
@@ -60,8 +61,11 @@ public class JTSessionListener implements SessionListener {
         if (hasText(session.getId()) && hasText(session.getClientId())) {
             sessionDevices.put(session.getId(), session.getClientId());
         }
-        if (diagnostics != null && hasText(session.getClientId())) {
-            diagnostics.connected(session.getClientId(), session.getRemoteAddressStr());
+        if (diagnostics != null) {
+            // 此刻通常还没有任何身份可用（协议头要到首条报文才解出），解析不出就不发——
+            // 真正的连接建立事件由 T0100 那一处补，见 JT808Endpoint#T0100。
+            DeviceIdentity.resolve(session).ifPresent(identity ->
+                    diagnostics.connected(identity, session.getRemoteAddressStr()));
         }
     }
 
@@ -70,9 +74,12 @@ public class JTSessionListener implements SessionListener {
         DeviceDO device = session.getAttribute(SessionKey.Device);
         if (diagnostics != null && device != null && hasText(device.getDeviceId())
                 && hasText(session.getId())) {
+            // 顶替判定仍按终端 ID（netmc 的会话就是用它注册的），但事件按手机号归户。
             String previous = activeSessions.put(device.getDeviceId(), session.getId());
             if (previous != null && !previous.equals(session.getId())) {
-                diagnostics.sessionReplaced(device.getDeviceId(), session.getRemoteAddressStr(), "被新会话顶替");
+                DeviceIdentity.resolve(session).ifPresent(identity ->
+                        diagnostics.sessionReplaced(
+                                identity, session.getRemoteAddressStr(), "被新会话顶替"));
             }
         }
         updateRoutes(session, true);
@@ -99,7 +106,10 @@ public class JTSessionListener implements SessionListener {
             sessionDevices.remove(sessionId);
         }
         if (diagnostics != null && hasText(deviceId) && current) {
-            diagnostics.disconnected(deviceId, session.getRemoteAddressStr(), null, "对端断开或空闲超时");
+            // deviceId 这个局部变量是「会话顶替判定」用的终端 ID，事件本身必须按手机号归户。
+            DeviceIdentity.resolve(session).ifPresent(identity ->
+                    diagnostics.disconnected(
+                            identity, session.getRemoteAddressStr(), null, "对端断开或空闲超时"));
         }
         updateRoutes(session, false);
     }

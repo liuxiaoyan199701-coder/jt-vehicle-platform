@@ -40,14 +40,10 @@ public class JTHandlerInterceptor implements HandlerInterceptor<JTMessage> {
         LOGGER.warn("Terminal message handler failed for id=0x{} from {}",
                 Integer.toHexString(request.getMessageId()), session, error);
         if (diagnostics != null) {
-            String diagnosticDeviceId = session.getAttribute(
-                    org.yzh.web.model.enums.SessionKey.DiagnosticDeviceId);
-            String deviceId = diagnosticDeviceId == null || diagnosticDeviceId.isBlank()
-                    ? session.getClientId() : diagnosticDeviceId;
-            if (deviceId != null && !deviceId.isBlank()) {
-                diagnostics.protocolError(deviceId, error.getClass().getSimpleName(),
-                        session.getRemoteAddressStr());
-            }
+            io.github.jtplatform.signal.session.DeviceIdentity.resolve(session, request)
+                    .ifPresent(identity -> diagnostics.protocolError(
+                            identity, error.getClass().getSimpleName(),
+                            session.getRemoteAddressStr()));
         }
         return response;
     }

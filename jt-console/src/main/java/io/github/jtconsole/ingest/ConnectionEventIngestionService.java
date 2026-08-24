@@ -8,6 +8,7 @@ import io.github.jtconsole.repository.ConnectionEventRepository;
 import io.github.jtconsole.repository.DeviceLogRepository;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,7 +62,7 @@ public class ConnectionEventIngestionService {
                 Math.max(1, integerOr(payload.get("repeatCount"), 1)),
                 normalizeEventTime(payload.get("eventTime"), envelope.receivedAt()),
                 normalizeReceivedAt(envelope.receivedAt()),
-                detail(payload.get("detail")));
+                detail(payload.get("detail"), text(payload, "terminalId", null)));
         events.insertIgnore(event);
         mirrorToDeviceLog(event, envelope.instanceId());
         return true;
@@ -101,12 +102,20 @@ public class ConnectionEventIngestionService {
      * <p>不做字段级校验：网关先于控制台发布时会带上控制台尚不认识的字段，
      * 丢弃它们等于丢掉排查线索；序列化失败也只是这一列为空，事件本身照常落库。
      */
-    private String detail(Object value) {
-        if (!(value instanceof Map<?, ?> map) || map.isEmpty()) {
+    private String detail(Object value, String terminalId) {
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (value instanceof Map<?, ?> map) {
+            map.forEach((key, nested) -> merged.put(String.valueOf(key), nested));
+        }
+        if (terminalId != null) {
+            // 事件按手机号归户，终端自报的编号只作附注——放 detail 里不必给业务库加列。
+            merged.put("terminalId", terminalId);
+        }
+        if (merged.isEmpty()) {
             return null;
         }
         try {
-            return json.writeValueAsString(map);
+            return json.writeValueAsString(merged);
         } catch (JacksonException failure) {
             LOGGER.warn("连接事件的 detail 无法序列化，按空处理", failure);
             return null;

@@ -4,6 +4,7 @@ import io.github.jtplatform.delivery.model.MessageEnvelope;
 import io.github.jtplatform.delivery.model.MessageType;
 import io.github.jtplatform.delivery.publisher.MessagePublisher;
 import io.github.jtplatform.signal.delivery.ProtocolPayloadMapper;
+import io.github.jtplatform.signal.session.DeviceIdentity;
 import io.github.yezhihao.netmc.session.Session;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
@@ -18,8 +19,6 @@ import org.slf4j.LoggerFactory;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.commons.MessageId;
 import org.yzh.protocol.t1078.T9206;
-import org.yzh.web.model.entity.DeviceDO;
-import org.yzh.web.model.enums.SessionKey;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -66,7 +65,8 @@ public final class DeliveringMessageLogEmitter implements MessageLogEmitter {
             return;
         }
         try {
-            emit(resolveDeviceId(session, message), Direction.UP, message, hex(input), false, null);
+            emit(DeviceIdentity.resolveOrUnknown(session, message).canonical(),
+                    Direction.UP, message, hex(input), false, null);
         } catch (RuntimeException failure) {
             LOGGER.warn("上行报文日志采集失败", failure);
         }
@@ -78,7 +78,8 @@ public final class DeliveringMessageLogEmitter implements MessageLogEmitter {
             return;
         }
         try {
-            emit(resolveDeviceId(session, message), Direction.DOWN, message, hex(output), false, null);
+            emit(DeviceIdentity.resolveOrUnknown(session, message).canonical(),
+                    Direction.DOWN, message, hex(output), false, null);
         } catch (RuntimeException failure) {
             LOGGER.warn("下行报文日志采集失败", failure);
         }
@@ -87,7 +88,8 @@ public final class DeliveringMessageLogEmitter implements MessageLogEmitter {
     @Override
     public void decodeFailure(Session session, ByteBuf input, Throwable failure) {
         try {
-            emit(sessionIdentity(session), Direction.UP, null, hex(input), true, failure);
+            emit(DeviceIdentity.resolveOrUnknown(session, null).canonical(),
+                    Direction.UP, null, hex(input), true, failure);
         } catch (RuntimeException problem) {
             LOGGER.warn("解码失败帧的日志采集失败", problem);
         }
@@ -178,43 +180,6 @@ public final class DeliveringMessageLogEmitter implements MessageLogEmitter {
             return "JT/T 808-2019/" + message.getProtocolVersion();
         }
         return "JT/T 808-2013";
-    }
-
-    /**
-     * 日志的设备身份可以不完美，但绝不能因为查不到就抛异常——
-     * {@code SignalMessageEnvelopeMapper} 那套「解析不出就拒绝投递」的严格口径在这里是反的：
-     * 身份不明的帧恰恰最需要留证。
-     */
-    private static String resolveDeviceId(Session session, JTMessage message) {
-        if (session != null) {
-            DeviceDO device = session.getAttribute(SessionKey.Device);
-            if (device != null && hasText(device.getMobileNo())) {
-                return device.getMobileNo();
-            }
-        }
-        if (message != null && hasText(message.getClientId())) {
-            return message.getClientId();
-        }
-        return sessionIdentity(session);
-    }
-
-    private static String sessionIdentity(Session session) {
-        if (session == null) {
-            return "unknown";
-        }
-        DeviceDO device = session.getAttribute(SessionKey.Device);
-        if (device != null && hasText(device.getMobileNo())) {
-            return device.getMobileNo();
-        }
-        String diagnostic = session.getAttribute(SessionKey.DiagnosticDeviceId);
-        if (hasText(diagnostic)) {
-            return diagnostic;
-        }
-        return hasText(session.getClientId()) ? session.getClientId() : "unknown";
-    }
-
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
     }
 
     private enum Direction { UP, DOWN }
