@@ -16,7 +16,8 @@ public class ConnectionEventRepository {
     private static final String COLUMNS = """
             id, event_id AS eventId, device_id AS deviceId, tenant_id AS tenantId,
             kind, reason_code AS reasonCode, reason, remote_addr AS remoteAddr,
-            repeat_count AS repeatCount, event_time AS eventTime, received_at AS receivedAt
+            repeat_count AS repeatCount, event_time AS eventTime, received_at AS receivedAt,
+            detail
             """;
 
     private final JdbcClient jdbc;
@@ -29,13 +30,14 @@ public class ConnectionEventRepository {
         return jdbc.sql("""
                 INSERT OR IGNORE INTO connection_event
                     (event_id, device_id, tenant_id, kind, reason_code, reason,
-                     remote_addr, repeat_count, event_time, received_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     remote_addr, repeat_count, event_time, received_at, detail)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """)
                 .param(event.eventId()).param(event.deviceId()).param(event.tenantId())
                 .param(event.kind()).param(event.reasonCode()).param(event.reason())
                 .param(event.remoteAddr()).param(event.repeatCount())
-                .param(event.eventTime()).param(event.receivedAt()).update() > 0;
+                .param(event.eventTime()).param(event.receivedAt())
+                .param(event.detail()).update() > 0;
     }
 
     /** 平台管理员可查未建档 NULL；租户范围必须同时命中车辆档案，避免探测未建档/跨租户设备。 */
@@ -123,6 +125,6 @@ public class ConnectionEventRepository {
                 rs.getString("deviceId"), RowValues.nullableLong(rs, "tenantId"),
                 rs.getString("kind"), RowValues.nullableInt(rs, "reasonCode"),
                 rs.getString("reason"), rs.getString("remoteAddr"), rs.getInt("repeatCount"),
-                rs.getString("eventTime"), rs.getString("receivedAt"));
+                rs.getString("eventTime"), rs.getString("receivedAt"), rs.getString("detail"));
     }
 }

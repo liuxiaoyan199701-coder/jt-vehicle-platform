@@ -27,10 +27,13 @@ import io.github.jtplatform.common.port.MediaInstanceRegistry;
 import io.github.jtplatform.common.port.RecordingCatalog;
 import io.github.jtplatform.common.port.StreamCommandHandler;
 import io.github.jtplatform.common.port.StreamCommandPort;
+import io.github.jtplatform.common.port.StreamNotArrivedListener;
 import io.github.jtplatform.common.port.StreamRegistry;
 import io.github.jtplatform.common.port.StreamSubscriptionPort;
 import io.github.jtplatform.common.service.MediaScheduler;
 import io.github.jtplatform.common.service.StreamCoordinator;
+import io.github.jtplatform.delivery.diagnostics.StreamNotArrivedEmitter;
+import io.github.jtplatform.delivery.publisher.MessagePublisher;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -148,6 +151,20 @@ public class CoreRuntimeConfiguration {
         return new HttpStreamCommandPort(properties.getSignal().getCommandBaseUrl());
     }
 
+    /** 无投递器时保持不发事件：诊断是可选增强，不能成为启动前提。 */
+    @Bean
+    @ConditionalOnMissingBean(StreamNotArrivedListener.class)
+    StreamNotArrivedListener streamNotArrivedListener(
+            ObjectProvider<MessagePublisher> publishers,
+            Clock clock,
+            JtPlatformProperties properties) {
+        MessagePublisher publisher = publishers.getIfAvailable();
+        return publisher == null
+                ? StreamNotArrivedListener.NONE
+                : new StreamNotArrivedEmitter(
+                        publisher, clock, "api-" + properties.getInstance().getNumber());
+    }
+
     @Bean
     StreamCoordinator streamCoordinator(
             StreamRegistry streams,
@@ -155,9 +172,11 @@ public class CoreRuntimeConfiguration {
             StreamCommandPort commands,
             ScheduledExecutorService streamLifecycleExecutor,
             Clock clock,
-            JtPlatformProperties properties) {
+            JtPlatformProperties properties,
+            StreamNotArrivedListener notArrivedListener) {
         return new StreamCoordinator(streams, scheduler, commands, streamLifecycleExecutor, clock,
-                properties.getMedia().getIdleTimeout(), properties.getMedia().getPendingTimeout());
+                properties.getMedia().getIdleTimeout(), properties.getMedia().getPendingTimeout(),
+                () -> java.util.UUID.randomUUID().toString(), notArrivedListener);
     }
 
     @Bean

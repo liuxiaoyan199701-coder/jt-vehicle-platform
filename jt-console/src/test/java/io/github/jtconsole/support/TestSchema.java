@@ -14,6 +14,7 @@ import io.github.jtconsole.migration.V13DriverManagementMigration;
 import io.github.jtconsole.migration.V15WaybillMigration;
 import io.github.jtconsole.migration.V16RecordingUploadMigration;
 import io.github.jtconsole.migration.V17ConnectionEventsMigration;
+import io.github.jtconsole.migration.V18ConnectionEventDetailMigration;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -39,7 +40,8 @@ public final class TestSchema {
                 new V5SessionPersistenceMigration(), new V10GeofenceShapeMigration(),
                 new V11AlarmRuleMigration(), new V12UpgradePackageMigration(),
                 new V13DriverManagementMigration(), new V15WaybillMigration(),
-                new V16RecordingUploadMigration(), new V17ConnectionEventsMigration());
+                new V16RecordingUploadMigration(), new V17ConnectionEventsMigration(),
+                new V18ConnectionEventDetailMigration());
         new SchemaMigrationRunner(jdbc, transactionManager, migrations).afterPropertiesSet();
     }
 

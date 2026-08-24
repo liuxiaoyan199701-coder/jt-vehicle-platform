@@ -128,6 +128,29 @@ class SchemaMigrationTest {
     }
 
     @Test
+    void connectionEventDetailColumnArrivesAtV18AndIsNullForExistingRows() {
+        new SchemaMigrationRunner(jdbc, transactions,
+                List.of(new V17ConnectionEventsMigration())).afterPropertiesSet();
+        jdbc.sql("""
+                INSERT INTO connection_event
+                    (event_id, device_id, kind, repeat_count, event_time, received_at)
+                VALUES ('legacy', '00123', 'CONNECTED', 1, ?, ?)
+                """).param("2026-08-22T10:00:00.000+08:00").param("2026-08-22T10:00:00.000+08:00")
+                .update();
+
+        new SchemaMigrationRunner(jdbc, transactions,
+                List.of(new V18ConnectionEventDetailMigration())).afterPropertiesSet();
+
+        assertThat(userVersion()).isEqualTo(18L);
+        assertThat(scalar("""
+                SELECT COUNT(*) FROM pragma_table_info('connection_event') WHERE name = 'detail'
+                """)).isEqualTo(1L);
+        assertThat(scalar("""
+                SELECT COUNT(*) FROM connection_event WHERE event_id = 'legacy' AND detail IS NULL
+                """)).isEqualTo(1L);
+    }
+
+    @Test
     void failedMigrationRollsBackAndLeavesTheVersionUnchanged() {
         SchemaMigration failing = new SchemaMigration() {
             @Override
@@ -175,7 +198,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(17L);
+        assertThat(userVersion()).isEqualTo(18L);
         for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
             assertThat(scalar("""
                     SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
@@ -193,14 +216,14 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(17L);
+        assertThat(userVersion()).isEqualTo(18L);
     }
 
     @Test
     void waybillMigrationUsesV15AndCreatesExpectedIndexes() {
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(17L);
+        assertThat(userVersion()).isEqualTo(18L);
         assertThat(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='waybill'"))
                 .isEqualTo(1L);
         assertThat(scalar("""

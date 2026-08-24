@@ -1,12 +1,15 @@
 package org.yzh.web.endpoint;
 
 import io.github.jtplatform.common.port.StreamCommandException;
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
+import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter.CommandOutcome;
 import io.github.yezhihao.netmc.session.Session;
 import io.github.yezhihao.netmc.session.SessionManager;
 import java.time.Duration;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.yzh.protocol.basics.JTMessage;
 import org.yzh.protocol.t808.T0001;
@@ -21,10 +24,29 @@ public class MessageManager {
 
     private final SessionManager sessionManager;
     private final CommandResponseTracker rejectionTracker;
+    private final ConnectionEventEmitter diagnostics;
+    private final Duration responseTimeout;
 
+    /** 测试便利构造：不发诊断事件。 */
     public MessageManager(SessionManager sessionManager, CommandResponseTracker rejectionTracker) {
+        this(sessionManager, rejectionTracker, null);
+    }
+
+    @Autowired
+    public MessageManager(
+            SessionManager sessionManager, CommandResponseTracker rejectionTracker,
+            ConnectionEventEmitter diagnostics) {
+        this(sessionManager, rejectionTracker, diagnostics, RESPONSE_TIMEOUT);
+    }
+
+    /** 仅供测试缩短等待：生产路径一律用 {@link #RESPONSE_TIMEOUT}。 */
+    MessageManager(
+            SessionManager sessionManager, CommandResponseTracker rejectionTracker,
+            ConnectionEventEmitter diagnostics, Duration responseTimeout) {
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.rejectionTracker = Objects.requireNonNull(rejectionTracker, "rejectionTracker");
+        this.diagnostics = diagnostics;
+        this.responseTimeout = Objects.requireNonNull(responseTimeout, "responseTimeout");
     }
 
     public boolean isOnline(String deviceId) {
@@ -50,13 +72,24 @@ public class MessageManager {
     }
 
     public <T> Mono<T> request(String deviceId, JTMessage request, Class<T> responseClass) {
+        long commandId = request.reflectMessageId();
         Session session = findSession(deviceId);
         if (session == null) {
+            emitCommandResult(deviceId, commandId, CommandOutcome.OFFLINE, null, null);
             return Mono.error(offline(deviceId));
         }
+        String remoteAddress = session.getRemoteAddressStr();
+        // 结局事件挂在 timeout 之前：源出错时走 doOnError，超时则源被取消、由回退分支发事件，
+        // 两条路径互斥，一条指令只会产生一条结局事件。
         Mono<T> primary = session.request(request, responseClass)
-                .timeout(RESPONSE_TIMEOUT, Mono.error(new StreamCommandException(
-                        "Device response timed out: " + deviceId)))
+                .doOnSuccess(response -> emitResponse(deviceId, commandId, response, remoteAddress))
+                .doOnError(error -> emitCommandResult(
+                        deviceId, commandId, CommandOutcome.FAILED, null, remoteAddress))
+                .timeout(responseTimeout, Mono.defer(() -> {
+                    emitCommandResult(deviceId, commandId, CommandOutcome.TIMEOUT, null, remoteAddress);
+                    return Mono.error(new StreamCommandException(
+                            "Device response timed out: " + deviceId));
+                }))
                 .onErrorMap(error -> error instanceof StreamCommandException
                         ? error
                         : new StreamCommandException("Failed to send command to device " + deviceId, error));
@@ -72,9 +105,42 @@ public class MessageManager {
         // 同步分配，此时已可用。
         int serialNo = request.getSerialNo();
         Mono<T> rejected = Mono.<Integer>create(sink -> rejectionTracker.register(session, serialNo, sink))
-                .flatMap(resultCode -> Mono.error(rejectionError(deviceId, resultCode)));
+                .flatMap(resultCode -> {
+                    emitCommandResult(
+                            deviceId, commandId, CommandOutcome.REJECTED, resultCode, remoteAddress);
+                    return Mono.<T>error(rejectionError(deviceId, resultCode));
+                });
         return Mono.firstWithSignal(primary, rejected)
                 .doFinally(ignored -> rejectionTracker.unregister(session, serialNo));
+    }
+
+    /** 应答本身是 T0001 时，结果码非 0 即为终端拒绝，不能一律记成成功。 */
+    private void emitResponse(
+            String deviceId, long commandId, Object response, String remoteAddress) {
+        if (response == null) {
+            return;
+        }
+        if (response instanceof T0001 reply) {
+            emitCommandResult(deviceId, commandId,
+                    reply.isSuccess() ? CommandOutcome.OK : CommandOutcome.REJECTED,
+                    reply.getResultCode(), remoteAddress);
+            return;
+        }
+        emitCommandResult(deviceId, commandId, CommandOutcome.OK, null, remoteAddress);
+    }
+
+    /** 诊断是旁路观测：任何失败都不得影响指令本身的下发与返回。 */
+    private void emitCommandResult(
+            String deviceId, long commandId, CommandOutcome outcome,
+            Integer resultCode, String remoteAddress) {
+        if (diagnostics == null || deviceId == null || deviceId.isBlank()) {
+            return;
+        }
+        try {
+            diagnostics.commandResult(deviceId, commandId, outcome, resultCode, remoteAddress);
+        } catch (RuntimeException failure) {
+            LOGGER.warn("指令结局事件发射失败：device={}, command={}", deviceId, commandId, failure);
+        }
     }
 
     private static StreamCommandException rejectionError(String deviceId, int resultCode) {

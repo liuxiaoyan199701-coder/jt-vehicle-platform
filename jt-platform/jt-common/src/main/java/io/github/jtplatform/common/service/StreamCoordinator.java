@@ -8,6 +8,7 @@ import io.github.jtplatform.common.model.StreamKind;
 import io.github.jtplatform.common.model.StreamState;
 import io.github.jtplatform.common.model.StreamTicket;
 import io.github.jtplatform.common.port.StreamCommandPort;
+import io.github.jtplatform.common.port.StreamNotArrivedListener;
 import io.github.jtplatform.common.port.StreamRegistry;
 import java.time.Clock;
 import java.time.Duration;
@@ -31,6 +32,7 @@ public final class StreamCoordinator {
     private final Duration idleTimeout;
     private final Duration pendingTimeout;
     private final Supplier<String> streamIdSupplier;
+    private final StreamNotArrivedListener notArrivedListener;
     private final ConcurrentHashMap<StreamKey, ScheduledFuture<?>> closeTasks = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<StreamKey, ScheduledFuture<?>> pendingTasks = new ConcurrentHashMap<>();
     private final java.util.Set<StreamKey> commandlessStreams = ConcurrentHashMap.newKeySet();
@@ -56,6 +58,20 @@ public final class StreamCoordinator {
             Duration idleTimeout,
             Duration pendingTimeout,
             Supplier<String> streamIdSupplier) {
+        this(streams, scheduler, commands, executor, clock, idleTimeout, pendingTimeout,
+                streamIdSupplier, StreamNotArrivedListener.NONE);
+    }
+
+    public StreamCoordinator(
+            StreamRegistry streams,
+            MediaScheduler scheduler,
+            StreamCommandPort commands,
+            ScheduledExecutorService executor,
+            Clock clock,
+            Duration idleTimeout,
+            Duration pendingTimeout,
+            Supplier<String> streamIdSupplier,
+            StreamNotArrivedListener notArrivedListener) {
         this.streams = Objects.requireNonNull(streams, "streams");
         this.scheduler = Objects.requireNonNull(scheduler, "scheduler");
         this.commands = Objects.requireNonNull(commands, "commands");
@@ -64,6 +80,7 @@ public final class StreamCoordinator {
         this.idleTimeout = requirePositive(idleTimeout, "idleTimeout");
         this.pendingTimeout = requirePositive(pendingTimeout, "pendingTimeout");
         this.streamIdSupplier = Objects.requireNonNull(streamIdSupplier, "streamIdSupplier");
+        this.notArrivedListener = Objects.requireNonNull(notArrivedListener, "notArrivedListener");
     }
 
     public StreamTicket open(StreamKey streamKey) {
@@ -186,7 +203,20 @@ public final class StreamCoordinator {
         pendingTasks.remove(streamKey);
         streams.find(streamKey)
                 .filter(entry -> entry.state() == StreamState.PENDING)
-                .ifPresent(entry -> streams.markDead(streamKey, "DEVICE_NO_RESPONSE"));
+                .ifPresent(entry -> {
+                    streams.markDead(streamKey, "DEVICE_NO_RESPONSE");
+                    notifyNotArrived(streamKey, entry);
+                });
+    }
+
+    /** 观测是旁路：监听器抛错不得让流回收半途而废（jt-common 无日志依赖，由实现方自行记录）。 */
+    private void notifyNotArrived(StreamKey streamKey, StreamEntry entry) {
+        long waitedMillis = Math.max(0, Duration.between(entry.createdAt(), clock.instant()).toMillis());
+        try {
+            notArrivedListener.onStreamNotArrived(streamKey, entry.mediaInstanceId(), waitedMillis);
+        } catch (RuntimeException ignored) {
+            // 已在监听器实现内记录
+        }
     }
 
     private void closeIfIdle(StreamKey streamKey) {

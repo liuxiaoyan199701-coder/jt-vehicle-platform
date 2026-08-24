@@ -20,6 +20,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -103,6 +104,60 @@ class StreamCoordinatorTest {
     }
 
     @Test
+    void pendingExpiryReportsTheWaitingMediaNodeAndTheRealWaitedTime() throws Exception {
+        InMemoryStreamRegistry streams = new InMemoryStreamRegistry();
+        MutableClock clock = new MutableClock();
+        List<String> notified = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        try (var executor = Executors.newSingleThreadScheduledExecutor()) {
+            StreamCoordinator coordinator = coordinator(streams, instances(), new CountingCommands(),
+                    executor, Duration.ofSeconds(5), Duration.ofMillis(200), clock,
+                    (streamKey, mediaInstanceId, waitedMillis) ->
+                            notified.add(streamKey.externalId() + '|' + mediaInstanceId + '|' + waitedMillis));
+
+            coordinator.open(KEY);
+            clock.advance(Duration.ofSeconds(3));
+
+            assertTrue(await(() -> !notified.isEmpty(), 1_000));
+            assertEquals(KEY.externalId() + "|media-1|3000", notified.getFirst());
+        }
+    }
+
+    @Test
+    void streamThatGoesLiveIsNeverReportedAsNotArrived() throws Exception {
+        InMemoryStreamRegistry streams = new InMemoryStreamRegistry();
+        List<String> notified = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        try (var executor = Executors.newSingleThreadScheduledExecutor()) {
+            StreamCoordinator coordinator = coordinator(streams, instances(), new CountingCommands(),
+                    executor, Duration.ofSeconds(5), Duration.ofMillis(60), CLOCK,
+                    (streamKey, mediaInstanceId, waitedMillis) -> notified.add(streamKey.externalId()));
+
+            coordinator.open(KEY);
+            assertTrue(coordinator.onFirstPacket(KEY, "media-1"));
+            Thread.sleep(200);
+
+            assertTrue(notified.isEmpty());
+            assertEquals(StreamState.LIVE, streams.find(KEY).orElseThrow().state());
+        }
+    }
+
+    @Test
+    void observerFailureDoesNotStopTheStreamFromBeingReclaimed() throws Exception {
+        InMemoryStreamRegistry streams = new InMemoryStreamRegistry();
+        try (var executor = Executors.newSingleThreadScheduledExecutor()) {
+            StreamCoordinator coordinator = coordinator(streams, instances(), new CountingCommands(),
+                    executor, Duration.ofSeconds(5), Duration.ofMillis(40), CLOCK,
+                    (streamKey, mediaInstanceId, waitedMillis) -> {
+                        throw new IllegalStateException("publisher down");
+                    });
+
+            coordinator.open(KEY);
+
+            assertTrue(await(() -> streams.find(KEY).orElseThrow().state() == StreamState.DEAD, 500));
+            assertEquals("DEVICE_NO_RESPONSE", streams.find(KEY).orElseThrow().terminalReason());
+        }
+    }
+
+    @Test
     void liveAndPlaybackTargetsComeFromTheRegisteredMediaInstance() {
         InMemoryStreamRegistry streams = new InMemoryStreamRegistry();
         InMemoryMediaInstanceRegistry instances = new InMemoryMediaInstanceRegistry();
@@ -148,6 +203,32 @@ class StreamCoordinatorTest {
             Duration pending) {
         MediaScheduler scheduler = new MediaScheduler(instances, streams, CLOCK, Duration.ofSeconds(15), 0.9);
         return new StreamCoordinator(streams, scheduler, commands, executor, CLOCK, idle, pending, () -> "stream-1");
+    }
+
+    private static StreamCoordinator coordinator(
+            InMemoryStreamRegistry streams,
+            InMemoryMediaInstanceRegistry instances,
+            CountingCommands commands,
+            java.util.concurrent.ScheduledExecutorService executor,
+            Duration idle,
+            Duration pending,
+            Clock clock,
+            io.github.jtplatform.common.port.StreamNotArrivedListener listener) {
+        MediaScheduler scheduler = new MediaScheduler(instances, streams, clock, Duration.ofSeconds(15), 0.9);
+        return new StreamCoordinator(streams, scheduler, commands, executor, clock, idle, pending,
+                () -> "stream-1", listener);
+    }
+
+    private static final class MutableClock extends Clock {
+        private volatile Instant instant = NOW;
+
+        void advance(Duration duration) {
+            instant = instant.plus(duration);
+        }
+
+        @Override public ZoneOffset getZone() { return ZoneOffset.UTC; }
+        @Override public Clock withZone(java.time.ZoneId zone) { return this; }
+        @Override public Instant instant() { return instant; }
     }
 
     private static InMemoryMediaInstanceRegistry instances() {

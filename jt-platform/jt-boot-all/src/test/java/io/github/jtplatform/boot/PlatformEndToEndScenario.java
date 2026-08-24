@@ -42,9 +42,9 @@ import org.yzh.protocol.t808.T8100;
 import tools.jackson.databind.ObjectMapper;
 
 final class PlatformEndToEndScenario {
-    private static final String TERMINAL_ID = "1380000";
-    private static final String MOBILE_NO = "138000000000";
-    private static final int CHANNEL = 1;
+    static final String TERMINAL_ID = "1380000";
+    static final String MOBILE_NO = "138000000000";
+    static final int CHANNEL = 1;
 
     private final Endpoints endpoints;
     private final SchemaManager schemas = new SchemaManager("org.yzh.protocol");
@@ -190,7 +190,7 @@ final class PlatformEndToEndScenario {
         }
     }
 
-    private static byte[] readDelimitedFrame(Socket socket) throws IOException {
+    static byte[] readDelimitedFrame(Socket socket) throws IOException {
         ByteArrayOutputStream frame = new ByteArrayOutputStream();
         boolean started = false;
         while (true) {
@@ -212,7 +212,7 @@ final class PlatformEndToEndScenario {
         }
     }
 
-    private static <T extends JTMessage> T prepare(T message, int serialNo) {
+    static <T extends JTMessage> T prepare(T message, int serialNo) {
         message.setMessageId(message.reflectMessageId());
         message.setClientId(MOBILE_NO);
         message.setSerialNo(serialNo);
@@ -221,13 +221,13 @@ final class PlatformEndToEndScenario {
         return message;
     }
 
-    private static Socket connect(int port) throws IOException {
+    static Socket connect(int port) throws IOException {
         Socket socket = new Socket();
         socket.connect(new InetSocketAddress("127.0.0.1", port), 3_000);
         return socket;
     }
 
-    private static byte[] videoPacket() {
+    static byte[] videoPacket() {
         byte[] payload = {
                 0, 0, 0, 1, 0x67, 0x42, 0x00, 0x1f,
                 0, 0, 0, 1, 0x68, (byte) 0xce, 0x06, (byte) 0xe2,

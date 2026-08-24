@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -80,6 +81,50 @@ class ConnectionEventEmitterTest {
         emitter.disconnected("device-1", null, null, "对端断开");
         assertEquals(3, publisher.events.size());
         assertEquals(2, publisher.events.getLast().payload().get("repeatCount"));
+    }
+
+    @Test
+    void emitsEveryCommandOutcomeWithCommandIdAndResultCodeInDetail() {
+        CapturingPublisher publisher = new CapturingPublisher();
+        ConnectionEventEmitter emitter = new ConnectionEventEmitter(
+                publisher, Clock.fixed(Instant.parse("2026-08-21T00:00:00Z"), ZoneOffset.UTC), "signal-1");
+
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.REJECTED, 3, "10.0.0.1:9");
+        emitter.commandResult("device-1", 0x9101, ConnectionEventEmitter.CommandOutcome.TIMEOUT, null, null);
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.OK, null, null);
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.OFFLINE, null, null);
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.FAILED, null, null);
+
+        assertEquals(5, publisher.events.size());
+        MessageEnvelope rejected = publisher.events.getFirst();
+        assertEquals("COMMAND_RESULT", rejected.payload().get("kind"));
+        assertEquals("connection", rejected.type().wireValue());
+        assertEquals(3, rejected.payload().get("reasonCode"));
+        assertEquals(Map.of("commandMsgId", "0x8801", "outcome", "REJECTED", "resultCode", 3),
+                rejected.payload().get("detail"));
+        assertEquals(Map.of("commandMsgId", "0x9101", "outcome", "TIMEOUT"),
+                publisher.events.get(1).payload().get("detail"));
+    }
+
+    @Test
+    void dedupesRepeatedTimeoutsPerCommandButKeepsOtherCommandsAndOutcomesVisible() {
+        CapturingPublisher publisher = new CapturingPublisher();
+        MutableClock clock = new MutableClock();
+        ConnectionEventEmitter emitter = new ConnectionEventEmitter(publisher, clock, "signal-1");
+
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.TIMEOUT, null, null);
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.TIMEOUT, null, null);
+        assertEquals(1, publisher.events.size());
+
+        // 同设备的另一条指令、以及同一指令的另一种结局都不应被窗口吞掉
+        emitter.commandResult("device-1", 0x9101, ConnectionEventEmitter.CommandOutcome.TIMEOUT, null, null);
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.OK, null, null);
+        assertEquals(3, publisher.events.size());
+
+        clock.advance(Duration.ofSeconds(61));
+        emitter.commandResult("device-1", 0x8801, ConnectionEventEmitter.CommandOutcome.TIMEOUT, null, null);
+        assertEquals(4, publisher.events.size());
+        assertEquals(3, publisher.events.getLast().payload().get("repeatCount"));
     }
 
     @Test

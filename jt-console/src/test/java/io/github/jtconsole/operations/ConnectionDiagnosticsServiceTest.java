@@ -26,4 +26,24 @@ class ConnectionDiagnosticsServiceTest {
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(),
                 org.mockito.ArgumentMatchers.any());
     }
+
+    /** 体检维度读原始事件走的是同一道范围判定，不能绕开。 */
+    @Test
+    void rawEventReadsAreGuardedByTheSameVisibilityCheck() {
+        ConnectionEventRepository events = mock(ConnectionEventRepository.class);
+        VehicleService vehicles = mock(VehicleService.class);
+        ConnectionDiagnosticsService service = new ConnectionDiagnosticsService(events, vehicles);
+
+        org.mockito.Mockito.doThrow(io.github.jtconsole.iam.IamException.notFound("车辆不存在"))
+                .when(vehicles).requireVisibleDevice(
+                        org.mockito.ArgumentMatchers.eq("foreign"),
+                        org.mockito.ArgumentMatchers.any(DataScope.class));
+
+        assertThrows(io.github.jtconsole.iam.IamException.class,
+                () -> service.events("foreign", null, null, DataScope.tenantWide(2)));
+        verify(events, org.mockito.Mockito.never()).findByDevice(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.any());
+    }
 }

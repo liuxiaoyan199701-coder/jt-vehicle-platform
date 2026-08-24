@@ -59,6 +59,31 @@ public final class ConnectionEventEmitter {
                 Map.of("success", success));
     }
 
+    /**
+     * 下行指令的应答结局。挂钩点在所有「期待应答的下行」的收口处，新增指令自动获得覆盖。
+     *
+     * <p>去噪按（设备、指令消息 ID、结局）聚合：同一条指令反复超时不该刷屏，
+     * 而同一设备的不同指令、或同一指令的不同结局都必须各自可见。
+     */
+    public void commandResult(
+            String deviceId, long commandMessageId, CommandOutcome outcome,
+            Integer resultCode, String remoteAddress) {
+        Objects.requireNonNull(outcome, "outcome");
+        String command = formatMessageId(commandMessageId);
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("commandMsgId", command);
+        detail.put("outcome", outcome.name());
+        if (resultCode != null) {
+            detail.put("resultCode", resultCode);
+        }
+        emit(deviceId, Kind.COMMAND_RESULT, resultCode, command + ' ' + outcome.description(),
+                remoteAddress, Map.of("detail", detail), command + '/' + outcome.name());
+    }
+
+    private static String formatMessageId(long messageId) {
+        return String.format("0x%04X", messageId);
+    }
+
     public void protocolError(String deviceId, String reason, String remoteAddress) {
         String key = requireText(deviceId, "deviceId");
         Instant now = clock.instant();
@@ -84,10 +109,19 @@ public final class ConnectionEventEmitter {
     private void emit(
             String deviceId, Kind kind, Integer reasonCode, String reason,
             String remoteAddress, Map<String, ?> extra) {
+        emit(deviceId, kind, reasonCode, reason, remoteAddress, extra, null);
+    }
+
+    /**
+     * @param dedupDiscriminator 参与去噪窗口的额外维度，为 null 时按「原因」聚合
+     */
+    private void emit(
+            String deviceId, Kind kind, Integer reasonCode, String reason,
+            String remoteAddress, Map<String, ?> extra, String dedupDiscriminator) {
         String device = requireText(deviceId, "deviceId");
         String normalizedReason = reason == null || reason.isBlank() ? null : reason.trim();
         Instant now = clock.instant();
-        DedupKey key = new DedupKey(device, kind, reasonCode, normalizedReason);
+        DedupKey key = new DedupKey(device, kind, reasonCode, normalizedReason, dedupDiscriminator);
         int[] emittedCount = {0};
         windows.compute(key, (ignored, current) -> {
             if (current == null) {
@@ -140,10 +174,31 @@ public final class ConnectionEventEmitter {
     }
 
     public enum Kind {
-        CONNECTED, DISCONNECTED, REGISTER_RESULT, AUTH_RESULT, PROTOCOL_ERROR, SESSION_REPLACED
+        CONNECTED, DISCONNECTED, REGISTER_RESULT, AUTH_RESULT, PROTOCOL_ERROR, SESSION_REPLACED,
+        COMMAND_RESULT
     }
 
-    private record DedupKey(String deviceId, Kind kind, Integer reasonCode, String reason) {}
+    /** 下行指令的四类结局，另加「下发失败」以区分「送不出去」与「送出后没回音」。 */
+    public enum CommandOutcome {
+        OK("终端应答成功"),
+        REJECTED("终端拒绝指令"),
+        TIMEOUT("终端未应答（超时）"),
+        OFFLINE("设备离线，指令未下发"),
+        FAILED("指令下发失败");
+
+        private final String description;
+
+        CommandOutcome(String description) {
+            this.description = description;
+        }
+
+        public String description() {
+            return description;
+        }
+    }
+
+    private record DedupKey(
+            String deviceId, Kind kind, Integer reasonCode, String reason, String discriminator) {}
     private record Window(Instant startedAt, int repeatCount) {}
     private record ProtocolWindow(Instant startedAt, int count) {}
 }

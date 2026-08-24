@@ -19,8 +19,11 @@ public class ConnectionDiagnosticsService {
         this.vehicles = vehicles;
     }
 
-    public Map<String, Object> query(
-            String deviceId, String start, String end, int page, int pageSize, DataScope scope) {
+    /**
+     * 按范围读取该设备的原始事件。体检维度用它关联指令结局与无流到达，
+     * 范围判定因而只有这一处实现，不会在维度里被重写走样。
+     */
+    public List<ConnectionEvent> events(String deviceId, String start, String end, DataScope scope) {
         String device = deviceId == null ? "" : deviceId.trim();
         if (device.isEmpty()) {
             throw new IllegalArgumentException("设备号不能为空");
@@ -29,9 +32,15 @@ public class ConnectionDiagnosticsService {
         if (!scope.isPlatform()) {
             vehicles.requireVisibleDevice(device, scope);
         }
+        return events.findByDevice(device, start, end, 500, scope);
+    }
+
+    public Map<String, Object> query(
+            String deviceId, String start, String end, int page, int pageSize, DataScope scope) {
+        String device = deviceId == null ? "" : deviceId.trim();
         int boundedPage = Math.max(1, page);
         int boundedSize = Math.clamp(pageSize, 1, 100);
-        List<ConnectionEvent> all = events.findByDevice(device, start, end, 500, scope);
+        List<ConnectionEvent> all = events(deviceId, start, end, scope);
         int from = Math.min((boundedPage - 1) * boundedSize, all.size());
         int to = Math.min(from + boundedSize, all.size());
         List<ConnectionEvent> timeline = all.subList(from, to);

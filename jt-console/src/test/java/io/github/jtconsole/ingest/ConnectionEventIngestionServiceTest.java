@@ -13,6 +13,7 @@ import io.github.jtconsole.support.TestSchema;
 import java.nio.file.Files;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import javax.sql.DataSource;
@@ -41,6 +42,83 @@ class ConnectionEventIngestionServiceTest {
                 && event.eventTime().endsWith("+08:00") && event.repeatCount() == 1));
         verify(repository).insertIgnore(argThat(event -> event.tenantId() == null
                 && event.deviceId().equals("unknown")));
+    }
+
+    /**
+     * 锁定两类链路事件的 detail 字段集：字段要变，必须先改这个测试。
+     * 网关与控制台是分开部署的，字段悄悄改名会让体检的诊断静默退化成「查不到」。
+     */
+    @Test
+    void linkEventDetailFieldsArePersistedVerbatimForBothKinds() throws Exception {
+        DataSource dataSource = database();
+        JdbcClient jdbc = JdbcClient.create(dataSource);
+        ConnectionEventRepository repository = new ConnectionEventRepository(jdbc);
+        DeviceOwnershipCache ownership = mock(DeviceOwnershipCache.class);
+        when(ownership.find("known")).thenReturn(
+                Optional.of(new DeviceOwnershipCache.Ownership(7L, null)));
+        ConnectionEventIngestionService service =
+                new ConnectionEventIngestionService(repository, ownership);
+
+        service.handle(envelope("cmd-1", "known", Map.of(
+                "kind", "COMMAND_RESULT", "reasonCode", 3, "eventTime", "2026-08-23T00:00:00Z",
+                "detail", new LinkedHashMap<>(Map.of(
+                        "commandMsgId", "0x8801", "outcome", "REJECTED", "resultCode", 3)))));
+        service.handle(envelope("stream-1", "known", Map.of(
+                "kind", "STREAM_NOT_ARRIVED", "eventTime", "2026-08-23T00:00:00Z",
+                "detail", new LinkedHashMap<>(Map.of(
+                        "channel", 3, "streamKind", "sub",
+                        "waitedMs", 30000, "mediaInstanceId", "media-2")))));
+
+        assertThat(detailOf(jdbc, "cmd-1")).isEqualTo(Map.of(
+                "commandMsgId", "0x8801", "outcome", "REJECTED", "resultCode", 3));
+        assertThat(detailOf(jdbc, "stream-1")).isEqualTo(Map.of(
+                "channel", 3, "streamKind", "sub", "waitedMs", 30000, "mediaInstanceId", "media-2"));
+    }
+
+    @Test
+    void eventsWithoutDetailStillLandWithTheColumnLeftEmpty() throws Exception {
+        DataSource dataSource = database();
+        JdbcClient jdbc = JdbcClient.create(dataSource);
+        DeviceOwnershipCache ownership = mock(DeviceOwnershipCache.class);
+        when(ownership.find("known")).thenReturn(
+                Optional.of(new DeviceOwnershipCache.Ownership(7L, null)));
+        ConnectionEventIngestionService service = new ConnectionEventIngestionService(
+                new ConnectionEventRepository(jdbc), ownership);
+
+        service.handle(envelope("plain", "known", Map.of(
+                "kind", "CONNECTED", "eventTime", "2026-08-23T00:00:00Z")));
+
+        assertThat(jdbc.sql("SELECT COUNT(*) FROM connection_event WHERE event_id = 'plain' AND detail IS NULL")
+                .query(Integer.class).single()).isEqualTo(1);
+    }
+
+    /**
+     * 部署顺序是先网关后控制台，中间那段时间控制台会收到自己还不认识的事件。
+     * 未知 kind 与多余 payload 字段都必须照常落库，否则那段窗口的事件会永久丢失。
+     */
+    @Test
+    void unknownKindsAndUnknownPayloadFieldsStillLand() throws Exception {
+        DataSource dataSource = database();
+        JdbcClient jdbc = JdbcClient.create(dataSource);
+        DeviceOwnershipCache ownership = mock(DeviceOwnershipCache.class);
+        when(ownership.find("known")).thenReturn(
+                Optional.of(new DeviceOwnershipCache.Ownership(7L, null)));
+        ConnectionEventIngestionService service = new ConnectionEventIngestionService(
+                new ConnectionEventRepository(jdbc), ownership);
+
+        service.handle(envelope("future-1", "known", Map.of(
+                "kind", "SOME_FUTURE_KIND", "eventTime", "2026-08-23T00:00:00Z",
+                "somethingNobodyParsesYet", "值", "anotherOne", 42)));
+
+        assertThat(jdbc.sql("SELECT kind FROM connection_event WHERE event_id = 'future-1'")
+                .query(String.class).single()).isEqualTo("SOME_FUTURE_KIND");
+    }
+
+    private static Map<String, Object> detailOf(JdbcClient jdbc, String eventId) throws Exception {
+        String stored = jdbc.sql("SELECT detail FROM connection_event WHERE event_id = ?")
+                .param(eventId).query(String.class).single();
+        return new tools.jackson.databind.ObjectMapper()
+                .readValue(stored, new tools.jackson.core.type.TypeReference<>() { });
     }
 
     @Test
