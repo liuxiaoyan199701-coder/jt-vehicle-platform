@@ -79,6 +79,11 @@ jt:
       multimedia-path: data/signal/multimedia
       multimedia-access-base-url: ${JT_MULTIMEDIA_ACCESS_BASE_URL:}
       alarm-attachment-path: data/signal/alarm-attachments
+    # 报文日志采集。截断在网关侧执行，超长报文因此进不了投递队列与落盘 spool。
+    message-log:
+      enabled: ${JT_SIGNAL_MESSAGE_LOG_ENABLED:true}
+      max-hex-chars: ${JT_SIGNAL_MESSAGE_LOG_MAX_HEX:8192}
+      max-json-chars: ${JT_SIGNAL_MESSAGE_LOG_MAX_JSON:8192}
   registry:
     type: memory
   delivery:

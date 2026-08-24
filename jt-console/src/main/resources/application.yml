@@ -104,6 +104,15 @@ jt:
       cleanup-batch-size: ${JT_CONSOLE_CONNECTION_CLEANUP_BATCH:500}
       cleanup-max-batches: ${JT_CONSOLE_CONNECTION_CLEANUP_MAX_BATCHES:100}
       cleanup-cron: ${JT_CONSOLE_CONNECTION_CLEANUP_CRON:0 41 3 * * *}
+    device-log:
+      # 报文日志库文件。与业务库分开——报文是持续高频写，与业务写抢 SQLite 那把
+      # 唯一的写锁会直接体现为接口变慢。撑爆也只撑爆这个文件。
+      db: ${JT_CONSOLE_DEVICE_LOG_DB:data/jt-console-logs.db}
+      retention: ${JT_CONSOLE_DEVICE_LOG_RETENTION:14d}
+      cleanup-batch-size: ${JT_CONSOLE_DEVICE_LOG_CLEANUP_BATCH:500}
+      cleanup-max-batches: ${JT_CONSOLE_DEVICE_LOG_CLEANUP_MAX_BATCHES:100}
+      # 与连接事件（3:41）、审计（3:17）错峰，避免几个清理任务同一分钟抢写锁。
+      cleanup-cron: ${JT_CONSOLE_DEVICE_LOG_CLEANUP_CRON:0 53 3 * * *}
     audit:
       # 审计写入永不阻塞业务：队列满时丢弃并计数，可在 /api/diagnostics 观察积压。
       queue-capacity: ${JT_CONSOLE_AUDIT_QUEUE_CAPACITY:4096}

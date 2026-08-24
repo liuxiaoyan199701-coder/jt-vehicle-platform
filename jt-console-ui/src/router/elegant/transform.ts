@@ -169,6 +169,7 @@ const routeMap: RouteMap = {
   "ai": "/ai",
   "ai_chat": "/ai/chat",
   "alarm": "/alarm",
+  "device-log": "/device-log",
   "driver": "/driver",
   "fleet": "/fleet",
   "geofence": "/geofence",

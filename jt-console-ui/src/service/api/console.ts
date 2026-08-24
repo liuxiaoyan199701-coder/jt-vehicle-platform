@@ -127,6 +127,46 @@ export interface AlarmPage {
   pageSize: number;
 }
 
+export type DeviceLogDirection = 'UP' | 'DOWN' | 'CONNECTION';
+
+export interface DeviceLog {
+  id: number;
+  eventId: string;
+  deviceId: string;
+  tenantId: number | null;
+  direction: DeviceLogDirection;
+  /** 十进制的 808 消息 ID；连接事件与解码失败帧为 null */
+  msgId: number | null;
+  msgIdHex: string | null;
+  serialNo: number | null;
+  logTime: string;
+  summary: string | null;
+  rawHex: string | null;
+  parsedJson: string | null;
+  decodeError: boolean;
+  truncated: boolean;
+  instanceId: string | null;
+}
+
+export interface DeviceLogQuery {
+  deviceId: string;
+  start?: string;
+  end?: string;
+  direction?: DeviceLogDirection;
+  /** 0x0200 与 512 两种写法后端都认 */
+  msgId?: string;
+  keyword?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface DeviceLogPage {
+  items: DeviceLog[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface Geofence {
   id: number;
   name: string;
@@ -555,6 +595,12 @@ export function openPlaybackStream(
 
 export function fetchDashboardOverview() {
   return request<DashboardOverview>({ url: '/dashboard/overview' });
+}
+
+// ---------------- 设备日志 ----------------
+
+export function fetchDeviceLogs(params: DeviceLogQuery) {
+  return request<DeviceLogPage>({ url: '/device-logs', params });
 }
 
 // ---------------- 告警处置 ----------------

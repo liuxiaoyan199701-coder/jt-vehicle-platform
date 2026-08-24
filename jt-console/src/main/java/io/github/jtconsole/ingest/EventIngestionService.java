@@ -16,13 +16,23 @@ public class EventIngestionService {
     private final WaybillIngestionService waybills;
     private final RecordingUploadIngestionService recordingUploads;
     private final ConnectionEventIngestionService connections;
+    private final DeviceLogIngestionService deviceLogs;
 
     /** 测试便利构造：不带连接事件投影（连接类信封会走常规路径被忽略）。 */
     public EventIngestionService(
             EventRepository events, LocationService locations, MediaIngestionService media,
             DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
             RecordingUploadIngestionService recordingUploads) {
-        this(events, locations, media, driverIdentity, waybills, recordingUploads, null);
+        this(events, locations, media, driverIdentity, waybills, recordingUploads, null, null);
+    }
+
+    /** 测试便利构造：带连接事件投影但不带日志库（日志类信封会被静默忽略）。 */
+    public EventIngestionService(
+            EventRepository events, LocationService locations, MediaIngestionService media,
+            DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
+            RecordingUploadIngestionService recordingUploads,
+            ConnectionEventIngestionService connections) {
+        this(events, locations, media, driverIdentity, waybills, recordingUploads, connections, null);
     }
 
     @Autowired
@@ -30,7 +40,8 @@ public class EventIngestionService {
             EventRepository events, LocationService locations, MediaIngestionService media,
             DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
             RecordingUploadIngestionService recordingUploads,
-            ConnectionEventIngestionService connections) {
+            ConnectionEventIngestionService connections,
+            DeviceLogIngestionService deviceLogs) {
         this.events = events;
         this.locations = locations;
         this.media = media;
@@ -38,12 +49,19 @@ public class EventIngestionService {
         this.waybills = waybills;
         this.recordingUploads = recordingUploads;
         this.connections = connections;
+        this.deviceLogs = deviceLogs;
     }
 
     @Transactional
     public IngestionResult ingest(MessageEnvelope envelope) {
         validate(envelope);
         MessageEnvelope normalized = normalize(envelope);
+        // 报文日志在 markProcessed 之前就分流走：它与业务信封同量级，走原链路等于把一半的
+        // 写压转嫁给业务库那把唯一的写锁，日志库物理隔离的意义会被这一次写全部抵消。
+        // 幂等改由日志库的 event_id 唯一索引 + INSERT OR IGNORE 承担。
+        if (deviceLogs != null && deviceLogs.handle(normalized)) {
+            return new IngestionResult("committed", "device-log", null);
+        }
         if (!events.markProcessed(normalized.eventId())) {
             return IngestionResult.duplicate();
         }

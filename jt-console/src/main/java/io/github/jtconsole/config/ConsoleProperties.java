@@ -21,6 +21,7 @@ public class ConsoleProperties {
     private Geo geo = new Geo();
     private Audit audit = new Audit();
     private ConnectionDiagnostics connectionDiagnostics = new ConnectionDiagnostics();
+    private DeviceLog deviceLog = new DeviceLog();
     private Registration registration = new Registration();
     private Tenancy tenancy = new Tenancy();
     private Duration offlineTimeout = Duration.ofMinutes(5);
@@ -72,6 +73,14 @@ public class ConsoleProperties {
 
     public void setConnectionDiagnostics(ConnectionDiagnostics connectionDiagnostics) {
         this.connectionDiagnostics = connectionDiagnostics;
+    }
+
+    public DeviceLog getDeviceLog() {
+        return deviceLog;
+    }
+
+    public void setDeviceLog(DeviceLog deviceLog) {
+        this.deviceLog = deviceLog;
     }
 
     public Registration getRegistration() {
@@ -782,6 +791,29 @@ public class ConsoleProperties {
         private int cleanupMaxBatches = 100;
         private String cleanupCron = "0 41 3 * * *";
 
+        public Duration getRetention() { return retention; }
+        public void setRetention(Duration retention) { this.retention = retention; }
+        public int getCleanupBatchSize() { return cleanupBatchSize; }
+        public void setCleanupBatchSize(int value) { cleanupBatchSize = Math.max(1, value); }
+        public int getCleanupMaxBatches() { return cleanupMaxBatches; }
+        public void setCleanupMaxBatches(int value) { cleanupMaxBatches = Math.max(1, value); }
+        public String getCleanupCron() { return cleanupCron; }
+        public void setCleanupCron(String value) { cleanupCron = value; }
+    }
+
+    /**
+     * 设备报文日志。库文件与业务库物理隔离——报文日志是持续高频写，
+     * 与业务写抢 SQLite 那把唯一的写锁会直接体现为接口变慢。
+     */
+    public static class DeviceLog {
+        private Path db = Path.of("data", "jt-console-logs.db");
+        private Duration retention = Duration.ofDays(14);
+        private int cleanupBatchSize = 500;
+        private int cleanupMaxBatches = 100;
+        private String cleanupCron = "0 53 3 * * *";
+
+        public Path getDb() { return db; }
+        public void setDb(Path db) { this.db = db; }
         public Duration getRetention() { return retention; }
         public void setRetention(Duration retention) { this.retention = retention; }
         public int getCleanupBatchSize() { return cleanupBatchSize; }

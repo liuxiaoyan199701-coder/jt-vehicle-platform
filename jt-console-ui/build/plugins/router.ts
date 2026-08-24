@@ -15,6 +15,9 @@ export function setupElegantRouter() {
     // 抓拍照片。权限码沿用既有的 media:list，不新增——能看多媒体就是能看多媒体，
     // 再分「列表」「详情」两级只会让角色配置变复杂而不变安全。
     media: { icon: 'mdi:image-multiple-outline', order: 9, permissions: ['media:list'] },
+    // 报文级排障页。权限码沿用 vehicle:list，与「连接日志」那个诊断接口同一档：
+    // 能看车辆档案的人就能看这台车的报文，不为一个排障页再造一个权限码。
+    'device-log': { icon: 'mdi:file-document-outline', order: 10, permissions: ['vehicle:list'] },
     // permissions 写在这里而不是手改 src/router/elegant/routes.ts：
     // 那是生成产物，跑 pnpm gen-route 会被覆盖掉。
     ai: { icon: 'mdi:robot-outline', order: 9 },

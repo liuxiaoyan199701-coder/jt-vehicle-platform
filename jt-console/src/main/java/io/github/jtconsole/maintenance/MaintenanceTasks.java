@@ -6,6 +6,7 @@ import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.repository.AiConversationRepository;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.ConnectionEventRepository;
+import io.github.jtconsole.repository.DeviceLogRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import java.time.Instant;
 import org.slf4j.Logger;
@@ -24,6 +25,7 @@ public class MaintenanceTasks {
     private final AiConversationRepository conversations;
     private final ConsoleProperties properties;
     private final ConnectionEventRepository connectionEvents;
+    private final DeviceLogRepository deviceLogs;
 
     public MaintenanceTasks(
             StatusRepository statuses,
@@ -31,13 +33,15 @@ public class MaintenanceTasks {
             AttachmentStore attachments,
             AiConversationRepository conversations,
             ConsoleProperties properties,
-            ConnectionEventRepository connectionEvents) {
+            ConnectionEventRepository connectionEvents,
+            DeviceLogRepository deviceLogs) {
         this.statuses = statuses;
         this.events = events;
         this.attachments = attachments;
         this.conversations = conversations;
         this.properties = properties;
         this.connectionEvents = connectionEvents;
+        this.deviceLogs = deviceLogs;
     }
 
     /** 连接事件保留 14 天，分钟错开其它清理任务，避免 SQLite 写锁同一时刻竞争。 */
@@ -55,6 +59,33 @@ public class MaintenanceTasks {
         }
         if (total > 0) {
             LOGGER.info("清理 {} 条过期连接诊断事件", total);
+        }
+    }
+
+    /**
+     * 设备报文日志保留 14 天。
+     *
+     * <p>与连接事件（3:41）、审计（3:17）错峰到 3:53：日志库虽是独立文件，磁盘 IO 仍会和业务写抢资源。
+     * 一次失败只记 warn——定时任务不能因为一次锁冲突就永久停摆，下一轮继续从最旧的批次删起。
+     */
+    @Scheduled(cron = "${jt.console.device-log.cleanup-cron:0 53 3 * * *}")
+    public void purgeDeviceLogs() {
+        ConsoleProperties.DeviceLog config = properties.getDeviceLog();
+        Instant cutoff = Instant.now().minus(config.getRetention());
+        int total = 0;
+        try {
+            for (int batch = 0; batch < config.getCleanupMaxBatches(); batch++) {
+                int removed = deviceLogs.deleteOlderThan(cutoff, config.getCleanupBatchSize());
+                total += removed;
+                if (removed < config.getCleanupBatchSize()) {
+                    break;
+                }
+            }
+            if (total > 0) {
+                LOGGER.info("清理 {} 条过期设备日志", total);
+            }
+        } catch (RuntimeException failure) {
+            LOGGER.warn("设备日志保留期清理失败：{}", failure.getClass().getSimpleName());
         }
     }
 

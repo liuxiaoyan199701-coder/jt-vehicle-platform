@@ -241,6 +241,7 @@ const local: App.I18n.Schema = {
     vehicle: 'Vehicles',
     driver: 'Drivers',
     media: 'Snapshots',
+    'device-log': 'Device logs',
     ai: 'AI Assistant',
     ai_chat: 'AI Assistant',
     track: 'Track Playback',

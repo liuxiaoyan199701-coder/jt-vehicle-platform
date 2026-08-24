@@ -2,13 +2,16 @@ package io.github.jtconsole.ingest;
 
 import io.github.jtconsole.config.Timestamps;
 import io.github.jtconsole.domain.ConnectionEvent;
+import io.github.jtconsole.domain.DeviceLog;
 import io.github.jtconsole.live.DeviceOwnershipCache;
 import io.github.jtconsole.repository.ConnectionEventRepository;
+import io.github.jtconsole.repository.DeviceLogRepository;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -21,12 +24,22 @@ public class ConnectionEventIngestionService {
 
     private final ConnectionEventRepository events;
     private final DeviceOwnershipCache ownership;
+    private final DeviceLogRepository deviceLogs;
     private final ObjectMapper json = new ObjectMapper();
 
+    /** 测试便利构造：不双写日志库。 */
     public ConnectionEventIngestionService(
             ConnectionEventRepository events, DeviceOwnershipCache ownership) {
+        this(events, ownership, null);
+    }
+
+    @Autowired
+    public ConnectionEventIngestionService(
+            ConnectionEventRepository events, DeviceOwnershipCache ownership,
+            DeviceLogRepository deviceLogs) {
         this.events = events;
         this.ownership = ownership;
+        this.deviceLogs = deviceLogs;
     }
 
     public boolean handle(MessageEnvelope envelope) {
@@ -50,7 +63,36 @@ public class ConnectionEventIngestionService {
                 normalizeReceivedAt(envelope.receivedAt()),
                 detail(payload.get("detail")));
         events.insertIgnore(event);
+        mirrorToDeviceLog(event, envelope.instanceId());
         return true;
+    }
+
+    /**
+     * 往日志库补一条 {@code CONNECTION} 记录，让设备时间线单表可查。
+     *
+     * <p>connection_event 仍是连接事件的**权威源**，诊断只读它；这里写失败只记一条 warn，
+     * 日志时间线缺一格远不如把连接投影拖垮严重。{@code event_id} 加后缀，
+     * 与未来可能从网关直发的日志信封不会撞唯一键。
+     */
+    private void mirrorToDeviceLog(ConnectionEvent event, String instanceId) {
+        if (deviceLogs == null) {
+            return;
+        }
+        try {
+            deviceLogs.insertIgnore(new DeviceLog(
+                    0, event.eventId() + ":device-log", event.deviceId(), event.tenantId(),
+                    "CONNECTION", null, null, event.eventTime(),
+                    summary(event), null, event.detail(), false, false, instanceId));
+        } catch (RuntimeException failure) {
+            LOGGER.warn("连接事件双写日志库失败：device={}, kind={}",
+                    event.deviceId(), event.kind(), failure);
+        }
+    }
+
+    private static String summary(ConnectionEvent event) {
+        return event.reason() == null || event.reason().isBlank()
+                ? event.kind()
+                : event.kind() + '：' + event.reason();
     }
 
     /**

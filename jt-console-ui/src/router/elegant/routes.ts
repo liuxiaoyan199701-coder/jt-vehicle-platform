@@ -76,6 +76,18 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'device-log',
+    path: '/device-log',
+    component: 'layout.base$view.device-log',
+    meta: {
+      title: 'device-log',
+      i18nKey: 'route.device-log',
+      icon: 'mdi:file-document-outline',
+      order: 10,
+      permissions: ['vehicle:list']
+    }
+  },
+  {
     name: 'driver',
     path: '/driver',
     component: 'layout.base$view.driver',

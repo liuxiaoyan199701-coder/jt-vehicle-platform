@@ -21,6 +21,7 @@ public class SignalProperties {
     private Duration idleTimeout = Duration.ofSeconds(60);
     private String[] messagePackages = {"org.yzh.protocol"};
     private final Storage storage = new Storage();
+    private final MessageLog messageLog = new MessageLog();
 
     public boolean isEnabled() {
         return enabled;
@@ -96,6 +97,43 @@ public class SignalProperties {
 
     public Storage getStorage() {
         return storage;
+    }
+
+    public MessageLog getMessageLog() {
+        return messageLog;
+    }
+
+    /** 报文日志采集。截断上限放在网关侧，超长内容因此进不了投递队列，也进不了落盘 spool。 */
+    public static class MessageLog {
+        private boolean enabled = true;
+        /** 单条原始帧 hex 的字符数上限。8192 字符约等于 4KB 报文，够覆盖除多媒体外的全部帧型。 */
+        private int maxHexChars = 8192;
+        /** 单条解析 JSON 的字符数上限。 */
+        private int maxJsonChars = 8192;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getMaxHexChars() {
+            return maxHexChars;
+        }
+
+        public void setMaxHexChars(int maxHexChars) {
+            this.maxHexChars = maxHexChars;
+        }
+
+        public int getMaxJsonChars() {
+            return maxJsonChars;
+        }
+
+        public void setMaxJsonChars(int maxJsonChars) {
+            this.maxJsonChars = maxJsonChars;
+        }
     }
 
     public static class Storage {

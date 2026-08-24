@@ -20,6 +20,14 @@ public enum MessageType {
     TERMINAL_PARAMETER("terminal-parameter", DeliveryReliability.AT_LEAST_ONCE),
     CONTROL_RESULT("control-result", DeliveryReliability.AT_LEAST_ONCE),
     CONNECTION("connection", DeliveryReliability.AT_LEAST_ONCE),
+    /**
+     * 设备报文日志（上行/下行原始帧 + 解析结果）。
+     *
+     * <p>与 {@code LOCATION} 同一量级甚至更高——每条被记录的报文都会发一个信封。走
+     * {@code AT_LEAST_ONCE} 会在控制台停机时把落盘 spool 打爆，用磁盘换几条排障日志不划算：
+     * 日志丢几条可容忍，主链路与磁盘不可。
+     */
+    DEVICE_LOG("device_log", DeliveryReliability.BEST_EFFORT),
     TRANSPARENT_DATA("transparent-data", DeliveryReliability.AT_LEAST_ONCE),
     OTHER("other", DeliveryReliability.AT_LEAST_ONCE);
 

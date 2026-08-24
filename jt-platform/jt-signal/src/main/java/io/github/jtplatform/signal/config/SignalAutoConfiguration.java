@@ -9,6 +9,8 @@ import io.github.jtplatform.signal.delivery.ProtocolPayloadMapper;
 import io.github.jtplatform.signal.delivery.SignalMessageDispatcher;
 import io.github.jtplatform.signal.delivery.SignalMessageEnvelopeMapper;
 import io.github.jtplatform.signal.diagnostics.ConnectionEventEmitter;
+import io.github.jtplatform.signal.messagelog.DeliveringMessageLogEmitter;
+import io.github.jtplatform.signal.messagelog.MessageLogEmitter;
 import io.github.jtplatform.signal.protocol.SignalMultiPacketDecoder;
 import io.github.jtplatform.signal.command.SignalStreamCommandController;
 import io.github.jtplatform.signal.command.SignalStreamCommandHandler;
@@ -127,8 +129,29 @@ public class SignalAutoConfiguration implements EnvironmentAware {
     JTMessageAdapter signalMessageAdapter(
             JTMessageEncoder signalMessageEncoder,
             SignalMultiPacketDecoder signalMultiPacketDecoder,
-            SignalMessageDispatcher dispatcher) {
-        return new JTMessagePushAdapter(signalMessageEncoder, signalMultiPacketDecoder, dispatcher);
+            SignalMessageDispatcher dispatcher,
+            MessageLogEmitter messageLogEmitter) {
+        return new JTMessagePushAdapter(
+                signalMessageEncoder, signalMultiPacketDecoder, dispatcher, messageLogEmitter);
+    }
+
+    /**
+     * 没装配投递器、或配置关掉采集时退化成空实现：报文日志是可选增强，不能成为收发报文的前提。
+     */
+    @Bean
+    MessageLogEmitter messageLogEmitter(
+            ObjectProvider<MessagePublisher> publishers,
+            ProtocolPayloadMapper protocolPayloadMapper,
+            Clock clock,
+            SignalServerSettings settings,
+            SignalProperties properties) {
+        SignalProperties.MessageLog config = properties.getMessageLog();
+        MessagePublisher publisher = publishers.getIfAvailable();
+        if (publisher == null || !config.isEnabled()) {
+            return MessageLogEmitter.NONE;
+        }
+        return new DeliveringMessageLogEmitter(publisher, protocolPayloadMapper, clock,
+                settings.instanceId(), config.getMaxHexChars(), config.getMaxJsonChars());
     }
 
     @Bean

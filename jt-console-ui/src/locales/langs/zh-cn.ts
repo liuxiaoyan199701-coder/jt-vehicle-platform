@@ -237,6 +237,7 @@ const local: App.I18n.Schema = {
     vehicle: '车辆档案',
     driver: '司机管理',
     media: '抓拍照片',
+    'device-log': '设备日志',
     ai: 'AI 助手',
     ai_chat: 'AI 助手',
     track: '轨迹回放',
