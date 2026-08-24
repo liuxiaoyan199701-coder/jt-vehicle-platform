@@ -162,7 +162,8 @@ public enum ActionType {
             case "packageId" -> "（数字，来自升级包查询结果）";
             case "deviceIds", "vehicleIds" -> "（设备号字符串数组）";
             case "centerGcjLat", "centerGcjLng" -> "（数字，GCJ-02 坐标；圆形围栏必填）";
-            case "radiusMeters", "speedLimitKph" -> "（数字；radiusMeters 为圆形半径或路线走廊半宽）";
+            case "radiusMeters" -> "（数字，米；圆形围栏的半径，或路线围栏的走廊半宽）";
+            case "speedLimitKph" -> "（数字，km/h；围栏内限速，留空表示不限速）";
             case "shape" -> "（circle 圆形（默认）/ rectangle 矩形 / polygon 多边形 / route 路线）";
             // 模型实际踩过：照着响应猜成 [{"lat":..,"lng":..}] 提交，被 Jackson 拒掉。
             case "points" -> "（GCJ-02 坐标数组，每个顶点是两个数字组成的数组 [lat,lng]，"

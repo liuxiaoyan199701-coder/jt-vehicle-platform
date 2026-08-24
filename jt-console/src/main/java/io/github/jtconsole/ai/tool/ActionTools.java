@@ -85,11 +85,38 @@ public class ActionTools {
         if (available.isEmpty()) {
             return "当前用户没有任何可执行的操作权限，不要提议任何动作，遇到操作请求时请说明其权限不足。";
         }
-        return "当前用户可提议的动作类型：\n"
+        return "当前用户可提议的动作类型，params 只能用各自列出的字段名，括号里是取值格式：\n"
                 + available.stream()
-                        .map(type -> "- %s：%s%s".formatted(
-                                type.wireName(), type.label(),
-                                type.alwaysConfirm() ? "（不可逆，必定需要用户确认）" : ""))
+                        .map(type -> describe(type, platform))
                         .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * 字段清单必须随动作一起给出。
+     *
+     * <p>此前这里只报动作名，而 {@code propose_action} 的说明却写着「params 用下面列出的字段名
+     * 原样填写」——「下面」压根没有字段。模型只能猜，猜错了才在被拒时收到字段清单，
+     * 一个改围栏顶点的请求为此往返了六轮。
+     */
+    private static String describe(ActionType type, boolean platform) {
+        StringBuilder line = new StringBuilder("- %s：%s%s".formatted(
+                type.wireName(), type.label(),
+                type.alwaysConfirm() ? "（不可逆，必定需要用户确认）" : ""));
+        if (!type.requiredFields().isEmpty()) {
+            line.append("\n  必填：").append(fieldList(type.requiredFields()));
+        }
+        List<String> optional = type.optionalFields().stream()
+                .filter(field -> platform || !"tenantId".equals(field))
+                .toList();
+        if (!optional.isEmpty()) {
+            line.append("\n  可选：").append(fieldList(optional));
+        }
+        return line.toString();
+    }
+
+    private static String fieldList(List<String> fields) {
+        return fields.stream()
+                .map(field -> field + ActionType.fieldHint(field))
+                .collect(Collectors.joining("、"));
     }
 }

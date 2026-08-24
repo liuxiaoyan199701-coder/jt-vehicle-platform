@@ -21,6 +21,11 @@ import java.util.Random;
  *   java DeviceSimulator.java --host gateway.example.com --device 013800138001 --interval 5 --speed 80
  * </pre>
  *
+ * <p>{@code --device} 是报文头里的终端手机号，{@code --terminal} 是注册报文里的终端 ID
+ * （7 字节），两者是不同的字段。网关的设备鉴权配成 local-list 时只放行清单内的**终端 ID**，
+ * 此时必须用 {@code --terminal} 传清单里的值，否则注册能过、鉴权必败，
+ * 表现为网关认定设备离线、所有下行指令都回 "Device is offline"。
+ *
  * <p>坐标上报的是 WGS-84 原值（与真实终端一致），转 GCJ-02 由 jt-console 负责。
  */
 public final class DeviceSimulator {
@@ -41,10 +46,14 @@ public final class DeviceSimulator {
     private final String host;
     private final int port;
     private final String deviceId;
+    private final String terminalId;
     private final String plateNo;
     private final int intervalSeconds;
     private final double baseSpeedKph;
     private final Random random = new Random();
+
+    /** 注册应答里下发的鉴权码，鉴权时必须原样回送。 */
+    private String authToken;
 
     private Socket socket;
     private OutputStream out;
@@ -57,11 +66,12 @@ public final class DeviceSimulator {
     private double bearingDegrees;
     private double totalMileageKm;
 
-    private DeviceSimulator(String host, int port, String deviceId, String plateNo,
+    private DeviceSimulator(String host, int port, String deviceId, String terminalId, String plateNo,
                             int intervalSeconds, double baseSpeedKph, double startLat, double startLng) {
         this.host = host;
         this.port = port;
         this.deviceId = deviceId;
+        this.terminalId = terminalId;
         this.plateNo = plateNo;
         this.intervalSeconds = intervalSeconds;
         this.baseSpeedKph = baseSpeedKph;
@@ -74,6 +84,7 @@ public final class DeviceSimulator {
         String host = arg(args, "--host", "127.0.0.1");
         int port = Integer.parseInt(arg(args, "--port", "7100"));
         String deviceId = arg(args, "--device", "013800138000");
+        String terminalId = arg(args, "--terminal", "SIM0001");
         String plateNo = arg(args, "--plate", "京A12345");
         int interval = Integer.parseInt(arg(args, "--interval", "10"));
         double speed = Double.parseDouble(arg(args, "--speed", "50"));
@@ -82,7 +93,7 @@ public final class DeviceSimulator {
         double startLng = Double.parseDouble(arg(args, "--lng", "116.397496"));
 
         DeviceSimulator simulator = new DeviceSimulator(
-                host, port, deviceId, plateNo, interval, speed, startLat, startLng);
+                host, port, deviceId, terminalId, plateNo, interval, speed, startLat, startLng);
         simulator.run();
     }
 
@@ -126,7 +137,7 @@ public final class DeviceSimulator {
         body.writeWord(1);                        // 市县域 ID
         body.writeFixedString("SIMUL", 5, GBK);   // 制造商 ID，5 字节
         body.writeFixedString("JT-SIM-2026", 20, GBK); // 终端型号，20 字节
-        body.writeFixedString("SIM00001", 7, GBK);     // 终端 ID，7 字节
+        body.writeFixedString(terminalId, 7, GBK);     // 终端 ID，7 字节
         body.writeByte(1);                        // 车牌颜色：蓝色
         body.writeBytes(plateNo.getBytes(GBK));   // 车牌号
 
@@ -146,11 +157,19 @@ public final class DeviceSimulator {
         int bodyStart = 12; // 2 msgId + 2 属性 + 6 手机号 BCD + 2 流水号
         int result = reply[bodyStart + 2] & 0xFF;
         System.out.printf("注册应答 result=%d (0=成功)%n", result);
+        // 消息体之后还有 1 字节校验码，鉴权码取到它之前为止。
+        int tokenLength = reply.length - 1 - (bodyStart + 3);
+        if (result == 0 && tokenLength > 0) {
+            authToken = new String(reply, bodyStart + 3, tokenLength, GBK);
+        }
     }
 
     private void authenticate() throws IOException {
+        if (authToken == null || authToken.isBlank()) {
+            throw new IOException("注册应答里没有鉴权码，无法鉴权");
+        }
         ByteWriter body = new ByteWriter();
-        body.writeBytes("SIMAUTH".getBytes(GBK));
+        body.writeBytes(authToken.getBytes(GBK));
         sendMessage(MSG_TERMINAL_AUTH, body.toByteArray());
         System.out.println("已发送鉴权 0x0102");
 

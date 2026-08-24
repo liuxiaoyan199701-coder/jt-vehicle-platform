@@ -157,8 +157,29 @@ public class ActionProposalService {
                     value instanceof Number;
             case "enabled", "alertOnEnter", "alertOnExit" -> value instanceof Boolean;
             case "deviceIds", "vehicleIds" -> value instanceof List<?>;
+            case "points" -> isCoordinatePairs(value);
             default -> true;
         };
+    }
+
+    /**
+     * 围栏顶点必须是 {@code [[lat,lng],...]}。
+     *
+     * <p>这里原先走 default 放行，于是模型把顶点写成 {@code {lat,lng}} 对象照样能生成卡片，
+     * 要等用户点了确认才由后端的 Jackson 炸出来——而那句报错不带字段格式，
+     * 它只能接着猜（下一轮猜了 {@code {gcjLat,gcjLng}}）。在这里拦下才能当轮回告正确格式。
+     */
+    private static boolean isCoordinatePairs(Object value) {
+        if (!(value instanceof List<?> points)) {
+            return false;
+        }
+        for (Object point : points) {
+            if (!(point instanceof List<?> pair) || pair.size() != 2
+                    || !(pair.get(0) instanceof Number) || !(pair.get(1) instanceof Number)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

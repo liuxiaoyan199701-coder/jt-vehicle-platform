@@ -229,4 +229,35 @@ class ActionProposalServiceTest {
         assertThat(hint).contains("平台管理员必填");
         assertThat(hint).doesNotContain("不确定就省略");
     }
+
+    /**
+     * 顶点写成对象必须当轮被拦下并回告格式。放行的代价是用户点一次确认才知道错，
+     * 而那条后端报错不带格式说明——模型只会接着猜下一种对象写法。
+     */
+    @Test
+    void geofenceVerticesWrittenAsObjectsAreRejectedWithTheExpectedFormat() {
+        ToolSession session = sessionFor(TestPrincipals.platform());
+
+        ActionProposalService.Outcome objectPairs = service.propose(session, "geofence_update",
+                "改为四边形", null,
+                Map.of("id", 2, "shape", "polygon", "points", List.of(
+                        Map.of("lat", 22.643463, "lng", 114.030807),
+                        Map.of("lat", 22.634454, "lng", 114.021051))),
+                ConfirmationPolicy.confirmEverything());
+
+        assertThat(objectPairs.accepted()).isFalse();
+        assertThat(objectPairs.message())
+                .contains("points")
+                .contains("[lat,lng]")
+                .contains("不要写成");
+
+        ActionProposalService.Outcome coordinatePairs = service.propose(session, "geofence_update",
+                "改为四边形", null,
+                Map.of("id", 2, "shape", "polygon", "points", List.of(
+                        List.of(22.643463, 114.030807), List.of(22.634454, 114.030807),
+                        List.of(22.634454, 114.021051), List.of(22.643463, 114.021051))),
+                ConfirmationPolicy.confirmEverything());
+
+        assertThat(coordinatePairs.accepted()).isTrue();
+    }
 }
