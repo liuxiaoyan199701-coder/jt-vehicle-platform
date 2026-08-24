@@ -11,6 +11,9 @@ export function setupElegantRouter() {
     track: { icon: 'mdi:map-marker-path', order: 5 },
     fleet: { icon: 'mdi:garage-variant', order: 6 },
     vehicle: { icon: 'mdi:car-multiple', order: 7 },
+    // 终端管理：连过网关的设备台账，是车辆档案的上游发现入口，所以紧挨着它。
+    // 权限沿用 vehicle:list——能看车辆档案的人就该能看到「还没建档的终端」。
+    terminal: { icon: 'mdi:router-wireless', order: 8, permissions: ['vehicle:list'] },
     driver: { icon: 'mdi:account-card-outline', order: 8, permissions: ['driver:list'] },
     // 抓拍照片。权限码沿用既有的 media:list，不新增——能看多媒体就是能看多媒体，
     // 再分「列表」「详情」两级只会让角色配置变复杂而不变安全。

@@ -198,7 +198,7 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(18L);
+        assertThat(userVersion()).isEqualTo(TestSchema.LATEST_VERSION);
         for (String table : List.of("ai_usage", "ai_conversation", "ai_message", "ai_report")) {
             assertThat(scalar("""
                     SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = '%s'
@@ -216,14 +216,14 @@ class SchemaMigrationTest {
 
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(18L);
+        assertThat(userVersion()).isEqualTo(TestSchema.LATEST_VERSION);
     }
 
     @Test
     void waybillMigrationUsesV15AndCreatesExpectedIndexes() {
         TestSchema.migrate(jdbc, transactions);
 
-        assertThat(userVersion()).isEqualTo(18L);
+        assertThat(userVersion()).isEqualTo(TestSchema.LATEST_VERSION);
         assertThat(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='waybill'"))
                 .isEqualTo(1L);
         assertThat(scalar("""

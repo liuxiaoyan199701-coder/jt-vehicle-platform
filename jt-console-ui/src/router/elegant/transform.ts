@@ -194,6 +194,7 @@ const routeMap: RouteMap = {
   "system_role": "/system/role",
   "system_tenant": "/system/tenant",
   "system_user": "/system/user",
+  "terminal": "/terminal",
   "track": "/track",
   "vehicle": "/vehicle"
 };

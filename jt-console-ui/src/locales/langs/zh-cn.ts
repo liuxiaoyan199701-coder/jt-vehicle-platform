@@ -235,6 +235,7 @@ const local: App.I18n.Schema = {
     ota: 'OTA 升级',
     recording: '录像回放',
     vehicle: '车辆档案',
+    terminal: '终端管理',
     driver: '司机管理',
     media: '抓拍照片',
     'device-log': '设备日志',

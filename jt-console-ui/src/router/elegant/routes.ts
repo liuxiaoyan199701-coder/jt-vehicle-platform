@@ -369,6 +369,18 @@ export const generatedRoutes: GeneratedRoute[] = [
     ]
   },
   {
+    name: 'terminal',
+    path: '/terminal',
+    component: 'layout.base$view.terminal',
+    meta: {
+      title: 'terminal',
+      i18nKey: 'route.terminal',
+      icon: 'mdi:router-wireless',
+      order: 8,
+      permissions: ['vehicle:list']
+    }
+  },
+  {
     name: 'track',
     path: '/track',
     component: 'layout.base$view.track',

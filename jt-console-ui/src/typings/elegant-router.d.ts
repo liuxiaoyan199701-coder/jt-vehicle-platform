@@ -48,6 +48,7 @@ declare module "@elegant-router/types" {
     "system_role": "/system/role";
     "system_tenant": "/system/tenant";
     "system_user": "/system/user";
+    "terminal": "/terminal";
     "track": "/track";
     "vehicle": "/vehicle";
   };
@@ -101,6 +102,7 @@ declare module "@elegant-router/types" {
     | "report"
     | "rule"
     | "system"
+    | "terminal"
     | "track"
     | "vehicle"
   >;
@@ -148,6 +150,7 @@ declare module "@elegant-router/types" {
     | "system_role"
     | "system_tenant"
     | "system_user"
+    | "terminal"
     | "track"
     | "vehicle"
   >;

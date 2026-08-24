@@ -167,6 +167,47 @@ export interface DeviceLogPage {
   pageSize: number;
 }
 
+export interface TerminalSummary {
+  deviceId: string;
+  /** 0x0100 正文里终端自报的终端 ID，与 deviceId（手机号）是两个东西 */
+  terminalId: string | null;
+  makerId: string | null;
+  deviceModel: string | null;
+  provinceId: number | null;
+  cityId: number | null;
+  /** 终端自报的车牌，未经确认；与 plateNo（档案车牌）分开呈现，不可混为一谈 */
+  reportedPlate: string | null;
+  reportedColor: number | null;
+  protocolVersion: string | null;
+  firstSeenAt: string;
+  /** 最近一次注册/鉴权的时间，不是「最近在线」——长连不断的终端不会刷新它 */
+  lastSeenAt: string;
+  lastResult: string | null;
+  archived: boolean;
+  /** 车辆档案里的车牌；未建档时为 null */
+  plateNo: string | null;
+  tenantId: number | null;
+  online: boolean;
+  onlineSeenAt: string | null;
+}
+
+export interface TerminalQuery {
+  keyword?: string;
+  archived?: boolean;
+  online?: boolean;
+  start?: string;
+  end?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface TerminalPage {
+  items: TerminalSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface Geofence {
   id: number;
   name: string;
@@ -595,6 +636,21 @@ export function openPlaybackStream(
 
 export function fetchDashboardOverview() {
   return request<DashboardOverview>({ url: '/dashboard/overview' });
+}
+
+// ---------------- 终端管理 ----------------
+
+export function fetchTerminals(params: TerminalQuery = {}) {
+  return request<TerminalPage>({ url: '/terminals', params });
+}
+
+/** 把台账里的终端建成车辆档案。设备号由后端从台账取，请求体只带档案字段。 */
+export function archiveTerminal(deviceId: string, vehicle: Partial<Vehicle>) {
+  return request<Vehicle>({
+    url: `/terminals/${encodePathSegment(deviceId)}/archive`,
+    method: 'post',
+    data: vehicle
+  });
 }
 
 // ---------------- 设备日志 ----------------

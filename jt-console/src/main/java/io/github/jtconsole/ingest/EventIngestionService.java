@@ -17,6 +17,7 @@ public class EventIngestionService {
     private final RecordingUploadIngestionService recordingUploads;
     private final ConnectionEventIngestionService connections;
     private final DeviceLogIngestionService deviceLogs;
+    private final TerminalRegistryService terminals;
 
     /** 测试便利构造：不带连接事件投影（连接类信封会走常规路径被忽略）。 */
     public EventIngestionService(
@@ -35,13 +36,25 @@ public class EventIngestionService {
         this(events, locations, media, driverIdentity, waybills, recordingUploads, connections, null);
     }
 
-    @Autowired
+    /** 测试便利构造：不带终端台账。 */
     public EventIngestionService(
             EventRepository events, LocationService locations, MediaIngestionService media,
             DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
             RecordingUploadIngestionService recordingUploads,
             ConnectionEventIngestionService connections,
             DeviceLogIngestionService deviceLogs) {
+        this(events, locations, media, driverIdentity, waybills, recordingUploads,
+                connections, deviceLogs, null);
+    }
+
+    @Autowired
+    public EventIngestionService(
+            EventRepository events, LocationService locations, MediaIngestionService media,
+            DriverIdentityIngestionService driverIdentity, WaybillIngestionService waybills,
+            RecordingUploadIngestionService recordingUploads,
+            ConnectionEventIngestionService connections,
+            DeviceLogIngestionService deviceLogs,
+            TerminalRegistryService terminals) {
         this.events = events;
         this.locations = locations;
         this.media = media;
@@ -50,6 +63,7 @@ public class EventIngestionService {
         this.recordingUploads = recordingUploads;
         this.connections = connections;
         this.deviceLogs = deviceLogs;
+        this.terminals = terminals;
     }
 
     @Transactional
@@ -68,6 +82,11 @@ public class EventIngestionService {
 
         if (connections != null && connections.handle(normalized)) {
             return new IngestionResult("committed", "connection", null);
+        }
+        // 注册与鉴权落终端台账。刻意不走 device_log 那种早分支：注册鉴权是低频事件
+        // （一台终端一天几次），照常走幂等表没有压力，不必为它破坏责任链的统一形状。
+        if (terminals != null) {
+            terminals.handle(normalized);
         }
         // 多媒体上传先落元数据，再走位置/在线时间的常规处理
         media.handleIfMediaUpload(normalized);
