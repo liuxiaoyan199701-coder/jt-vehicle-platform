@@ -37,7 +37,7 @@
     "prepare": "simple-git-hooks",
     "preview": "vite preview",
     "release": "sa release",
-    "test:unit": "tsx --test src/hooks/live-session-policy.test.ts src/service/request/auth-retry-policy.test.ts src/utils/action-params.test.ts src/utils/fleet-management.test.ts src/utils/fleet-operations.test.ts src/utils/html.test.ts src/utils/live-status.test.ts src/utils/notice-display.test.ts src/utils/single-flight.test.ts src/utils/track-targets.test.ts src/store/modules/route/permission-filter.test.ts",
+    "test:unit": "tsx --test src/hooks/live-session-policy.test.ts src/service/request/auth-retry-policy.test.ts src/utils/action-params.test.ts src/utils/device-store.test.ts src/utils/fleet-management.test.ts src/utils/fleet-operations.test.ts src/utils/html.test.ts src/utils/live-status.test.ts src/utils/notice-display.test.ts src/utils/publish-scheduler.test.ts src/utils/single-flight.test.ts src/utils/track-targets.test.ts src/store/modules/route/permission-filter.test.ts",
     "typecheck": "vue-tsc --noEmit --skipLibCheck",
     "update-pkg": "sa update-pkg"
   },

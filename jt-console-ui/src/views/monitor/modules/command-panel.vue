@@ -7,13 +7,17 @@ import {
   queryTerminalInfo,
   sendDeviceCommand,
   type CurrentDriver,
-  type LiveStatus,
   type MediaFileItem
 } from '@/service/api';
 
 defineOptions({ name: 'CommandPanel' });
 
-const props = defineProps<{ visible: boolean; vehicle: LiveStatus | null }>();
+// 只声明面板真正用到的三项，而不是整个 LiveStatus：
+// 这样监控页的列表行（已把 alarmJson 换成解析好的数组）可以直接传进来。
+const props = defineProps<{
+  visible: boolean;
+  vehicle: { deviceId: string; plateNo: string | null; online: boolean } | null;
+}>();
 const emit = defineEmits<{ 'update:visible': [value: boolean] }>();
 
 const message = useMessage();
