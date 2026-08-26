@@ -113,6 +113,26 @@ jt:
       cleanup-max-batches: ${JT_CONSOLE_DEVICE_LOG_CLEANUP_MAX_BATCHES:100}
       # 与连接事件（3:41）、审计（3:17）错峰，避免几个清理任务同一分钟抢写锁。
       cleanup-cron: ${JT_CONSOLE_DEVICE_LOG_CLEANUP_CRON:0 53 3 * * *}
+    notice:
+      # 主动通知的总闸。关掉后不再产生任何通知，而发现检出与首页要点照常——
+      # 这是运维的开关，租户不能各自打开（能被各自打开的总闸就不是总闸）。
+      enabled: ${JT_CONSOLE_NOTICE_ENABLED:true}
+      # 最低通知级别。INFO 级发现（如「另有 3 台车离线」）是看板上的补充信息，
+      # 不是需要打断人的事，因此默认从 WARN 起。可按租户覆盖（配置键 notice.minSeverity）。
+      min-severity: ${JT_CONSOLE_NOTICE_MIN_SEVERITY:WARN}
+      silence-window:
+        # 同一件事在窗口内不重复通知。越严重越应该反复提醒，但也仅限于此——
+        # 首跑那一轮会把当前所有够格的发现各产生一条，如果不希望刷屏，
+        # 可先把 min-severity 配成 CRITICAL 观察一轮再放开。
+        critical: ${JT_CONSOLE_NOTICE_SILENCE_CRITICAL:6h}
+        warn: ${JT_CONSOLE_NOTICE_SILENCE_WARN:24h}
+      # 比连接事件（14 天）长、比审计（180 天）短：通知是运营流水而非合规记录，
+      # 但「上个月是不是提醒过我」要答得上来。
+      retention: ${JT_CONSOLE_NOTICE_RETENTION:30d}
+      cleanup-batch-size: ${JT_CONSOLE_NOTICE_CLEANUP_BATCH:500}
+      cleanup-max-batches: ${JT_CONSOLE_NOTICE_CLEANUP_MAX_BATCHES:100}
+      # 与审计（3:17）、连接事件（3:41）、报文日志（3:53）、附件（4:53）错峰。
+      cleanup-cron: ${JT_CONSOLE_NOTICE_CLEANUP_CRON:0 29 4 * * *}
     audit:
       # 审计写入永不阻塞业务：队列满时丢弃并计数，可在 /api/diagnostics 观察积压。
       queue-capacity: ${JT_CONSOLE_AUDIT_QUEUE_CAPACITY:4096}

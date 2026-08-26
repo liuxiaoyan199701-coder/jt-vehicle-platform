@@ -6,6 +6,7 @@ import { useThemeStore } from '@/store/modules/theme';
 import GlobalLogo from '../global-logo/index.vue';
 import GlobalBreadcrumb from '../global-breadcrumb/index.vue';
 import GlobalSearch from '../global-search/index.vue';
+import NoticeBell from './components/notice-bell.vue';
 import ThemeButton from './components/theme-button.vue';
 import UserAvatar from './components/user-avatar.vue';
 
@@ -52,6 +53,8 @@ const { isFullscreen, toggle } = useFullscreen();
         @switch="themeStore.toggleThemeScheme"
       />
       <ThemeButton />
+      <!-- 铃铛在顶栏，任意页面都在：主动通知要解决的正是「人没在看首页」 -->
+      <NoticeBell />
       <UserAvatar />
     </div>
   </DarkModeContainer>

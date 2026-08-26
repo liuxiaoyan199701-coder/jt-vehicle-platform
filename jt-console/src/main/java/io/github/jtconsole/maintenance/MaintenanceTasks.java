@@ -7,6 +7,7 @@ import io.github.jtconsole.repository.AiConversationRepository;
 import io.github.jtconsole.repository.EventRepository;
 import io.github.jtconsole.repository.ConnectionEventRepository;
 import io.github.jtconsole.repository.DeviceLogRepository;
+import io.github.jtconsole.repository.NoticeRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import java.time.Instant;
 import org.slf4j.Logger;
@@ -26,6 +27,7 @@ public class MaintenanceTasks {
     private final ConsoleProperties properties;
     private final ConnectionEventRepository connectionEvents;
     private final DeviceLogRepository deviceLogs;
+    private final NoticeRepository notices;
 
     public MaintenanceTasks(
             StatusRepository statuses,
@@ -34,7 +36,8 @@ public class MaintenanceTasks {
             AiConversationRepository conversations,
             ConsoleProperties properties,
             ConnectionEventRepository connectionEvents,
-            DeviceLogRepository deviceLogs) {
+            DeviceLogRepository deviceLogs,
+            NoticeRepository notices) {
         this.statuses = statuses;
         this.events = events;
         this.attachments = attachments;
@@ -42,6 +45,7 @@ public class MaintenanceTasks {
         this.properties = properties;
         this.connectionEvents = connectionEvents;
         this.deviceLogs = deviceLogs;
+        this.notices = notices;
     }
 
     /** 连接事件保留 14 天，分钟错开其它清理任务，避免 SQLite 写锁同一时刻竞争。 */
@@ -86,6 +90,36 @@ public class MaintenanceTasks {
             }
         } catch (RuntimeException failure) {
             LOGGER.warn("设备日志保留期清理失败：{}", failure.getClass().getSimpleName());
+        }
+    }
+
+    /**
+     * 主动通知保留 30 天，连带删掉它们的已读记录。
+     *
+     * <p>错峰到 4:29：审计 3:17、连接事件 3:41、报文日志 3:53、附件 4:53 各占一个分钟，
+     * SQLite 只有一把写锁，挤在同一分钟会体现为接口变慢。
+     *
+     * <p>一次失败只记 warn——定时任务不能因为一次锁冲突就永久停摆，
+     * 下一轮继续从最旧的批次删起。
+     */
+    @Scheduled(cron = "${jt.console.notice.cleanup-cron:0 29 4 * * *}")
+    public void purgeNotices() {
+        ConsoleProperties.Notice config = properties.getNotice();
+        Instant cutoff = Instant.now().minus(config.getRetention());
+        int total = 0;
+        try {
+            for (int batch = 0; batch < config.getCleanupMaxBatches(); batch++) {
+                int removed = notices.deleteOlderThan(cutoff, config.getCleanupBatchSize());
+                total += removed;
+                if (removed < config.getCleanupBatchSize()) {
+                    break;
+                }
+            }
+            if (total > 0) {
+                LOGGER.info("清理 {} 条过期主动通知", total);
+            }
+        } catch (RuntimeException failure) {
+            LOGGER.warn("主动通知保留期清理失败：{}", failure.getClass().getSimpleName());
         }
     }
 

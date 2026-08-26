@@ -2,10 +2,12 @@ package io.github.jtconsole.ai.briefing;
 
 import io.github.jtconsole.config.ConsoleProperties;
 import io.github.jtconsole.domain.Tenant;
+import io.github.jtconsole.notice.NoticeService;
 import io.github.jtconsole.operations.BusinessDateService;
 import io.github.jtconsole.repository.AiReportRepository;
 import io.github.jtconsole.repository.TenantRepository;
 import io.github.jtconsole.security.DataScope;
+import io.github.jtconsole.security.ScopeVisibility;
 import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -18,7 +20,8 @@ import tools.jackson.databind.ObjectMapper;
  * 看板要点的生成与读取。
  *
  * <p>生成按**租户**进行并缓存；读取时再按调用者的数据范围过滤——这两件事必须分开，
- * 因为缓存是共享的而权限是每个人不同的。过滤规则见 {@link #visibleTo}。
+ * 因为缓存是共享的而权限是每个人不同的。过滤规则见 {@link ScopeVisibility}，
+ * 与主动通知共用同一份实现。
  */
 @Service
 public class BriefingService {
@@ -32,7 +35,8 @@ public class BriefingService {
     private final BusinessDateService dates;
     private final ObjectMapper objectMapper;
     private final ConsoleProperties properties;
-    private final io.github.jtconsole.repository.VehicleRepository vehicles;
+    private final ScopeVisibility visibility;
+    private final NoticeService notices;
 
     public BriefingService(
             FindingDetectors detectors,
@@ -42,7 +46,8 @@ public class BriefingService {
             BusinessDateService dates,
             ObjectMapper objectMapper,
             ConsoleProperties properties,
-            io.github.jtconsole.repository.VehicleRepository vehicles) {
+            ScopeVisibility visibility,
+            NoticeService notices) {
         this.detectors = detectors;
         this.generator = generator;
         this.reports = reports;
@@ -50,7 +55,8 @@ public class BriefingService {
         this.dates = dates;
         this.objectMapper = objectMapper;
         this.properties = properties;
-        this.vehicles = vehicles;
+        this.visibility = visibility;
+        this.notices = notices;
     }
 
     /**
@@ -64,6 +70,17 @@ public class BriefingService {
      */
     public static final long PLATFORM_SCOPE_ID = 0L;
 
+    /**
+     * 一个调用者读的是哪一份按租户生成的内容。
+     *
+     * <p>要点与通知**必须**用同一个映射：一旦两处对「平台管理员算哪个租户」的看法不同，
+     * 就会出现铃铛与首页各说各话，而用户无从判断该信哪个。
+     */
+    public static long scopeIdOf(io.github.jtconsole.security.AuthorizedPrincipal principal) {
+        Long tenantId = principal.tenantId();
+        return tenantId == null ? PLATFORM_SCOPE_ID : tenantId;
+    }
+
     /** 为一个租户生成并落库。定时任务与手动刷新走同一条路径。 */
     public void generateFor(long tenantId) {
         generate(tenantId, tenantId == PLATFORM_SCOPE_ID
@@ -74,8 +91,9 @@ public class BriefingService {
 
     private void generate(long tenantId, DataScope scope) {
         String today = dates.today().toString();
+        List<DashboardFinding> candidates = List.of();
         try {
-            List<DashboardFinding> candidates = detectors.detect(scope);
+            candidates = detectors.detect(scope);
             BriefingGenerator.Outcome outcome = generator.generate(candidates, scope);
             reports.upsert(
                     tenantId, today,
@@ -91,6 +109,28 @@ public class BriefingService {
             LOGGER.warn("租户 {} 的看板要点生成失败：{}", tenantId, failure.getMessage());
             reports.upsert(tenantId, today, "FAILED", "[]", failure.getMessage(), "", 0, 0, 0);
         }
+        emitNotices(tenantId, candidates);
+    }
+
+    /**
+     * 把这一轮的候选发现送去产出主动通知。
+     *
+     * <p>放在 try 之外、**不看简报成败**：发现是代码算出来的，模型挂掉不影响它们的准确性，
+     * 而「算出来了却没人被告知」正是主动通知要解决的那件事。检测本身失败时候选为空，
+     * 这里自然什么都不做。
+     *
+     * <p>反过来，通知这一段失败只记 warn：简报是首页的主体内容，不能因为一条通知写不进去
+     * 就让整块看板变成「生成失败」。
+     */
+    private void emitNotices(long tenantId, List<DashboardFinding> candidates) {
+        if (candidates.isEmpty()) {
+            return;
+        }
+        try {
+            notices.emitFrom(tenantId, candidates);
+        } catch (RuntimeException failure) {
+            LOGGER.warn("租户 {} 的主动通知生成失败：{}", tenantId, failure.getMessage());
+        }
     }
 
     /** 逐租户串行生成，外加一份平台级的。一个失败不影响其它。 */
@@ -104,8 +144,7 @@ public class BriefingService {
     /**
      * 读取要点，按调用者的数据范围过滤。
      *
-     * @param scope     调用者的数据范围
-     * @param fullScope 该范围是否覆盖整个租户
+     * @param scope 调用者的数据范围
      */
     public Briefing read(long tenantId, DataScope scope) {
         String today = dates.today().toString();
@@ -115,42 +154,18 @@ public class BriefingService {
         }
         AiReportRepository.Row report = row.get();
         List<BriefingItem> stored = parse(report.contentJson());
-        // 部门受限即视为「范围不覆盖整个租户」，此时不给聚合结论。
-        boolean fullScope = !scope.departmentRestricted();
-        // 一次取出可见设备集，而不是逐条判定——一份要点可能引用十几个设备号。
-        java.util.Set<String> visibleDevices = fullScope
-                ? java.util.Set.of() : vehicles.visibleDeviceIds(scope);
-        List<BriefingItem> visible = visibleTo(stored, visibleDevices, fullScope);
+        // 过滤规则与主动通知共用同一份实现，见 ScopeVisibility——两处各写一遍必然分叉，
+        // 而分叉的表现是「铃铛里有但首页要点里没有」，用户无从判断该信哪个。
+        ScopeVisibility.Filter filter = visibility.forScope(scope);
+        List<BriefingItem> visible = stored.stream()
+                .filter(item -> filter.visible(item.deviceIds()))
+                .toList();
         return new Briefing(
                 visible,
                 report.status(),
                 report.updatedAt(),
                 report.error(),
                 visible.size() < stored.size());
-    }
-
-    /**
-     * 按数据范围过滤要点。
-     *
-     * <p>两条规则：
-     * <ul>
-     *   <li>引用了范围外车辆的要点，整条丢弃——**不做部分保留**，因为一条要点的措辞是围绕
-     *       它涉及的全部车辆写的，删掉几个设备号并不会让那句话变准确。</li>
-     *   <li>范围不覆盖整个租户时，租户级聚合结论（在线率、今日告警总数）一律不给。
-     *       聚合数字无法「部分过滤」——「今日告警 47 条」这句话本身就泄露了范围外的信息。</li>
-     * </ul>
-     *
-     * <p>宁可少说，不能多说。
-     */
-    private static List<BriefingItem> visibleTo(
-            List<BriefingItem> items, java.util.Set<String> visibleDevices, boolean fullScope) {
-        if (fullScope) {
-            return items;
-        }
-        return items.stream()
-                .filter(item -> !item.aggregate())
-                .filter(item -> visibleDevices.containsAll(item.deviceIds()))
-                .toList();
     }
 
     private List<BriefingItem> parse(String json) {

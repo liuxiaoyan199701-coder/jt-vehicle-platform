@@ -197,7 +197,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
     public boolean publish(Map<String, Object> update) {
         Objects.requireNonNull(update, "update");
         Map<String, Object> snapshot = Collections.unmodifiableMap(new LinkedHashMap<>(update));
-        return offer("location", deviceIdOf(snapshot), snapshot);
+        return offer("location", deviceIdOf(snapshot), null, snapshot);
     }
 
     /**
@@ -205,7 +205,27 @@ public class LiveBroadcaster extends TextWebSocketHandler
      */
     public void broadcastLocation(Object data) {
         Objects.requireNonNull(data, "data");
-        offer("location", data instanceof Map<?, ?> map ? deviceIdOf(map) : null, data);
+        offer("location", data instanceof Map<?, ?> map ? deviceIdOf(map) : null, null, data);
+    }
+
+    /**
+     * 向一个租户内的会话推送。
+     *
+     * <p><b>为什么要新增这条路径</b>：原有的两种形态对租户级结论都不合适——带设备号的按车辆
+     * 归属过滤，而车队在线率、告警激增这类聚合结论压根没有设备号；不带设备号的
+     * {@code canSee(null)} 只发平台管理员，租户管理员一条也收不到，而那恰恰是对他们
+     * 最有价值的一类。
+     *
+     * <p>新增分支而**不放宽** {@code canSee(null)} 的既有语义：那条「只给平台管理员」的兜底
+     * 是对的，它挡的是「没人显式指定收件人」的广播，不该因为多了一个用例就放开。
+     *
+     * @param tenantId 目标租户；{@code 0} 是平台级作用域，与简报、通知同一口径
+     * @return 无订阅者或成功入队时为 {@code true}，全局队列溢出时为 {@code false}
+     */
+    public boolean publishToTenant(String type, long tenantId, Object data) {
+        Objects.requireNonNull(type, "type");
+        Objects.requireNonNull(data, "data");
+        return offer(type, null, tenantId, data);
     }
 
     private static String deviceIdOf(Map<?, ?> update) {
@@ -213,7 +233,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
         return deviceId == null ? null : deviceId.toString();
     }
 
-    private boolean offer(String type, String deviceId, Object data) {
+    private boolean offer(String type, String deviceId, Long tenantId, Object data) {
         if (!running.get() || sessions.isEmpty()) {
             return true;
         }
@@ -225,7 +245,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
                 return true;
             }
             PendingBroadcast pending =
-                    new PendingBroadcast(nextSequenceToAssign, type, deviceId, data);
+                    new PendingBroadcast(nextSequenceToAssign, type, deviceId, tenantId, data);
             if (dispatchQueue.offer(pending)) {
                 nextSequenceToAssign++;
                 return true;
@@ -254,7 +274,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
                     LOGGER.warn("Failed to serialize live update (failureType={})",
                             serializationFailure.getClass().getName());
                 }
-                dispatchInOrder(pending.sequence(), pending.deviceId(), json);
+                dispatchInOrder(pending.sequence(), pending.deviceId(), pending.tenantId(), json);
             } catch (InterruptedException interrupted) {
                 if (!running.get()) {
                     Thread.currentThread().interrupt();
@@ -264,7 +284,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
         }
     }
 
-    private void dispatchInOrder(long sequence, String deviceId, String json)
+    private void dispatchInOrder(long sequence, String deviceId, Long tenantId, String json)
             throws InterruptedException {
         synchronized (dispatchOrderLock) {
             while (running.get() && sequence != nextSequenceToDispatch) {
@@ -277,7 +297,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
                 // 每个会话按自己的数据范围过滤：未建档设备只推平台管理员，
                 // 租户会话只收到本租户可见车辆的更新。
                 sessions.values().stream()
-                        .filter(client -> client.canSee(deviceId))
+                        .filter(client -> client.canSee(deviceId, tenantId))
                         .forEach(client -> client.offer(json));
             }
             nextSequenceToDispatch++;
@@ -410,20 +430,33 @@ public class LiveBroadcaster extends TextWebSocketHandler
         }
 
         /**
-         * 该会话是否应收到这台设备的更新。
+         * 该会话是否应收到这条广播。
+         *
+         * <p>三条路径，按顺序判定：
+         * <ol>
+         *   <li>带设备标识 → 按车辆归属过滤（实时位置走这条，语义不变）；</li>
+         *   <li>带租户标识 → 会话属于该租户，或调用者是平台管理员（租户级通知走这条）；</li>
+         *   <li>两者都不带 → 只发平台管理员，避免误扩散。</li>
+         * </ol>
          *
          * <p>数据范围每次都经带 30 秒缓存的解析器取用，而不是在建连时定死：
          * 部门调整或角色收紧后，长连接不必重连就会跟上新的可见范围。
          */
-        private boolean canSee(String deviceId) {
-            if (deviceId == null) {
-                // 不带设备标识的广播（如系统级通知）只发给平台管理员，避免误扩散。
+        private boolean canSee(String deviceId, Long tenantId) {
+            if (deviceId != null) {
                 return authorizations.resolve(authentication.accountId())
-                        .map(AuthorizedPrincipal::platform)
+                        .map(principal -> ownership.visibleTo(deviceId, principal.scope()))
                         .orElse(false);
             }
+            if (tenantId != null) {
+                return authorizations.resolve(authentication.accountId())
+                        .map(principal -> principal.platform()
+                                || tenantId.equals(principal.tenantId()))
+                        .orElse(false);
+            }
+            // 既不指定设备也不指定租户的广播只发给平台管理员，避免误扩散。
             return authorizations.resolve(authentication.accountId())
-                    .map(principal -> ownership.visibleTo(deviceId, principal.scope()))
+                    .map(AuthorizedPrincipal::platform)
                     .orElse(false);
         }
 
@@ -579,7 +612,7 @@ public class LiveBroadcaster extends TextWebSocketHandler
     }
 
     private record PendingBroadcast(
-            long sequence, String type, String deviceId, Object data) {}
+            long sequence, String type, String deviceId, Long tenantId, Object data) {}
 
     public record BroadcastMetrics(
             int subscribers,

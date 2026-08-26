@@ -29,6 +29,15 @@ export interface LiveLocationUpdate {
 
 export type LiveConnectionState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'stopped';
 
+/**
+ * 服务端推来一条主动通知时在 window 上派发的事件。
+ *
+ * 用事件而不是回调参数：socket 只挂在首页与监控页，而通知铃铛在顶栏（任意页面都在）。
+ * 让铃铛去订阅一个全局事件，两边就不必互相知道对方是否存在——铃铛照常靠定时拉取兜底，
+ * 恰好有页面连着 socket 时就顺带快一步。
+ */
+export const LIVE_NOTICE_EVENT = 'jt-console:notice';
+
 export interface LiveSocketOptions {
   onConnected?: () => void | Promise<void>;
 }
@@ -133,6 +142,10 @@ export function useLiveSocket(
           const message = JSON.parse(event.data);
           if (message.type === 'location' && message.data) {
             onLocation(message.data as LiveLocationUpdate);
+          } else if (message.type === 'notice') {
+            // 只当作「去重新拉一下」的信号，不把推来的内容直接渲染：
+            // 列表与未读数一律以接口为准，免得推送与接口各说一套。
+            window.dispatchEvent(new CustomEvent(LIVE_NOTICE_EVENT));
           }
         } catch {
           // Ignore one malformed message without tearing down a healthy stream.

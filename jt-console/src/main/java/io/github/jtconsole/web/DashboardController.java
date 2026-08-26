@@ -64,9 +64,10 @@ public class DashboardController {
      *
      * <p>平台管理员不属于任何租户，落到平台级那一份——它是跨租户运维的实际使用者，
      * 在单租户部署里往往就是唯一的使用者。让它永远看到空简报，等于功能对真正要用的人不可见。
+     *
+     * <p>映射本身在 {@link BriefingService#scopeIdOf} 上，与主动通知共用同一份。
      */
     private static long scopeIdOf(AuthorizedPrincipal principal) {
-        Long tenantId = principal.tenantId();
-        return tenantId == null ? BriefingService.PLATFORM_SCOPE_ID : tenantId;
+        return BriefingService.scopeIdOf(principal);
     }
 }

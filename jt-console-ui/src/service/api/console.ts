@@ -1096,3 +1096,51 @@ export function uploadAiAttachment(file: File) {
     headers: { 'Content-Type': 'multipart/form-data' }
   });
 }
+
+// ---------------- 主动通知 ----------------
+
+/**
+ * 一条主动通知。
+ *
+ * 字段形状与 BriefingItem 对齐——它们展示的是同一件事，图标、配色与跳转逻辑两处共用。
+ * 区别只有两处：summary 是**代码算出来的原话**（不经模型改写），以及 read 是**你自己**的
+ * 已读态，同一条通知对别人可能仍是未读。
+ */
+export interface NoticeItem {
+  id: number;
+  category: BriefingItem['category'] | 'DRIVER' | 'CONNECTION';
+  severity: BriefingItem['severity'];
+  summary: string;
+  facts: Record<string, unknown>;
+  deviceIds: string[];
+  link: BriefingLink | null;
+  createdAt: string;
+  read: boolean;
+}
+
+export interface NoticePage {
+  items: NoticeItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  /** 是否因数据范围隐藏了部分通知。为 true 时要说明，免得用户以为平台漏报 */
+  filtered: boolean;
+}
+
+export function fetchNotices(page = 1, pageSize = 20) {
+  return request<NoticePage>({ url: '/notices', params: { page, pageSize } });
+}
+
+/** 铃铛上的数字。60 秒拉一次，因此故意只回一个数。 */
+export function fetchUnreadNoticeCount() {
+  return request<{ count: number }>({ url: '/notices/unread-count' });
+}
+
+export function markNoticeRead(id: number) {
+  return request<void>({ url: `/notices/${id}/read`, method: 'post' });
+}
+
+/** 全部标为已读——服务端只标你看得到的那些。 */
+export function markAllNoticesRead() {
+  return request<{ marked: number }>({ url: '/notices/read-all', method: 'post' });
+}

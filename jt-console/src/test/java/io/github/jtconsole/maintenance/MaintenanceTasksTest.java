@@ -14,6 +14,7 @@ import io.github.jtconsole.repository.AiConversationRepository;
 import io.github.jtconsole.repository.ConnectionEventRepository;
 import io.github.jtconsole.repository.DeviceLogRepository;
 import io.github.jtconsole.repository.EventRepository;
+import io.github.jtconsole.repository.NoticeRepository;
 import io.github.jtconsole.repository.StatusRepository;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,10 +24,11 @@ class MaintenanceTasksTest {
 
     private final AiConversationRepository conversations = mock(AiConversationRepository.class);
     private final DeviceLogRepository deviceLogs = mock(DeviceLogRepository.class);
+    private final NoticeRepository notices = mock(NoticeRepository.class);
     private final ConsoleProperties properties = new ConsoleProperties();
     private final MaintenanceTasks tasks = new MaintenanceTasks(
             mock(StatusRepository.class), mock(EventRepository.class), mock(AttachmentStore.class),
-            conversations, properties, mock(ConnectionEventRepository.class), deviceLogs);
+            conversations, properties, mock(ConnectionEventRepository.class), deviceLogs, notices);
 
     @Test
     void conversationCleanupUsesConfiguredBatchSizeUntilAShortBatch() {
@@ -88,5 +90,40 @@ class MaintenanceTasksTest {
         tasks.purgeDeviceLogs();
 
         verify(deviceLogs).deleteOlderThan(any(Instant.class), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void noticeCleanupDeletesInBatchesUntilAShortBatchEndsIt() {
+        properties.getNotice().setRetention(Duration.ofDays(30));
+        properties.getNotice().setCleanupBatchSize(2);
+        properties.getNotice().setCleanupMaxBatches(10);
+        when(notices.deleteOlderThan(any(Instant.class), eq(2))).thenReturn(2, 2, 1);
+
+        tasks.purgeNotices();
+
+        verify(notices, times(3)).deleteOlderThan(any(Instant.class), eq(2));
+    }
+
+    @Test
+    void noticeCleanupStopsAtTheConfiguredCeilingInsteadOfHoldingTheWriteLock() {
+        properties.getNotice().setCleanupBatchSize(1);
+        properties.getNotice().setCleanupMaxBatches(3);
+        when(notices.deleteOlderThan(any(Instant.class), eq(1))).thenReturn(1);
+
+        tasks.purgeNotices();
+
+        verify(notices, times(3)).deleteOlderThan(any(Instant.class), eq(1));
+    }
+
+    /** 一次锁冲突不能让清理任务永久停摆：只记 warn，下一轮继续从最旧的批次删起。 */
+    @Test
+    void aFailedNoticeCleanupIsLoggedInsteadOfPropagating() {
+        properties.getNotice().setCleanupBatchSize(2);
+        when(notices.deleteOlderThan(any(Instant.class), eq(2)))
+                .thenThrow(new IllegalStateException("database is locked"));
+
+        tasks.purgeNotices();
+
+        verify(notices).deleteOlderThan(any(Instant.class), eq(2));
     }
 }

@@ -15,11 +15,25 @@ public final class ConfigKeys {
     public static final String AMAP_SECURITY_CODE = "map.amap.securityCode";
     public static final String MOVING_SPEED_THRESHOLD = "operations.movingSpeedKph";
 
+    /**
+     * 主动通知的最低级别与静默窗口。按租户可调，因为「值不值得打扰」在不同车队相差很大：
+     * 二十台车的队伍愿意每条都收，两千台的只想看严重的。
+     *
+     * <p>没有「是否启用」这一项：整体开关是运维的总闸（{@code jt.console.notice.enabled}），
+     * 一个能被租户各自打开的总闸就不是总闸了。
+     */
+    public static final String NOTICE_MIN_SEVERITY = "notice.minSeverity";
+    public static final String NOTICE_SILENCE_CRITICAL_HOURS = "notice.silenceWindow.criticalHours";
+    public static final String NOTICE_SILENCE_WARN_HOURS = "notice.silenceWindow.warnHours";
+
     private static final List<ConfigKeyDefinition> CATALOG = List.of(
             new ConfigKeyDefinition(PLATFORM_NAME, "平台显示名称", "TEXT", false),
             new ConfigKeyDefinition(AMAP_KEY, "高德地图 Key", "TEXT", false),
             new ConfigKeyDefinition(AMAP_SECURITY_CODE, "高德地图安全密钥", "TEXT", true),
-            new ConfigKeyDefinition(MOVING_SPEED_THRESHOLD, "行驶判定速度阈值（km/h）", "NUMBER", false));
+            new ConfigKeyDefinition(MOVING_SPEED_THRESHOLD, "行驶判定速度阈值（km/h）", "NUMBER", false),
+            new ConfigKeyDefinition(NOTICE_MIN_SEVERITY, "主动通知最低级别（INFO/WARN/CRITICAL）", "TEXT", false),
+            new ConfigKeyDefinition(NOTICE_SILENCE_CRITICAL_HOURS, "严重通知静默窗口（小时）", "NUMBER", false),
+            new ConfigKeyDefinition(NOTICE_SILENCE_WARN_HOURS, "一般通知静默窗口（小时）", "NUMBER", false));
 
     private static final Map<String, ConfigKeyDefinition> BY_KEY = index();
 

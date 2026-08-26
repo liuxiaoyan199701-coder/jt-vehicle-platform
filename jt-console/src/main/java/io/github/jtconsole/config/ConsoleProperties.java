@@ -22,6 +22,7 @@ public class ConsoleProperties {
     private Audit audit = new Audit();
     private ConnectionDiagnostics connectionDiagnostics = new ConnectionDiagnostics();
     private DeviceLog deviceLog = new DeviceLog();
+    private Notice notice = new Notice();
     private Registration registration = new Registration();
     private Tenancy tenancy = new Tenancy();
     private Duration offlineTimeout = Duration.ofMinutes(5);
@@ -81,6 +82,14 @@ public class ConsoleProperties {
 
     public void setDeviceLog(DeviceLog deviceLog) {
         this.deviceLog = deviceLog;
+    }
+
+    public Notice getNotice() {
+        return notice;
+    }
+
+    public void setNotice(Notice notice) {
+        this.notice = notice;
     }
 
     public Registration getRegistration() {
@@ -783,6 +792,81 @@ public class ConsoleProperties {
         public void setCleanupCron(String cleanupCron) {
             this.cleanupCron = cleanupCron;
         }
+    }
+
+    /**
+     * 主动通知：把已检出的看板发现送到人眼前。
+     *
+     * <p><b>抑制是这块配置的主体而不是附属</b>。唯一会让主动通知彻底失败的方式，是它太吵，
+     * 然后用户永久关掉它——所以窗口按严重度分档、{@code INFO} 默认不打扰、可整体关闭，
+     * 三者都是防噪声的手段而不是可有可无的旋钮。
+     *
+     * <p>{@code minSeverity} 与静默窗口还可以按租户覆盖（见 {@code ConfigKeys}），
+     * 这里的值是全局默认。{@code enabled} 有意**不做**成租户级：它是运维的总闸，
+     * 一个能被租户各自打开的总闸就不是总闸了。
+     */
+    public static class Notice {
+        private boolean enabled = true;
+        /**
+         * 最低通知级别。默认 {@code WARN}——{@code INFO} 级发现（如「另有 3 台车离线」）
+         * 是看板上的补充信息，不是需要打断人的事。
+         */
+        private String minSeverity = "WARN";
+        private final SilenceWindow silenceWindow = new SilenceWindow();
+        /**
+         * 保留期。比连接事件（14 天）长、比审计（180 天）短：通知是运营流水而非合规记录，
+         * 但「上个月是不是提醒过我」要答得上来。
+         */
+        private Duration retention = Duration.ofDays(30);
+        private int cleanupBatchSize = 500;
+        private int cleanupMaxBatches = 100;
+        /** 与审计（3:17）、连接事件（3:41）、报文日志（3:53）、附件（4:53）错峰。 */
+        private String cleanupCron = "0 29 4 * * *";
+
+        /**
+         * 静默窗口：同一件事在窗口内不重复通知。
+         *
+         * <p>按严重度分档，因为「同一件持续存在的事，越严重越应该反复提醒」——
+         * 但也仅限于此，再频繁就只是噪声了。
+         */
+        public static class SilenceWindow {
+            private Duration critical = Duration.ofHours(6);
+            private Duration warn = Duration.ofHours(24);
+
+            public Duration getCritical() { return critical; }
+
+            public void setCritical(Duration critical) { this.critical = critical; }
+
+            public Duration getWarn() { return warn; }
+
+            public void setWarn(Duration warn) { this.warn = warn; }
+        }
+
+        public boolean isEnabled() { return enabled; }
+
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+
+        public String getMinSeverity() { return minSeverity; }
+
+        public void setMinSeverity(String minSeverity) { this.minSeverity = minSeverity; }
+
+        public SilenceWindow getSilenceWindow() { return silenceWindow; }
+
+        public Duration getRetention() { return retention; }
+
+        public void setRetention(Duration retention) { this.retention = retention; }
+
+        public int getCleanupBatchSize() { return cleanupBatchSize; }
+
+        public void setCleanupBatchSize(int value) { cleanupBatchSize = Math.max(1, value); }
+
+        public int getCleanupMaxBatches() { return cleanupMaxBatches; }
+
+        public void setCleanupMaxBatches(int value) { cleanupMaxBatches = Math.max(1, value); }
+
+        public String getCleanupCron() { return cleanupCron; }
+
+        public void setCleanupCron(String value) { cleanupCron = value; }
     }
 
     public static class ConnectionDiagnostics {

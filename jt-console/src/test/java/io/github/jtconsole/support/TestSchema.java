@@ -7,6 +7,7 @@ import io.github.jtconsole.migration.V2DefaultTenantMigration;
 import io.github.jtconsole.migration.V3TrackPointUniquenessMigration;
 import io.github.jtconsole.migration.V4AiSchemaMigration;
 import io.github.jtconsole.migration.V5SessionPersistenceMigration;
+import io.github.jtconsole.migration.V9BriefingContentMigration;
 import io.github.jtconsole.migration.V10GeofenceShapeMigration;
 import io.github.jtconsole.migration.V11AlarmRuleMigration;
 import io.github.jtconsole.migration.V12UpgradePackageMigration;
@@ -16,6 +17,7 @@ import io.github.jtconsole.migration.V16RecordingUploadMigration;
 import io.github.jtconsole.migration.V17ConnectionEventsMigration;
 import io.github.jtconsole.migration.V18ConnectionEventDetailMigration;
 import io.github.jtconsole.migration.V19TerminalRegistryMigration;
+import io.github.jtconsole.migration.V20NoticeMigration;
 import java.util.List;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -34,12 +36,13 @@ public final class TestSchema {
     private static final List<SchemaMigration> MIGRATIONS = List.of(
             new V1TenancySchemaMigration(), new V2DefaultTenantMigration(),
             new V3TrackPointUniquenessMigration(), new V4AiSchemaMigration(),
-            new V5SessionPersistenceMigration(), new V10GeofenceShapeMigration(),
+            new V5SessionPersistenceMigration(), new V9BriefingContentMigration(),
+            new V10GeofenceShapeMigration(),
             new V11AlarmRuleMigration(), new V12UpgradePackageMigration(),
             new V13DriverManagementMigration(), new V15WaybillMigration(),
             new V16RecordingUploadMigration(), new V17ConnectionEventsMigration(),
             new V18ConnectionEventDetailMigration(),
-            new V19TerminalRegistryMigration());
+            new V19TerminalRegistryMigration(), new V20NoticeMigration());
 
     /**
      * 全量迁移后的库版本，从上面的清单算出来。

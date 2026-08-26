@@ -130,11 +130,17 @@ public class TenantConfigService {
 
     private Map<String, String> globalDefaults() {
         ConsoleProperties.Tenancy tenancy = properties.getTenancy();
+        ConsoleProperties.Notice notice = properties.getNotice();
         Map<String, String> defaults = new LinkedHashMap<>();
         defaults.put(ConfigKeys.PLATFORM_NAME, tenancy.getPlatformName());
         defaults.put(ConfigKeys.AMAP_KEY, tenancy.getAmapKey());
         defaults.put(ConfigKeys.AMAP_SECURITY_CODE, tenancy.getAmapSecurityCode());
         defaults.put(ConfigKeys.MOVING_SPEED_THRESHOLD, "5");
+        defaults.put(ConfigKeys.NOTICE_MIN_SEVERITY, notice.getMinSeverity());
+        defaults.put(ConfigKeys.NOTICE_SILENCE_CRITICAL_HOURS,
+                String.valueOf(notice.getSilenceWindow().getCritical().toHours()));
+        defaults.put(ConfigKeys.NOTICE_SILENCE_WARN_HOURS,
+                String.valueOf(notice.getSilenceWindow().getWarn().toHours()));
         return defaults;
     }
 
